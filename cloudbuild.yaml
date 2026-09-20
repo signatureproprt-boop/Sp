@@ -1,0 +1,42 @@
+substitutions:
+  _REGION: asia-south1
+  _SERVICE: signature-realty-crm
+  _REPOSITORY: signature-realty
+  _IMAGE: signature-realty-crm
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
+      - -f
+      - full-system/crm/Dockerfile
+      - full-system/crm
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --port=8080
+      - --execution-environment=gen2
+      - --cpu=1
+      - --memory=1Gi
+      - --min-instances=0
+      - --max-instances=10
+      - --concurrency=80
+      - --timeout=120
+      - --no-allow-unauthenticated
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
