@@ -2185,7 +2185,14 @@ async function handleApi(req, res, url) {
 
       if (/^\/api\/v2\/builder-projects\/?$/i.test(pathname)) {
         if (req.method === 'GET') {
-          const out = svc.list({ q: url.searchParams.get('q'), location: url.searchParams.get('location'), status: url.searchParams.get('status'), category: url.searchParams.get('category') });
+          const out = svc.listPage({
+            q: url.searchParams.get('q'),
+            location: url.searchParams.get('location'),
+            status: url.searchParams.get('status'),
+            category: url.searchParams.get('category'),
+            page: url.searchParams.get('page') || 1,
+            limit: url.searchParams.get('limit') || 50
+          });
           sendJson(res, out);
           return;
         }
