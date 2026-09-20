@@ -1,0 +1,29 @@
+name: CRM CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'full-system/crm/**'
+      - '.github/workflows/crm-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'full-system/crm/**'
+      - '.github/workflows/crm-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: full-system/crm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: full-system/crm/package-lock.json
+      - run: npm ci
+      - run: npm test
