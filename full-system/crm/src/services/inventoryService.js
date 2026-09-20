@@ -41,6 +41,7 @@ class InventoryService {
         (p.OwnerName || '').toLowerCase().includes(q) ||
         (p.BrokerName || '').toLowerCase().includes(q) ||
         (p.BuilderName || '').toLowerCase().includes(q) ||
+        (p.ProjectName || '').toLowerCase().includes(q) ||
         (p.PropertyID || '').toLowerCase().includes(q)
       );
     }
@@ -48,12 +49,56 @@ class InventoryService {
     if (filter.subCategory) items = items.filter(p => p.SubCategory === filter.subCategory);
     if (filter.transactionType) items = items.filter(p => (p.ListingFor || '').toLowerCase() === String(filter.transactionType).toLowerCase());
     if (filter.status) items = items.filter(p => p.ListingStatus === filter.status);
+    if (filter.projectId) {
+      const id = String(filter.projectId).trim().toLowerCase();
+      items = items.filter(p => String(p.ProjectID || p.ProjectId || '').trim().toLowerCase() === id);
+    }
+    if (filter.builderId) {
+      const id = String(filter.builderId).trim().toLowerCase();
+      items = items.filter(p => String(p.BuilderID || p.BuilderId || '').trim().toLowerCase() === id);
+    }
+    if (filter.builder) {
+      const builder = String(filter.builder).trim().toLowerCase();
+      items = items.filter(p => String(p.BuilderName || '').trim().toLowerCase() === builder);
+    }
+    if (filter.location) {
+      const location = String(filter.location).trim().toLowerCase();
+      items = items.filter(p => [p.Location1, p.Location2, p.Location].some(v => String(v || '').trim().toLowerCase() === location));
+    }
+    if (filter.society) {
+      const society = String(filter.society).trim().toLowerCase();
+      items = items.filter(p => String(p.SocietyName || '').trim().toLowerCase() === society);
+    }
     if (filter.source) {
       // Auto-derive source if missing on legacy records
       items = items.filter(p => (p.InventorySource || _deriveInventorySource(p.OwnerType)) === filter.source);
     }
     items.sort((a,b) => new Date(b.UpdatedAt || 0) - new Date(a.UpdatedAt || 0));
     return items;
+  }
+
+  listPage(filter = {}) {
+    const rows = this.list(filter);
+    const page = clampPage(filter.page);
+    const limit = clampLimit(filter.limit);
+    const total = rows.length;
+    const totalPages = total ? Math.ceil(total / limit) : 0;
+    const safePage = totalPages ? Math.min(page, totalPages) : 1;
+    const start = (safePage - 1) * limit;
+    const data = rows.slice(start, start + limit);
+    return {
+      ok: true,
+      data,
+      count: data.length,
+      pagination: {
+        page: safePage,
+        limit,
+        total,
+        totalPages,
+        hasNext: safePage < totalPages,
+        hasPrev: safePage > 1
+      }
+    };
   }
 
   get(propertyId) {
@@ -80,6 +125,8 @@ class InventoryService {
       ExclusiveWithMe:!!payload.ExclusiveWithMe,
       SocietyName:    payload.SocietyName || null,
       BuilderName:    payload.BuilderName || null,
+      BuilderID:      payload.BuilderID || payload.BuilderId || null,
+      ProjectID:      payload.ProjectID || payload.ProjectId || null,
       ProjectName:    payload.ProjectName || null,
       BrokerName:     payload.BrokerName || null,
       BrokerMobile:   payload.BrokerMobile || null,
@@ -110,7 +157,7 @@ class InventoryService {
     const keepKeys = new Set(['Photos', 'CreatedAt', 'CreatedBy', 'PropertyID', '_v2']);
     for (const [k, v] of Object.entries(payload || {})) {
       if (keepKeys.has(k)) continue;
-      if (['Title','Category','SubCategory','ListingFor','ListingStatus','InventorySource','OwnerName','OwnerMobile','OwnerType','ExclusiveWithMe','SocietyName','BuilderName','ProjectName','BrokerName','BrokerMobile','BrokerCommissionShare','Location1','Location2','ProjectStatus','TotalUnits','PossessionDate','LandArea','NeedsReview','RERANumber','RERARegistrationDate','Configurations','AreaRange','Taluka','Village','BHK','CarpetArea','IsReraMaster','ImportedFrom','ImportedAt'].includes(k)) {
+      if (['Title','Category','SubCategory','ListingFor','ListingStatus','InventorySource','OwnerName','OwnerMobile','OwnerType','ExclusiveWithMe','SocietyName','BuilderName','BuilderID','ProjectID','ProjectName','BrokerName','BrokerMobile','BrokerCommissionShare','Location1','Location2','ProjectStatus','TotalUnits','PossessionDate','LandArea','NeedsReview','RERANumber','RERARegistrationDate','Configurations','AreaRange','Taluka','Village','BHK','CarpetArea','IsReraMaster','ImportedFrom','ImportedAt'].includes(k)) {
         p[k] = v;
       } else {
         p.Fields = p.Fields || {};
@@ -186,6 +233,17 @@ class InventoryService {
     this.repository.write(db);
     return true;
   }
+}
+
+function clampPage(value) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function clampLimit(value) {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) return 50;
+  return Math.min(n, 100);
 }
 
 function _autoTitle(payload) {

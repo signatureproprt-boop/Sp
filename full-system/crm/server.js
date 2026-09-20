@@ -2185,7 +2185,14 @@ async function handleApi(req, res, url) {
 
       if (/^\/api\/v2\/builder-projects\/?$/i.test(pathname)) {
         if (req.method === 'GET') {
-          const out = svc.list({ q: url.searchParams.get('q'), location: url.searchParams.get('location'), status: url.searchParams.get('status'), category: url.searchParams.get('category') });
+          const out = svc.listPage({
+            q: url.searchParams.get('q'),
+            location: url.searchParams.get('location'),
+            status: url.searchParams.get('status'),
+            category: url.searchParams.get('category'),
+            page: url.searchParams.get('page') || 1,
+            limit: url.searchParams.get('limit') || 50
+          });
           sendJson(res, out);
           return;
         }
@@ -2337,17 +2344,31 @@ async function handleApi(req, res, url) {
 
       // GET /api/v2/inventory
       if (!propertyId && !subRoute && req.method === 'GET') {
-        const items = svc.list({
+        const items = svc.listPage({
           q:               url.searchParams.get('q') || undefined,
           category:        url.searchParams.get('category') || undefined,
           subCategory:     url.searchParams.get('subCategory') || undefined,
           transactionType: url.searchParams.get('transactionType') || undefined,
-          status:          url.searchParams.get('status') || undefined
-        }).filter((property) => accessSvc.authorizeProperty(actor, property, {
+          status:          url.searchParams.get('status') || undefined,
+          projectId:       url.searchParams.get('projectId') || undefined,
+          builderId:       url.searchParams.get('builderId') || undefined,
+          builder:         url.searchParams.get('builder') || undefined,
+          location:        url.searchParams.get('location') || undefined,
+          society:         url.searchParams.get('society') || undefined,
+          source:          url.searchParams.get('source') || undefined,
+          page:            url.searchParams.get('page') || 1,
+          limit:           url.searchParams.get('limit') || 50
+        });
+        const authorized = items.data.filter((property) => accessSvc.authorizeProperty(actor, property, {
           permissions: ['INVENTORY_READ'],
           hideExistence: true
         }).ok);
-        sendJson(res, { ok: true, data: items, count: items.length });
+        sendJson(res, {
+          ok: true,
+          data: authorized,
+          count: authorized.length,
+          pagination: { ...items.pagination, count: authorized.length }
+        });
         return;
       }
 

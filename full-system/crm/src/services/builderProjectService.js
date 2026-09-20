@@ -272,6 +272,17 @@ function appendProvenance(current, source) {
   return parts.join(',') || current || source || null;
 }
 
+function clampPage(value) {
+  const n = Number.parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function clampLimit(value) {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n <= 0) return 50;
+  return Math.min(n, 100);
+}
+
 function parseNum(v) {
   if (v == null || v === '') return null;
   const n = parseFloat(String(v).replace(/[^\d.\-]/g, ''));
@@ -312,6 +323,30 @@ class BuilderProjectService {
     }
     rows = rows.slice().sort((a, b) => new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0));
     return { ok: true, data: rows, count: rows.length };
+  }
+
+  listPage(filter = {}) {
+    const rows = this.list(filter).data || [];
+    const page = clampPage(filter.page);
+    const limit = clampLimit(filter.limit);
+    const total = rows.length;
+    const totalPages = total ? Math.ceil(total / limit) : 0;
+    const safePage = totalPages ? Math.min(page, totalPages) : 1;
+    const start = (safePage - 1) * limit;
+    const data = rows.slice(start, start + limit);
+    return {
+      ok: true,
+      data,
+      count: data.length,
+      pagination: {
+        page: safePage,
+        limit,
+        total,
+        totalPages,
+        hasNext: safePage < totalPages,
+        hasPrev: safePage > 1
+      }
+    };
   }
 
   get(id) {

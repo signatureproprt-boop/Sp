@@ -468,6 +468,9 @@
   let currentStatus = '';
   let currentCategory = '';
   let currentSearch = '';
+  let currentPage = 1;
+  let totalPages = 1;
+  let totalProjects = 0;
   let groupByBuilder = false;
   let collapsedGroups = new Set();
   let editingId = null;
@@ -489,8 +492,17 @@
   async function loadProjects() {
     document.getElementById('grid').innerHTML = '<div class="empty-state">Loading…</div>';
     try {
-      const res = await fetch('/api/v2/builder-projects').then(r => r.json());
+      const params = new URLSearchParams();
+      params.set('page', String(currentPage));
+      params.set('limit', '50');
+      if (currentStatus) params.set('status', currentStatus);
+      if (currentCategory) params.set('category', currentCategory);
+      if (currentSearch) params.set('q', currentSearch);
+      const res = await fetch('/api/v2/builder-projects?' + params.toString()).then(r => r.json());
+      if (!res.ok) throw new Error(res.error || 'Builder project load failed');
       allProjects = res.data || [];
+      totalProjects = Number(res.pagination?.total || allProjects.length);
+      totalPages = Math.max(1, Number(res.pagination?.totalPages || 1));
       render();
       updateBuilderNameOptions();
     } catch (e) {
@@ -568,16 +580,7 @@
   }
 
   function render() {
-    let items = allProjects;
-    if (currentStatus) items = items.filter(p => p.ProjectStatus === currentStatus);
-    if (currentCategory) items = items.filter(p => p.Category === currentCategory);
-    if (currentSearch) {
-      const q = currentSearch.toLowerCase();
-      items = items.filter(p =>
-        (p.ProjectName||'').toLowerCase().includes(q) ||
-        (p.BuilderName||'').toLowerCase().includes(q) ||
-        (p.Location1||'').toLowerCase().includes(q));
-    }
+    const items = allProjects;
     const grid = document.getElementById('grid');
     if (!items.length) {
       grid.innerHTML = `<div class="empty-state" data-testid="empty-state">
@@ -590,6 +593,7 @@
     if (!groupByBuilder) {
       grid.className = 'grid';
       grid.innerHTML = items.map(renderCard).join('');
+      renderPagination();
       return;
     }
     // Grouped-by-builder view
@@ -614,6 +618,32 @@
         <div class="grid" id="${gid}" style="${collapsed ? 'display:none' : ''}">${groups.get(builder).map(renderCard).join('')}</div>
       </div>`;
     }).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    let el = document.getElementById('builder-pagination-controls');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'builder-pagination-controls';
+      el.style.cssText = 'display:flex;justify-content:center;align-items:center;gap:10px;padding:18px 8px;flex-wrap:wrap;';
+      document.getElementById('grid').parentElement.appendChild(el);
+    }
+    el.innerHTML = `<button class="btn btn-ghost" ${currentPage <= 1 ? 'disabled' : ''} onclick="builderPrevPage()">← Previous</button>
+      <span style="font-size:12px;color:var(--clr-text-light);font-weight:700">Page ${currentPage} / ${totalPages} · ${totalProjects} total</span>
+      <button class="btn btn-ghost" ${currentPage >= totalPages ? 'disabled' : ''} onclick="builderNextPage()">Next →</button>`;
+  }
+
+  function builderNextPage() {
+    if (currentPage >= totalPages) return;
+    currentPage += 1;
+    loadProjects();
+  }
+
+  function builderPrevPage() {
+    if (currentPage <= 1) return;
+    currentPage -= 1;
+    loadProjects();
   }
 
   function toggleGroupCollapse(builder) {
@@ -748,6 +778,7 @@
         <span style="font-size:11px;color:var(--clr-text-light)">${esc(p.ProjectID)}</span>
         <div>
           <button class="link" data-testid="wa-share-${esc(p.ProjectID)}" onclick="shareProjectOnWhatsApp('${esc(p.ProjectID)}')" style="color:#128c1e">📱 Share</button>
+          <a class="link" data-testid="view-inventory-${esc(p.ProjectID)}" href="/inventory?projectId=${encodeURIComponent(p.ProjectID)}" onclick="event.stopPropagation()">Inventory</a>
           <button class="link" data-testid="edit-${esc(p.ProjectID)}" onclick="openEditModal('${esc(p.ProjectID)}')">Edit</button>
           <button class="link danger" data-testid="delete-${esc(p.ProjectID)}" onclick="deleteProject('${esc(p.ProjectID)}')">Delete</button>
         </div>
@@ -786,14 +817,16 @@
     el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
     currentStatus = val;
-    render();
+    currentPage = 1;
+    loadProjects();
   }
 
   function setCategoryFilter(el, val) {
     el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
     currentCategory = val;
-    render();
+    currentPage = 1;
+    loadProjects();
   }
 
   function toggleGroupView(el) {
