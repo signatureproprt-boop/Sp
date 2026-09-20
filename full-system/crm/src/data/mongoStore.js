@@ -347,6 +347,19 @@ function read() {
 }
 
 /**
+ * Read a single collection without deep-cloning the entire database snapshot.
+ * This is intentionally read-only and returns a detached array so existing
+ * synchronous repository callers cannot mutate the Mongo cache accidentally.
+ */
+function readCollection(collection) {
+  if (!_initialized) throw new Error('mongoStore.readCollection() called before initMongo()');
+  const key = String(collection || '').trim();
+  if (!key) return [];
+  const rows = _cache && Array.isArray(_cache[key]) ? _cache[key] : [];
+  return JSON.parse(JSON.stringify(rows));
+}
+
+/**
  * Replace the cache and enqueue a persist. Persist runs asynchronously
  * but is chained through _writeQueue so writes never race with each
  * other. Errors are surfaced through _lastWriteError and stats.
@@ -414,6 +427,7 @@ module.exports = {
   getDb,
   initMongo,
   read,
+  readCollection,
   write,
   flush,
   close,
