@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: Signature-properties--5
+    runtime: node
+    plan: free
+    rootDir: full-system/crm
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_PIN
+        sync: false
+      - key: SIG_REALTY_AUTH_STATE_SECRET
+        sync: false
+      - key: STORAGE_MODE
+        value: mongo
+      - key: MONGO_URL
+        sync: false
+      - key: MONGO_DB
+        value: signature_properties
