@@ -140,6 +140,8 @@
   <div class="chip" data-filter="Land" data-testid="filter-land" onclick="setFilter(this, 'category', 'Land')">🌾 Land</div>
 </div>
 
+<div id="project-filter-chip" style="margin:0 0 10px;padding:9px 12px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-gold-soft);font-size:12px;font-weight:700;color:var(--clr-brown)">🏗️ Project filter: <span id="project-filter-value"></span> <button class="btn" style="margin-left:8px;padding:4px 9px" onclick="clearProjectFilter()">Clear</button></div>
+
 <div class="toolbar" style="padding-top:0">
   <span style="font-size:11.5px;color:var(--clr-text-light);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-right:4px">Source:</span>
   <div class="chip source-chip active" data-source="" data-testid="src-all" onclick="setFilter(this, 'source', '')">All Sources</div>
@@ -282,6 +284,10 @@
   let currentFilter = '';
   let currentSource = '';
   let currentSearch = '';
+  let currentPage = 1;
+  let totalPages = 1;
+  let totalInventory = 0;
+  let projectFilter = new URLSearchParams(window.location.search).get('projectId') || '';
   let editingId    = null;
   let pendingPhotos = [];  // dataUrl[] to upload after save
   let existingPhotos = []; // photos already on server
@@ -297,15 +303,26 @@
   // ── Init ──────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('dl-surat-areas').innerHTML = SURAT_AREAS.map(a => `<option value="${a}">`).join('');
+    if (projectFilter) document.getElementById('project-filter-value').textContent = projectFilter;
+    else document.getElementById('project-filter-chip')?.remove();
     loadInventory();
   });
 
   async function loadInventory() {
     document.getElementById('grid').innerHTML = '<div class="empty-state">Loading…</div>';
     try {
-      const res = await fetch('/api/v2/inventory').then(r => r.json());
+      const params = new URLSearchParams();
+      params.set('page', String(currentPage));
+      params.set('limit', '50');
+      if (currentFilter) params.set('category', currentFilter);
+      if (currentSource) params.set('source', currentSource);
+      if (currentSearch) params.set('q', currentSearch);
+      if (projectFilter) params.set('projectId', projectFilter);
+      const res = await fetch('/api/v2/inventory?' + params.toString()).then(r => r.json());
+      if (!res.ok) throw new Error(res.error || 'Inventory load failed');
       allProperties = res.data || [];
-      // Build society autocomplete from existing data
+      totalInventory = Number(res.pagination?.total || allProperties.length);
+      totalPages = Math.max(1, Number(res.pagination?.totalPages || 1));
       const societies = [...new Set(allProperties.map(p => p.SocietyName).filter(Boolean))];
       document.getElementById('dl-society').innerHTML = societies.map(s => `<option value="${esc(s)}">`).join('');
       render();
@@ -315,20 +332,8 @@
   }
 
   function render() {
-    let items = allProperties;
-    if (currentFilter) items = items.filter(p => p.Category === currentFilter);
-    if (currentSource) items = items.filter(p => deriveSource(p) === currentSource);
-    if (currentSearch) {
-      const q = currentSearch.toLowerCase();
-      items = items.filter(p =>
-        (p.Title||'').toLowerCase().includes(q) ||
-        (p.SocietyName||'').toLowerCase().includes(q) ||
-        (p.Location1||'').toLowerCase().includes(q) ||
-        (p.OwnerName||'').toLowerCase().includes(q) ||
-        (p.BrokerName||'').toLowerCase().includes(q) ||
-        (p.BuilderName||'').toLowerCase().includes(q));
-    }
-    const countText = items.length + ' of ' + allProperties.length;
+    const items = allProperties;
+    const countText = items.length + ' of ' + totalInventory;
     const totalsBySource = allProperties.reduce((m, p) => { const s = deriveSource(p); m[s] = (m[s] || 0) + 1; return m; }, {});
     document.getElementById('count-badge').innerHTML = countText + ` · <span style="color:#d97706">⭐ Own ${totalsBySource.Own||0}</span> · <span style="color:#2563eb">🏗️ Builder ${totalsBySource.Builder||0}</span> · <span style="color:#7c3aed">🤝 Broker ${totalsBySource.Broker||0}</span>`;
     const grid = document.getElementById('grid');
@@ -341,6 +346,32 @@
       return;
     }
     grid.innerHTML = items.map(renderCard).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    let el = document.getElementById('pagination-controls');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'pagination-controls';
+      el.style.cssText = 'display:flex;justify-content:center;align-items:center;gap:10px;padding:18px 8px;flex-wrap:wrap;';
+      document.getElementById('grid').parentElement.appendChild(el);
+    }
+    el.innerHTML = `<button class="btn" ${currentPage <= 1 ? 'disabled' : ''} onclick="inventoryPrevPage()">← Previous</button>
+      <span style="font-size:12px;color:var(--clr-text-light);font-weight:700">Page ${currentPage} / ${totalPages} · ${totalInventory} total</span>
+      <button class="btn" ${currentPage >= totalPages ? 'disabled' : ''} onclick="inventoryNextPage()">Next →</button>`;
+  }
+
+  function inventoryNextPage() {
+    if (currentPage >= totalPages) return;
+    currentPage += 1;
+    loadInventory();
+  }
+
+  function inventoryPrevPage() {
+    if (currentPage <= 1) return;
+    currentPage -= 1;
+    loadInventory();
   }
 
   function renderCard(p) {
@@ -406,20 +437,23 @@
       el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
       el.classList.add('active');
       currentFilter = val;
+      currentPage = 1;
     } else if (kind === 'source') {
       // Only source chips in same toolbar
       el.parentElement.querySelectorAll('.source-chip').forEach(c => c.classList.remove('active'));
       el.classList.add('active');
       currentSource = val;
+      currentPage = 1;
     }
-    render();
+    loadInventory();
   }
   let searchTimer = null;
   function debounceSearch() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       currentSearch = document.getElementById('search-input').value.trim();
-      render();
+      currentPage = 1;
+      loadInventory();
     }, 250);
   }
 
@@ -699,6 +733,16 @@
     } finally {
       btn.disabled = false; btn.textContent = 'Save Property';
     }
+  }
+
+  function clearProjectFilter() {
+    projectFilter = '';
+    const url = new URL(window.location.href);
+    url.searchParams.delete('projectId');
+    window.history.replaceState({}, '', url);
+    currentPage = 1;
+    document.getElementById('project-filter-chip')?.remove();
+    loadInventory();
   }
 
   function closeModal() { document.getElementById('prop-modal').classList.add('hidden'); }
