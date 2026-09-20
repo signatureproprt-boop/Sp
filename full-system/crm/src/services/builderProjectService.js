@@ -309,8 +309,7 @@ class BuilderProjectService {
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
   list({ q, location, status, category } = {}) {
-    const db = this.repo.read();
-    let rows = this._all(db).filter((p) => p.Active !== false);
+    let rows = this.repo.list('BuilderProjects').filter((p) => p.Active !== false);
     if (location) rows = rows.filter((p) => String(p.Location1 || '').toLowerCase() === String(location).toLowerCase());
     if (status) rows = rows.filter((p) => p.ProjectStatus === status);
     if (category) rows = rows.filter((p) => p.Category === category);

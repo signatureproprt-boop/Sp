@@ -249,6 +249,9 @@ class JsonRepository {
   }
 
   list(collection) {
+    if (mongoStore.isEnabled() && mongoStore.isInitialized() && typeof mongoStore.readCollection === 'function') {
+      return mongoStore.readCollection(collection);
+    }
     const rows = this.read()[collection];
     return Array.isArray(rows) ? rows : [];
   }
