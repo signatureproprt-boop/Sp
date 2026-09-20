@@ -2185,6 +2185,8 @@ async function handleApi(req, res, url) {
 
       if (/^\/api\/v2\/builder-projects\/?$/i.test(pathname)) {
         if (req.method === 'GET') {
+          const perf = startApiPerformanceTrace(req, res, 'builder-projects.list');
+          const serviceStartedAt = process.hrtime.bigint();
           const out = svc.listPage({
             q: url.searchParams.get('q'),
             location: url.searchParams.get('location'),
@@ -2193,6 +2195,7 @@ async function handleApi(req, res, url) {
             page: url.searchParams.get('page') || 1,
             limit: url.searchParams.get('limit') || 50
           });
+          if (perf) perf.serviceMs = elapsedMs(serviceStartedAt);
           sendJson(res, out);
           return;
         }
@@ -2344,6 +2347,8 @@ async function handleApi(req, res, url) {
 
       // GET /api/v2/inventory
       if (!propertyId && !subRoute && req.method === 'GET') {
+        const perf = startApiPerformanceTrace(req, res, 'inventory.list');
+        const serviceStartedAt = process.hrtime.bigint();
         const items = svc.listPage({
           q:               url.searchParams.get('q') || undefined,
           category:        url.searchParams.get('category') || undefined,
@@ -2359,10 +2364,13 @@ async function handleApi(req, res, url) {
           page:            url.searchParams.get('page') || 1,
           limit:           url.searchParams.get('limit') || 50
         });
+        if (perf) perf.serviceMs = elapsedMs(serviceStartedAt);
+        const authorizationStartedAt = process.hrtime.bigint();
         const authorized = items.data.filter((property) => accessSvc.authorizeProperty(actor, property, {
           permissions: ['INVENTORY_READ'],
           hideExistence: true
         }).ok);
+        if (perf) perf.authorizationMs = elapsedMs(authorizationStartedAt);
         sendJson(res, {
           ok: true,
           data: authorized,
@@ -4763,13 +4771,46 @@ async function readJson(req) {
   });
 }
 
+function startApiPerformanceTrace(req, res, endpoint) {
+  if (String(process.env.SIG_REALTY_PERF_LOG || '').trim().toLowerCase() !== 'true') return null;
+  const trace = {
+    endpoint,
+    method: String(req?.method || 'GET').toUpperCase(),
+    startedAt: process.hrtime.bigint(),
+    serviceMs: null,
+    authorizationMs: null
+  };
+  res.__sigPerf = trace;
+  return trace;
+}
+
+function elapsedMs(startedAt) {
+  if (!startedAt) return 0;
+  return Number(process.hrtime.bigint() - startedAt) / 1e6;
+}
+
 function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
+  const body = JSON.stringify(payload);
   res.writeHead(statusCode, withSecurityHeaders({
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     ...extraHeaders
   }));
-  res.end(JSON.stringify(payload));
+  res.end(body);
+  const perf = res.__sigPerf;
+  if (perf) {
+    console.log('[perf]', JSON.stringify({
+      endpoint: perf.endpoint,
+      method: perf.method,
+      statusCode,
+      totalMs: Number(elapsedMs(perf.startedAt).toFixed(2)),
+      serviceMs: perf.serviceMs == null ? null : Number(perf.serviceMs.toFixed(2)),
+      authorizationMs: perf.authorizationMs == null ? null : Number(perf.authorizationMs.toFixed(2)),
+      payloadBytes: Buffer.byteLength(body, 'utf8'),
+      rows: Array.isArray(payload?.data) ? payload.data.length : null,
+      totalRows: Number.isFinite(Number(payload?.pagination?.total)) ? Number(payload.pagination.total) : null
+    }));
+  }
 }
 
 function escapeHtml(value) {
