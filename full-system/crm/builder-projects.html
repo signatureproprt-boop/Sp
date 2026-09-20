@@ -593,6 +593,7 @@
     if (!groupByBuilder) {
       grid.className = 'grid';
       grid.innerHTML = items.map(renderCard).join('');
+      renderPagination();
       return;
     }
     // Grouped-by-builder view
