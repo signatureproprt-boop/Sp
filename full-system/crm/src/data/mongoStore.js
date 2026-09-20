@@ -37,10 +37,20 @@ function getMongoUrl() {
 function getMongoDb() {
   return String(process.env.MONGO_DB || 'signature_properties').trim();
 }
+
+function getPositiveIntegerEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name], 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 const SNAP_COLL    = 'db_snapshot';
 const SNAP_ID      = 'singleton';
-const MONGO_SOCKET_TIMEOUT_MS  = 45000;
-const MONGO_CONNECT_TIMEOUT_MS = 15000;
+const MONGO_SOCKET_TIMEOUT_MS = getPositiveIntegerEnv('MONGO_SOCKET_TIMEOUT_MS', 45000);
+const MONGO_CONNECT_TIMEOUT_MS = getPositiveIntegerEnv('MONGO_CONNECT_TIMEOUT_MS', 30000);
+const MONGO_SERVER_SELECTION_TIMEOUT_MS = getPositiveIntegerEnv('MONGO_SERVER_SELECTION_TIMEOUT_MS', 30000);
+const MONGO_POLL_INTERVAL_MS = getPositiveIntegerEnv('MONGO_POLL_INTERVAL_MS', 10000);
+const POLL_QUERY_MAX_TIME_MS = 10000;
+const POLL_FAILURES_BEFORE_RECONNECT = 3;
 
 function redactMongoSecrets(value) {
   if (value == null) return value;
@@ -132,7 +142,9 @@ let _lastWriteError = null;
 let _writeStats = { successes: 0, failures: 0, lastWriteAt: null };
 let _lastLocalWriteAt = 0;
 let _pollTimer = null;
-const POLL_INTERVAL_MS = 2000;
+let _pollFailureCount = 0;
+let _reconnectPromise = null;
+let _reconnectAttempts = 0;
 
 function isEnabled() {
   return getStorageMode() === 'mongo' && !!getMongoUrl();
@@ -140,6 +152,26 @@ function isEnabled() {
 
 function isInitialized() {
   return _initialized;
+}
+
+function createMongoClient(mongoUrl) {
+  _clientCreations += 1;
+  const mongoOptions = {
+    serverSelectionTimeoutMS: MONGO_SERVER_SELECTION_TIMEOUT_MS,
+    socketTimeoutMS: MONGO_SOCKET_TIMEOUT_MS,
+    connectTimeoutMS: MONGO_CONNECT_TIMEOUT_MS,
+    retryWrites: true,
+    readPreference: 'primary',
+    maxPoolSize: 20,
+    minPoolSize: 1,
+    heartbeatFrequencyMS: 10000
+  };
+  if (/^mongodb\+srv:/i.test(mongoUrl) || /[?&](?:tls|ssl)=true(?:&|$)/i.test(mongoUrl)) {
+    mongoOptions.tls = true;
+    mongoOptions.tlsAllowInvalidCertificates = false;
+    mongoOptions.tlsAllowInvalidHostnames = false;
+  }
+  return new MongoClient(mongoUrl, mongoOptions);
 }
 
 /**
@@ -179,22 +211,7 @@ async function initMongoOnce(fallbackJsonPath) {
 
   try {
     console.log('[mongo] connection attempt');
-    _clientCreations += 1;
-    const mongoOptions = {
-      serverSelectionTimeoutMS: 15000,
-      // Bounds an already-connected socket: without it a stalled GridFS
-      // read/write can stay pending forever and never reject.
-      socketTimeoutMS: MONGO_SOCKET_TIMEOUT_MS,
-      connectTimeoutMS: MONGO_CONNECT_TIMEOUT_MS,
-      retryWrites: true,
-      readPreference: 'primary'
-    };
-    if (/^mongodb\+srv:/i.test(mongoUrl) || /[?&](?:tls|ssl)=true(?:&|$)/i.test(mongoUrl)) {
-      mongoOptions.tls = true;
-      mongoOptions.tlsAllowInvalidCertificates = false;
-      mongoOptions.tlsAllowInvalidHostnames = false;
-    }
-    _client = new MongoClient(mongoUrl, mongoOptions);
+    _client = createMongoClient(mongoUrl);
     try {
       await _client.connect();
     } catch (error) {
@@ -232,9 +249,60 @@ async function initMongoOnce(fallbackJsonPath) {
   }
 }
 
+async function reconnectMongo() {
+  if (_reconnectPromise) return _reconnectPromise;
+
+  _reconnectAttempts += 1;
+  _reconnectPromise = (async () => {
+    const previousClient = _client;
+    const mongoUrl = getMongoUrl();
+    const mongoDb = getMongoDb();
+    let replacementClient = null;
+
+    try {
+      console.warn('[mongoStore] reconnecting after consecutive poll failures');
+      replacementClient = createMongoClient(mongoUrl);
+      await replacementClient.connect();
+      const replacementDb = replacementClient.db(mongoDb);
+      await replacementDb.command({ ping: 1 });
+      if (!replacementDb || typeof replacementDb.collection !== 'function') {
+        throw new Error('Mongo reconnect returned an invalid database handle');
+      }
+
+      _client = replacementClient;
+      _db = replacementDb;
+      _pollFailureCount = 0;
+      replacementClient = null;
+      console.log('[mongoStore] reconnect successful');
+
+      if (previousClient && previousClient !== _client) {
+        await _writeQueue;
+        try {
+          await previousClient.close();
+        } catch (closeError) {
+          console.error('[mongoStore] previous client close failed:', closeError.message);
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error('[mongoStore] reconnect failed:', error.message);
+      if (replacementClient) {
+        try {
+          await replacementClient.close();
+        } catch (_) {}
+      }
+      return false;
+    } finally {
+      _reconnectPromise = null;
+    }
+  })();
+
+  return _reconnectPromise;
+}
+
 /**
  * Cross-replica sync: with 2+ app instances sharing one Mongo, each keeps
- * its own in-memory `_cache`. Poll Mongo every POLL_INTERVAL_MS and adopt
+ * its own in-memory `_cache`. Poll Mongo every MONGO_POLL_INTERVAL_MS and adopt
  * the snapshot only if it is newer than anything WE wrote recently, so we
  * never clobber our own in-flight write with a stale read from another
  * replica that hasn't caught up yet. Bounds cross-replica staleness to
@@ -242,20 +310,31 @@ async function initMongoOnce(fallbackJsonPath) {
  */
 function startPolling() {
   if (_pollTimer) return;
-  _pollTimer = setInterval(async () => {
-    if (!_initialized || !_db) return;
-    try {
-      const snap = await _db.collection(SNAP_COLL).findOne({ _id: SNAP_ID }, { projection: { payload: 1, updatedAt: 1 } });
-      if (snap && snap.payload && snap.updatedAt) {
-        const snapTime = new Date(snap.updatedAt).getTime();
-        if (snapTime > _lastLocalWriteAt) {
-          _cache = snap.payload;
-        }
+  _pollTimer = setInterval(pollOnce, MONGO_POLL_INTERVAL_MS);
+}
+
+async function pollOnce() {
+  if (!_initialized || !_db) return;
+  const activeDb = _db;
+  try {
+    const snap = await activeDb.collection(SNAP_COLL).findOne(
+      { _id: SNAP_ID },
+      { projection: { payload: 1, updatedAt: 1 }, maxTimeMS: POLL_QUERY_MAX_TIME_MS }
+    );
+    _pollFailureCount = 0;
+    if (snap && snap.payload && snap.updatedAt) {
+      const snapTime = new Date(snap.updatedAt).getTime();
+      if (snapTime > _lastLocalWriteAt) {
+        _cache = snap.payload;
       }
-    } catch (e) {
-      console.error('[mongoStore] poll refresh failed:', e.message);
     }
-  }, POLL_INTERVAL_MS);
+  } catch (e) {
+    _pollFailureCount += 1;
+    console.error('[mongoStore] poll refresh failed:', e.message);
+    if (_pollFailureCount >= POLL_FAILURES_BEFORE_RECONNECT) {
+      await reconnectMongo();
+    }
+  }
 }
 
 /**
@@ -279,7 +358,9 @@ function write(db) {
   const snapshot = JSON.parse(JSON.stringify(db));
   _writeQueue = _writeQueue.then(async () => {
     try {
-      await _db.collection(SNAP_COLL).replaceOne(
+      const activeDb = _db;
+      if (!activeDb) throw new Error('Mongo database handle is unavailable');
+      await activeDb.collection(SNAP_COLL).replaceOne(
         { _id: SNAP_ID },
         { _id: SNAP_ID, payload: snapshot, updatedAt: new Date() },
         { upsert: true }
@@ -318,6 +399,9 @@ function stats() {
     initializationInProgress: !!_initPromise && !_initialized,
     initAttempts: _initAttempts,
     clientCreations: _clientCreations,
+    pollFailureCount: _pollFailureCount,
+    reconnectInProgress: !!_reconnectPromise,
+    reconnectAttempts: _reconnectAttempts,
     cacheSize: _cache ? JSON.stringify(_cache).length : 0,
     ..._writeStats,
     lastError: _lastWriteError ? _lastWriteError.message : null
@@ -335,5 +419,8 @@ module.exports = {
   close,
   stats,
   MONGO_SOCKET_TIMEOUT_MS,
-  MONGO_CONNECT_TIMEOUT_MS
+  MONGO_CONNECT_TIMEOUT_MS,
+  MONGO_SERVER_SELECTION_TIMEOUT_MS,
+  MONGO_POLL_INTERVAL_MS,
+  __pollOnceForTests: pollOnce
 };
