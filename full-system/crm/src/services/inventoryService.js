@@ -29,8 +29,8 @@ class InventoryService {
   }
 
   list(filter = {}) {
-    const db = this._ensureDb();
-    let items = db.Inventory.filter(p => !p._deleted);
+    const inventory = this.repository.list('Inventory');
+    let items = inventory.filter(p => !p._deleted);
     if (filter.q) {
       const q = String(filter.q).toLowerCase();
       items = items.filter(p =>
