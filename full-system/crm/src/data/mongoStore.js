@@ -412,7 +412,8 @@ async function withDistributedLock(lockName, fn, options = {}) {
       { $set: { owner, expiresAt, updatedAt: now }, $setOnInsert: { _id: name, createdAt: now } },
       { upsert: true, returnDocument: 'after' }
     );
-    if (!result || !result.value || result.value.owner !== owner) return { acquired: false };
+    const lockDoc = result && result.value ? result.value : result;
+    if (!lockDoc || lockDoc.owner !== owner) return { acquired: false };
     try {
       return { acquired: true, result: await fn() };
     } finally {
