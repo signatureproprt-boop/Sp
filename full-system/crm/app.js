@@ -70,7 +70,7 @@ const renderNavigation = () => {
   nav.appendChild(clientsLink);
 
   // Agent-facing module nav — only show relevant operational modules
-  const VISIBLE_KEYS = ['dashboard','inventory','matching','sitevisits','dealcenter','commission','followups','calendar','reports','settings'];
+  const VISIBLE_KEYS = ['dashboard','inventory','matching','sitevisits','dealcenter','commission','followups','calendar','reports','settings','admin'];
 
   modules.filter(m => VISIBLE_KEYS.includes(m.key)).forEach((module, index) => {
     const link = document.createElement('a');
@@ -3423,8 +3423,14 @@ async function renderAdmin() {
       event.preventDefault();
       const formData = Object.fromEntries(new FormData(event.target).entries());
       const statusEl = document.getElementById('adminPinStatus');
-      if (!/^\\d{4}$/.test(String(formData.currentPin || '')) || !/^\\d{4}$/.test(String(formData.newPin || ''))) {
-        statusEl.textContent = 'PIN must be exactly 4 digits.';
+      const currentPin = String(formData.currentPin || '').trim();
+      const newPin = String(formData.newPin || '').trim();
+      if (currentPin && !/^\\d{4}$/.test(currentPin)) {
+        statusEl.textContent = 'Current PIN must be exactly 4 digits.';
+        return;
+      }
+      if (!/^\\d{4}$/.test(newPin)) {
+        statusEl.textContent = 'New PIN must be exactly 4 digits.';
         return;
       }
       if (formData.newPin !== formData.confirmPin) {
