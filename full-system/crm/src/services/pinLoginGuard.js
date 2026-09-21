@@ -165,6 +165,11 @@ class PinLoginGuard {
     return true;
   }
 
+  static keyFromScope(scope, secret = '') {
+    const normalizedSecret = String(secret || 'pin-guard-dev-secret');
+    return crypto.createHmac('sha256', normalizedSecret).update(`scope:${String(scope || 'unknown')}`).digest('hex');
+  }
+
   static keyFromRequest(req, secret = '') {
     const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
     const address = forwarded || req?.socket?.remoteAddress || 'unknown';
