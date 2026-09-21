@@ -605,6 +605,29 @@ class V2RequirementService {
       Version:    (existing.Version || 1) + 1
     };
 
+    if (status === 'Paused') {
+      const holdReason = payload.HoldReason ?? payload.holdReason ?? existing.HoldReason ?? null;
+      const holdNotes = payload.HoldNotes ?? payload.holdNotes ?? existing.HoldNotes ?? null;
+      updated.HoldReason = holdReason;
+      updated.HoldNotes = holdNotes;
+      updated.HoldAt = existing.HoldAt || now;
+    }
+    if (status === 'Closed') {
+      const closedReason = payload.ClosedReason ?? payload.closedReason ?? existing.ClosedReason ?? null;
+      const closedNotes = payload.ClosedNotes ?? payload.closedNotes ?? existing.ClosedNotes ?? null;
+      updated.ClosedReason = closedReason;
+      updated.ClosedNotes = closedNotes;
+      updated.ClosedAt = existing.ClosedAt || now;
+    }
+    if (status === 'Active') {
+      if (previousStatus === 'Paused') {
+        updated.HoldReactivatedAt = now;
+      }
+      if (previousStatus === 'Lost') {
+        updated.ReactivatedAt = now;
+      }
+    }
+
     if (status === 'Lost') {
       const lostReason = payload.LostReason ?? payload.lostReason ?? existing.LostReason ?? null;
       const lostNotes = payload.LostNotes ?? payload.lostNotes ?? payload.LostNote ?? payload.lostNote ?? existing.LostNotes ?? existing.LostNote ?? null;

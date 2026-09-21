@@ -354,7 +354,14 @@ class V2Router {
     // GET /api/v2/requirements/:id/score  — V2 canonical path
     const reqScoreV2Match = pathname.match(/^\/api\/v2\/requirements\/([^/]+)\/score$/);
     if (reqScoreV2Match && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
       const requirementId = reqScoreV2Match[1];
+      const current = this.reqSvc.getRequirement(requirementId);
+      const access = this.accessSvc.authorizeRequirement(auth.actor, current.ok ? current.data : null, {
+        permissions: ['REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
       const result = this.scoringSvc.recalculateRequirementScore(requirementId);
       return this._json(result.ok ? 200 : 404, result);
     }
@@ -370,7 +377,14 @@ class V2Router {
     // GET /api/v2/leads/:id/score — V2 canonical path
     const leadScoreV2Match = pathname.match(/^\/api\/v2\/leads\/([^/]+)\/score$/);
     if (leadScoreV2Match && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
       const leadId = leadScoreV2Match[1];
+      const lead = this.repo.readLead(leadId);
+      const access = this.accessSvc.authorizeLead(auth.actor, lead, {
+        permissions: ['LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
       const result = this.scoringSvc.recalculateClientScore(leadId);
       return this._json(result.ok ? 200 : 404, result);
     }
@@ -388,7 +402,14 @@ class V2Router {
     // GET /api/v2/requirements/:requirementId/next-questions
     const nextQMatch = pathname.match(/^\/api\/v2\/requirements\/([^/]+)\/next-questions$/);
     if (nextQMatch && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
       const requirementId = nextQMatch[1];
+      const current = this.reqSvc.getRequirement(requirementId);
+      const access = this.accessSvc.authorizeRequirement(auth.actor, current.ok ? current.data : null, {
+        permissions: ['REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
       const limit         = url.searchParams.get('limit');
       const result        = this.nextQSvc.getNextQuestions(requirementId, { limit });
       return this._json(result.ok ? 200 : 404, result);
@@ -403,8 +424,16 @@ class V2Router {
       const category       = url.searchParams.get('category');
       const subCategory    = url.searchParams.get('subCategory') || url.searchParams.get('subcategory');
 
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+
       if (requirementId) {
         // DB-backed evaluation from stored Requirement
+        const current = this.reqSvc.getRequirement(requirementId);
+        const access = this.accessSvc.authorizeRequirement(auth.actor, current.ok ? current.data : null, {
+          permissions: ['REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
         const result = this.depSvc.evaluateDependencies(requirementId);
         return this._json(result.ok ? 200 : 404, result);
       }
@@ -446,7 +475,10 @@ class V2Router {
         Category:          url.searchParams.get('category') || undefined,
         TransactionType:   url.searchParams.get('transactionType') || undefined
       };
-      const rows = this.reqSvc.listGlobalRequirements(filters);
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const rows = this.reqSvc.listGlobalRequirements(filters)
+        .filter((row) => this.accessSvc.authorizeRequirement(auth.actor, row, { skipPermission: true }).ok);
       return this._ok({ ok: true, data: rows, count: rows.length });
     }
 

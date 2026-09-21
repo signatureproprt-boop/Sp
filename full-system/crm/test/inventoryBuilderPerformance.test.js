@@ -9,7 +9,11 @@ const { BuilderProjectService } = require('../src/services/builderProjectService
 function repoWith(db) {
   return {
     read: () => JSON.parse(JSON.stringify(db)),
-    write: () => {}
+    write: () => {},
+    list: (collection) => {
+      const rows = db[collection];
+      return Array.isArray(rows) ? JSON.parse(JSON.stringify(rows)) : [];
+    }
   };
 }
 
