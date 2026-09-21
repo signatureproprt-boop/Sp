@@ -571,5 +571,7 @@ module.exports = {
   MONGO_CONNECT_TIMEOUT_MS,
   MONGO_SERVER_SELECTION_TIMEOUT_MS,
   MONGO_POLL_INTERVAL_MS,
-  __pollOnceForTests: pollOnce
+  __pollOnceForTests: pollOnce,
+  __threeWayMergeForTests: threeWayMerge,
+  __mergeArrayForTests: mergeArray
 };
