@@ -1161,11 +1161,8 @@
 
   async function loadWorkspace() {
     try {
-      // Fetch canonical V2 workspace and merge legacy-only collections.
-      const [v2Res, legacyRes] = await Promise.all([
-        fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}/workspace`).then(r => r.json()),
-        fetch(`/api/leads/${encodeURIComponent(LEAD_ID)}/workspace`).then(r => r.json()).catch(() => ({ ok: false }))
-      ]);
+      // V2 is the single canonical workspace source.
+      const v2Res = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}/workspace`).then(r => r.json());
       if (!v2Res.ok) { showError(v2Res.error || 'Client not found'); return; }
       workspace = normalizeWorkspaceData(v2Res.data);
       // Never render a workspace for a different client than the URL requested.
@@ -1175,29 +1172,9 @@
         throw new Error('Client workspace identity mismatch');
       }
 
-      // Merge legacy-only collections only when the legacy response belongs to the same client.
-      if (legacyRes.ok && legacyRes.data) {
-        const leg = normalizeWorkspaceData(legacyRes.data);
-        const legacyLeadId = String(leg.lead?.LeadID || '').trim();
-        if (legacyLeadId && legacyLeadId !== requestedLeadId) {
-          console.warn('[workspace] Ignoring legacy workspace with mismatched LeadID', {
-            requestedLeadId,
-            legacyLeadId
-          });
-        } else {
-          workspace.siteVisits   = asArray(workspace.siteVisits);
-          workspace.negotiations = asArray(leg.negotiations);
-          workspace.deals        = asArray(leg.deals);
-          workspace.commissions  = asArray(leg.commissions);
-          workspace.payments     = asArray(leg.payments);
-        }
-      } else {
-        workspace.siteVisits   = asArray(workspace.siteVisits);
-        workspace.negotiations = asArray(workspace.negotiations);
-        workspace.deals        = asArray(workspace.deals);
-        workspace.commissions  = asArray(workspace.commissions);
-        workspace.payments     = asArray(workspace.payments);
-      }
+      // V2 already returns all workspace collections for this client.
+      // Do not merge the legacy workspace endpoint: a second data source can
+      // overwrite fresh V2 state with stale data and creates identity risk.
 
       renderAll();
       document.getElementById('workspace-loader').style.display = 'none';
