@@ -397,6 +397,37 @@ async function flush() {
   return { ..._writeStats, lastError: _lastWriteError ? _lastWriteError.message : null };
 }
 
+async function withDistributedLock(lockName, fn, options = {}) {
+  if (!_initialized || !_db) throw new Error('Mongo store is not initialized');
+  const name = String(lockName || '').trim();
+  if (!name) throw new Error('lockName is required');
+  const leaseMs = Number.isFinite(Number(options.leaseMs)) && Number(options.leaseMs) > 0 ? Number(options.leaseMs) : 240000;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + leaseMs);
+  const owner = cryptoRandomToken();
+  const locks = _db.collection('distributed_locks');
+  try {
+    const result = await locks.findOneAndUpdate(
+      { _id: name, $or: [{ expiresAt: { $lte: now } }, { expiresAt: { $exists: false } }] },
+      { $set: { owner, expiresAt, updatedAt: now }, $setOnInsert: { _id: name, createdAt: now } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    if (!result || !result.value || result.value.owner !== owner) return { acquired: false };
+    try {
+      return { acquired: true, result: await fn() };
+    } finally {
+      await locks.deleteOne({ _id: name, owner }).catch(() => {});
+    }
+  } catch (error) {
+    if (error && error.code === 11000) return { acquired: false };
+    throw error;
+  }
+}
+
+function cryptoRandomToken() {
+  return require('node:crypto').randomBytes(16).toString('hex');
+}
+
 function close() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   if (_client) {
@@ -432,6 +463,7 @@ module.exports = {
   flush,
   close,
   stats,
+  withDistributedLock,
   MONGO_SOCKET_TIMEOUT_MS,
   MONGO_CONNECT_TIMEOUT_MS,
   MONGO_SERVER_SELECTION_TIMEOUT_MS,
