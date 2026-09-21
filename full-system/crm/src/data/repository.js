@@ -161,8 +161,11 @@ class JsonRepository {
   ensureStarterSeed() {
     const db = this.read();
     if (!Array.isArray(db.Users)) db.Users = [];
-    if (!db.Users.some((user) => user.UserID === 'USR-SYSTEM-ADMIN')) {
-      db.Users.push({
+
+    let changed = false;
+    let systemAdmin = db.Users.find((user) => user.UserID === 'USR-SYSTEM-ADMIN');
+    if (!systemAdmin) {
+      systemAdmin = {
         UserID: 'USR-SYSTEM-ADMIN',
         Name: 'System Administrator',
         Role: 'ADMIN',
@@ -172,9 +175,31 @@ class JsonRepository {
         BrokerageID: 'BRK-DEFAULT',
         CreatedAt: new Date().toISOString(),
         UpdatedAt: new Date().toISOString()
-      });
-      this.write(db);
+      };
+      db.Users.push(systemAdmin);
+      changed = true;
     }
+
+    // One-time production bootstrap for the initial Google admin identity.
+    // This only links an explicitly configured Google email to the existing
+    // system admin; it never creates a second admin user.
+    const bootstrapGoogleEmail = String(
+      process.env.SIG_REALTY_BOOTSTRAP_ADMIN_GOOGLE_EMAIL || ''
+    ).trim().toLowerCase();
+    if (bootstrapGoogleEmail && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(bootstrapGoogleEmail)) {
+      if (String(systemAdmin.GoogleEmail || '').trim().toLowerCase() !== bootstrapGoogleEmail) {
+        systemAdmin.GoogleEmail = bootstrapGoogleEmail;
+        systemAdmin.Status = 'Active';
+        systemAdmin.Role = 'ADMIN';
+        systemAdmin.Permissions = Array.isArray(systemAdmin.Permissions) && systemAdmin.Permissions.length
+          ? systemAdmin.Permissions
+          : ['*'];
+        systemAdmin.UpdatedAt = new Date().toISOString();
+        changed = true;
+      }
+    }
+
+    if (changed) this.write(db);
   }
 
   read() {
