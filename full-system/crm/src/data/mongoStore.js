@@ -409,13 +409,7 @@ function stableArrayIdKey(values) {
   const candidates = ['id', 'ID', 'Id'];
   const discovered = Object.keys(values[0] || {}).filter((key) => /id$/i.test(key));
   for (const key of [...candidates, ...discovered]) {
-    const seen = new Set();
     if (values.every((item) => item[key] != null && item[key] !== '')) {
-      for (const item of values) {
-        const id = String(item[key]);
-        if (seen.has(id)) return null;
-        seen.add(id);
-      }
       return key;
     }
   }
@@ -430,6 +424,18 @@ function mergeArray(base, desired, remote) {
     return clone(desired);
   }
 
+  const hasUniqueIds = (rows) => {
+    const ids = new Set();
+    for (const row of rows || []) {
+      const id = String(row[key]);
+      if (ids.has(id)) return false;
+      ids.add(id);
+    }
+    return true;
+  };
+  if (!hasUniqueIds(base) || !hasUniqueIds(desired) || !hasUniqueIds(remote)) {
+    return clone(desired);
+  }
   const baseMap = new Map((base || []).map((row) => [String(row[key]), row]));
   const desiredMap = new Map((desired || []).map((row) => [String(row[key]), row]));
   const remoteMap = new Map((remote || []).map((row) => [String(row[key]), row]));
