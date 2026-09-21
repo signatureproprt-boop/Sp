@@ -1173,7 +1173,10 @@ class V2Router {
       const loc = filters.location.toLowerCase();
       const l1 = (req.Fields?.Location1?.value ?? req.Location1 ?? '').toLowerCase();
       const l2 = (req.Fields?.Location2?.value ?? req.Location2 ?? '').toLowerCase();
-      if (l1 && !l1.includes(loc) && l2 && !l2.includes(loc)) return false;
+      const hasLocation = Boolean(l1 || l2);
+      const locationMatches = (l1 && l1.includes(loc)) || (l2 && l2.includes(loc));
+      if (hasLocation && !locationMatches) return false;
+      if (!hasLocation) return false;
     }
 
     // BHK
@@ -1286,16 +1289,22 @@ class V2Router {
       brokerageId: String(actor?.brokerageId || actor?.brokerageID || lead.BrokerageID || '').trim()
     };
     const leadDocsResult = await this.documentSvc.listDocuments({ EntityType: 'Lead', EntityID: leadId }, actor || {}, docContext);
-    const requirementDocs = [];
-    const transactionDocs = [];
-    for (const id of Array.from(requirementIds)) {
-      const result = await this.documentSvc.listDocuments({ EntityType: 'Requirement', EntityID: id }, actor || {}, docContext);
-      if (result.ok && Array.isArray(result.data)) requirementDocs.push(...result.data);
-    }
-    for (const id of Array.from(transactionIds)) {
-      const result = await this.documentSvc.listDocuments({ EntityType: 'Transaction', EntityID: id }, actor || {}, docContext);
-      if (result.ok && Array.isArray(result.data)) transactionDocs.push(...result.data);
-    }
+    const requirementDocResults = await Promise.all(
+      Array.from(requirementIds).map((id) =>
+        this.documentSvc.listDocuments({ EntityType: 'Requirement', EntityID: id }, actor || {}, docContext)
+      )
+    );
+    const transactionDocResults = await Promise.all(
+      Array.from(transactionIds).map((id) =>
+        this.documentSvc.listDocuments({ EntityType: 'Transaction', EntityID: id }, actor || {}, docContext)
+      )
+    );
+    const requirementDocs = requirementDocResults.flatMap((result) =>
+      result.ok && Array.isArray(result.data) ? result.data : []
+    );
+    const transactionDocs = transactionDocResults.flatMap((result) =>
+      result.ok && Array.isArray(result.data) ? result.data : []
+    );
     const leadDocs = leadDocsResult.ok && Array.isArray(leadDocsResult.data) ? leadDocsResult.data : [];
     const documents = [];
     const seenDocumentIds = new Set();
