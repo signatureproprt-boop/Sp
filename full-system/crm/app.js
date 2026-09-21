@@ -3218,7 +3218,6 @@ async function renderAdmin() {
               <input name="Name" placeholder="Name" required />
               <input name="Email" type="email" placeholder="Registered / Business Email" required />
               <input name="GoogleEmail" type="email" placeholder="Google Login Email (OAuth)" />
-              <input name="Email" placeholder="Email" type="email" required />
               <input name="Mobile" placeholder="Mobile" />
               <select name="Role"><option>ADMIN</option><option>MANAGER</option><option selected>AGENT</option></select>
               <select name="Status"><option>Active</option><option>Inactive</option></select>
@@ -3269,6 +3268,18 @@ async function renderAdmin() {
               <input name="DefaultCommissionPercent" value="${escapeHtml(String(settings.Business?.DefaultCommissionPercent || 2))}" placeholder="Commission %" type="number" />
               <button class="btn btn-primary" type="submit">Save Settings</button>
             </form>
+          </article>
+
+          <article class="card-section admin-section">
+            <div class="card-header"><h3>Security / PIN</h3><span class="badge green">Admin only</span></div>
+            <p class="tiny">Change the 4-digit PIN used for PIN login. The PIN is stored as a secure hash and is never displayed.</p>
+            <form id="adminPinForm" class="form-stack admin-form-grid">
+              <input name="currentPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" placeholder="Current PIN" required />
+              <input name="newPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" placeholder="New 4-digit PIN" required />
+              <input name="confirmPin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" placeholder="Confirm new PIN" required />
+              <button class="btn btn-primary" type="submit">Change PIN</button>
+            </form>
+            <div id="adminPinStatus" class="tiny" style="margin-top:10px;"></div>
           </article>
 
           <article class="card-section admin-section">
@@ -3406,6 +3417,34 @@ async function renderAdmin() {
       const response = await adminRequest('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(payload) });
       const result = await response.json();
       if (result.ok) renderAdmin();
+    });
+
+    document.getElementById('adminPinForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = Object.fromEntries(new FormData(event.target).entries());
+      const statusEl = document.getElementById('adminPinStatus');
+      if (!/^\\d{4}$/.test(String(formData.currentPin || '')) || !/^\\d{4}$/.test(String(formData.newPin || ''))) {
+        statusEl.textContent = 'PIN must be exactly 4 digits.';
+        return;
+      }
+      if (formData.newPin !== formData.confirmPin) {
+        statusEl.textContent = 'New PIN and confirmation do not match.';
+        return;
+      }
+      const response = await adminRequest('/api/admin/security/pin', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          currentPin: formData.currentPin,
+          newPin: formData.newPin
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (result.ok) {
+        statusEl.textContent = 'PIN changed successfully.';
+        event.target.reset();
+        return;
+      }
+      statusEl.textContent = result.error || 'PIN change failed.';
     });
 
     document.getElementById('adminMasterForm').addEventListener('submit', async (event) => {
