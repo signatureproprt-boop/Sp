@@ -1174,19 +1174,31 @@
       if (!returnedLeadId || returnedLeadId !== requestedLeadId) {
         throw new Error('Client workspace identity mismatch');
       }
+
       // Merge legacy-only collections only when the legacy response belongs to the same client.
       if (legacyRes.ok && legacyRes.data) {
         const leg = normalizeWorkspaceData(legacyRes.data);
         const legacyLeadId = String(leg.lead?.LeadID || '').trim();
         if (legacyLeadId && legacyLeadId !== requestedLeadId) {
-          console.warn('[workspace] Ignoring legacy workspace with mismatched LeadID', { requestedLeadId, legacyLeadId });
+          console.warn('[workspace] Ignoring legacy workspace with mismatched LeadID', {
+            requestedLeadId,
+            legacyLeadId
+          });
         } else {
+          workspace.siteVisits   = asArray(workspace.siteVisits);
+          workspace.negotiations = asArray(leg.negotiations);
+          workspace.deals        = asArray(leg.deals);
+          workspace.commissions  = asArray(leg.commissions);
+          workspace.payments     = asArray(leg.payments);
+        }
+      } else {
         workspace.siteVisits   = asArray(workspace.siteVisits);
         workspace.negotiations = asArray(workspace.negotiations);
         workspace.deals        = asArray(workspace.deals);
         workspace.commissions  = asArray(workspace.commissions);
         workspace.payments     = asArray(workspace.payments);
       }
+
       renderAll();
       document.getElementById('workspace-loader').style.display = 'none';
       document.getElementById('workspace').style.display       = 'block';
