@@ -5227,6 +5227,9 @@ async function startServer() {
 
   const syncGoogleSheet = async () => {
     try {
+      if (!mongoStore.isInitialized()) return;
+      const lock = await mongoStore.withDistributedLock('google-sheet-sync', async () => {
+    try {
       const { GoogleSheetSyncService } = require('./src/services/googleSheetSyncService');
       const summary = await new GoogleSheetSyncService(runtime.repository).syncPublicSheet();
       if (Array.isArray(summary.tabErrors) && summary.tabErrors.length) {
@@ -5234,6 +5237,10 @@ async function startServer() {
         return;
       }
       console.log('[google-sheet] sync:', summary);
+      }, { leaseMs: 4 * 60 * 1000 });
+      if (!lock.acquired) {
+        console.log('[google-sheet] sync skipped: another Cloud Run instance owns the lock');
+      }
     } catch (error) {
       console.error('[google-sheet] sync failed:', error.message);
     }
