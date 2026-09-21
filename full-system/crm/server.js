@@ -46,9 +46,14 @@ const HTML_CONTENT_SECURITY_POLICY = [
   "form-action 'self'",
   'upgrade-insecure-requests'
 ].join('; ');
-const pinLoginGuard = new PinLoginGuard({
+const pinLoginIpGuard = new PinLoginGuard({
   mongoStore,
   maxFailedAttempts: 5,
+  lockoutMs: 15 * 60 * 1000
+});
+const pinLoginGlobalGuard = new PinLoginGuard({
+  mongoStore,
+  maxFailedAttempts: 10,
   lockoutMs: 15 * 60 * 1000
 });
 const activeSockets = new Set();
@@ -2661,14 +2666,19 @@ async function handleApi(req, res, url) {
       const body = bodyForV2 || {};
       const submitted = String(body.pin || body.code || '').trim();
       const guardKey = PinLoginGuard.keyFromRequest(req, AUTH_EXCHANGE_STATE_SECRET);
-      const guardState = await pinLoginGuard.checkAllowed(guardKey);
-      if (!guardState.allowed) {
+      const globalGuardKey = PinLoginGuard.keyFromScope('admin-pin', AUTH_EXCHANGE_STATE_SECRET);
+      const [ipGuardState, globalGuardState] = await Promise.all([
+        pinLoginIpGuard.checkAllowed(guardKey),
+        pinLoginGlobalGuard.checkAllowed(globalGuardKey)
+      ]);
+      const blockedGuard = !ipGuardState.allowed ? ipGuardState : globalGuardState;
+      if (!ipGuardState.allowed || !globalGuardState.allowed) {
         logAuthEvent('pin_login_rejected', { reason: 'locked' });
         sendJson(
           res,
           { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
           429,
-          { 'Retry-After': String(Math.max(1, guardState.retryAfterSeconds)) }
+          { 'Retry-After': String(Math.max(1, blockedGuard.retryAfterSeconds)) }
         );
         return;
       }
@@ -2685,11 +2695,15 @@ async function handleApi(req, res, url) {
         ? runtime.repository.verifyAdminPin(submitted, pinCredential.credential)
         : Boolean(submitted && safeSecretEquals(submitted, pinCredential.credential));
       if (!valid) {
-        const failureState = await pinLoginGuard.recordFailure(guardKey);
+        const [ipFailureState, globalFailureState] = await Promise.all([
+          pinLoginIpGuard.recordFailure(guardKey),
+          pinLoginGlobalGuard.recordFailure(globalGuardKey)
+        ]);
+        const failureState = ipFailureState.locked ? ipFailureState : globalFailureState;
         logAuthEvent('pin_login_rejected', {
           reason: failureState.locked ? 'locked_after_failures' : 'invalid_code'
         });
-        if (failureState.locked) {
+        if (ipFailureState.locked || globalFailureState.locked) {
           sendJson(
             res,
             { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
@@ -2702,7 +2716,11 @@ async function handleApi(req, res, url) {
         return;
       }
 
-      const resetOk = await pinLoginGuard.recordSuccess(guardKey);
+      const [ipResetOk, globalResetOk] = await Promise.all([
+        pinLoginIpGuard.recordSuccess(guardKey),
+        pinLoginGlobalGuard.recordSuccess(globalGuardKey)
+      ]);
+      const resetOk = ipResetOk && globalResetOk;
       if (!resetOk) {
         logAuthEvent('pin_login_rejected', { reason: 'locked_during_verification' });
         sendJson(
