@@ -1294,7 +1294,9 @@ async function handleApi(req, res, url) {
     if (/^\/api\/v2\/leads-board\/?$/i.test(pathname) && req.method === 'GET') {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
-      const leads = runtime.repository.list('Leads') || [];
+      const { AccessControlService } = require('./src/services/accessControlService');
+      const accessSvc = new AccessControlService(runtime.repository);
+      const leads = accessSvc.filterReadableLeads(runtime.repository.list('Leads') || [], actor);
       const data = leads.map((l) => ({
         LeadID: l.LeadID,
         ClientName: l.ClientName || l.Name || l.LeadID,
@@ -1313,12 +1315,18 @@ async function handleApi(req, res, url) {
     if (leadsBoardStatus && (req.method === 'PATCH' || req.method === 'POST')) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const { AccessControlService } = require('./src/services/accessControlService');
+      const accessSvc = new AccessControlService(runtime.repository);
       const id = decodeURIComponent(leadsBoardStatus[1]);
       const STAGES = ['New', 'Contacted', 'Follow-up', 'Qualified', 'Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'];
       const status = String((bodyForV2 || {}).status || (bodyForV2 || {}).ClientStatus || '').trim();
       if (!STAGES.includes(status)) { sendJson(res, { ok: false, error: 'Invalid status' }, 400); return; }
       const existing = runtime.repository.find('Leads', 'LeadID', id);
-      if (!existing) { sendJson(res, { ok: false, error: 'Lead not found' }, 404); return; }
+      const leadAccess = accessSvc.authorizeLead(actor, existing, {
+        permissions: ['LEADS_EDIT', 'LEADS_UPDATE', 'LEADS_VIEW', 'LEADS_READ'],
+        hideExistence: true
+      });
+      if (!leadAccess.ok) { sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode); return; }
       runtime.repository.update('Leads', 'LeadID', id, { ClientStatus: status, LeadStatus: status, UpdatedAt: new Date().toISOString() });
       sendJson(res, { ok: true, data: { LeadID: id, ClientStatus: status } });
       return;
@@ -1328,6 +1336,8 @@ async function handleApi(req, res, url) {
     if (/^\/api\/v2\/investor-budgets\/?$/i.test(pathname) && req.method === 'GET') {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const { AccessControlService } = require('./src/services/accessControlService');
+      const accessSvc = new AccessControlService(runtime.repository);
       const reqs = runtime.repository.list('Requirements') || [];
       const leads = runtime.repository.list('Leads') || [];
       const nameByKey = {};
@@ -1338,7 +1348,8 @@ async function handleApi(req, res, url) {
         }
       });
       const out = reqs
-        .filter((r) => Number(r.BudgetMin || 0) > 0 || Number(r.BudgetMax || 0) > 0)
+        .filter((r) => (Number(r.BudgetMin || 0) > 0 || Number(r.BudgetMax || 0) > 0) &&
+          accessSvc.authorizeRequirement(actor, r).ok)
         .map((r) => ({
           requirementId: r.RequirementID,
           leadId: r.LeadID || null,
