@@ -104,7 +104,11 @@ function isProductionLikeRuntime(env = process.env) {
   const renderFlag = String(env.RENDER || '').trim().toLowerCase() === 'true';
   const renderServiceId = String(env.RENDER_SERVICE_ID || '').trim() !== '';
   const renderExternalUrl = String(env.RENDER_EXTERNAL_URL || '').trim() !== '';
-  return renderFlag || renderServiceId || renderExternalUrl;
+  // Cloud Run injects K_SERVICE/K_REVISION. Treat it as production too so
+  // the CRM can never silently fall back to ephemeral JSON storage.
+  const cloudRunService = String(env.K_SERVICE || '').trim() !== '';
+  const cloudRunRevision = String(env.K_REVISION || '').trim() !== '';
+  return renderFlag || renderServiceId || renderExternalUrl || cloudRunService || cloudRunRevision;
 }
 
 function resolveStorageMode(env = process.env) {
@@ -122,7 +126,7 @@ function enforceStorageRuntimeConfig(env = process.env) {
     env.MONGO_DB = DEFAULT_MONGO_DB;
   }
   if (isProductionLikeRuntime(env) && !String(env.MONGO_URL || '').trim()) {
-    throw new Error('Production/Render requires MongoDB. Set MONGO_URL and keep STORAGE_MODE=mongo.');
+    throw new Error('Production requires MongoDB. Set MONGO_URL and keep STORAGE_MODE=mongo.');
   }
   return {
     storageMode,
