@@ -4724,7 +4724,7 @@ class JsonRepository {
 
   normalizeAdminPin(pin) {
     const value = String(pin || '').trim();
-    if (!/^\\d{4}$/.test(value)) {
+    if (!/^\d{4}$/.test(value)) {
       return { ok: false, error: 'PIN must be exactly 4 digits' };
     }
     return { ok: true, value };
@@ -4765,6 +4765,85 @@ class JsonRepository {
     } catch (_) {
       return false;
     }
+  }
+
+  getAdminPinCredential() {
+    const record = this.getCurrentSettingsRecord();
+    const storedCredential = String(record?.Value?.Security?.PinHash || '').trim();
+    if (storedCredential) {
+      return { credential: storedCredential, source: 'settings' };
+    }
+    const envCredential = String(process.env.APP_PIN || '').trim();
+    return { credential: envCredential, source: 'env' };
+  }
+
+  changeAdminPin(currentPin, newPin, actor = {}) {
+    const db = this.ensureAdminCollections(this.read());
+    const record = db.Settings.find((row) => row.Key === 'global') || this.getCurrentSettingsRecord();
+    const currentSecurity = record?.Value?.Security && typeof record.Value.Security === 'object'
+      ? record.Value.Security
+      : {};
+
+    const nextPin = this.normalizeAdminPin(newPin);
+    if (!nextPin.ok) return nextPin;
+
+    const existingCredential = String(currentSecurity.PinHash || '').trim();
+    if (existingCredential) {
+      if (!this.verifyAdminPin(currentPin, existingCredential)) {
+        return { ok: false, error: 'Current PIN is incorrect' };
+      }
+    } else {
+      // First-time PIN setup is allowed only through an authenticated admin
+      // session; the runtime layer enforces SETTINGS_MANAGE before reaching here.
+      if (String(currentPin || '').trim()) {
+        return { ok: false, error: 'PIN is not configured yet; leave current PIN blank' };
+      }
+    }
+
+    const hashed = this.hashAdminPin(nextPin.value);
+    if (!hashed.ok) return hashed;
+
+    const before = this.safeClone(record.Value || this.getDefaultSettingsValue());
+    const next = {
+      ...before,
+      Security: {
+        ...(before.Security || {}),
+        PinHash: hashed.credential
+      }
+    };
+    const updated = {
+      ...record,
+      Value: next,
+      Version: Number(record.Version || next.ConfigurationVersion || 1) + 1,
+      UpdatedAt: new Date().toISOString()
+    };
+    const index = db.Settings.findIndex((row) => row.Key === 'global');
+    if (index === -1) db.Settings.push(updated);
+    else db.Settings[index] = updated;
+
+    db.ConfigurationHistory.push({
+      ConfigurationHistoryID: this.createId('CONFH'),
+      Scope: 'Settings',
+      ScopeID: updated.SettingsID,
+      Version: updated.Version,
+      Before: before,
+      After: this.safeClone(next),
+      CreatedAt: new Date().toISOString()
+    });
+
+    this.recordAudit(db, {
+      action: existingCredential ? 'ADMIN_PIN_CHANGED' : 'ADMIN_PIN_CONFIGURED',
+      module: 'Security',
+      entityType: 'Settings',
+      entityId: updated.SettingsID,
+      before: { PinConfigured: Boolean(existingCredential) },
+      after: { PinConfigured: true },
+      actor,
+      result: 'SUCCESS'
+    });
+
+    this.write(db);
+    return { ok: true, data: { PinConfigured: true } };
   }
 
   updateSettings(changes = {}, actor = {}) {
