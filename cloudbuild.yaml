@@ -39,6 +39,7 @@ steps:
       - --max-instances=10
       - --concurrency=80
       - --timeout=120
+      - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties
       - --allow-unauthenticated
 
 images:
