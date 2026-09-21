@@ -4894,6 +4894,7 @@ class JsonRepository {
       Name: payload.Name || payload.name || existing.Name,
       Mobile: payload.Mobile || payload.mobile || existing.Mobile,
       Email: (payload.Email || payload.email || existing.Email || '').trim().toLowerCase(),
+      GoogleEmail: (payload.GoogleEmail || payload.googleEmail || existing.GoogleEmail || '').trim().toLowerCase() || undefined,
       Role: String(payload.Role || payload.role || existing.Role || 'AGENT').trim().toUpperCase(),
       Status: payload.Status || payload.status || existing.Status,
       CompanyID: payload.CompanyID ?? payload.CompanyId ?? payload.companyId ?? payload.companyID ?? existing.CompanyID ?? existing.CompanyId,
