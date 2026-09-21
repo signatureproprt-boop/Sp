@@ -74,7 +74,7 @@
 let clients=[];
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const enc=s=>encodeURIComponent(s||'');
-function safePhone(v){const raw=String(v??'').trim();if(!raw||/^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw)||raw.includes('#ERROR'))return '';const digits=raw.replace(/\\D/g,'');return digits.length>=7?digits:'';}
+function safePhone(v){const raw=String(v??'').trim();if(!raw||/^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw)||raw.includes('#ERROR'))return '';const digits=raw.replace(/\D/g,'');return digits.length>=7?digits:'';}
 function phoneLabel(v){return safePhone(v)?String(v).trim():'Phone unavailable';}
 async function doLogout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});window.location.href='/login.html';}
 function norm(v){const a={Verified:'Contacted',Active:'Qualified',Inactive:'Lost',Blacklisted:'Lost',Converted:'Won'};return a[String(v||'').trim()]||String(v||'New').trim()||'New'}
