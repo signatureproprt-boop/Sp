@@ -546,7 +546,7 @@ class V2RequirementService {
       ? this._normalizeLocationValue(rawLocation1Patch)
       : this._normalizeLocationValue(existing.Location1);
     if (hasLocation1Patch || normalizedLocation1Patch === null) {
-      augmentedPatch.Location1 = normalizedLocation1Patch;
+      augmentedPatch.Location1 = normalizedLocation1Patch === null ? 'UNKNOWN' : normalizedLocation1Patch;
     }
 
     const newFieldsMap = mergeFieldsMap(existing.Fields || {}, augmentedPatch);
@@ -810,6 +810,25 @@ class V2RequirementService {
       return null;
     }
     return normalized;
+  }
+
+  repairLocationStageCollisions() {
+    const db = this.repository.read();
+    const rows = Array.isArray(db.Requirements) ? db.Requirements : [];
+    let repaired = 0;
+    for (const row of rows) {
+      if (!row || !this._normalizeLocationValue(row.Location1) && row.Location1 == null) continue;
+      if (this._normalizeLocationValue(row.Location1) !== null) continue;
+      row.Location1 = null;
+      row.Location2 = row.Location2 ?? null;
+      row.Location3 = row.Location3 ?? null;
+      row.Fields = { ...(row.Fields || {}), Location1: { state: FIELD_STATES.UNKNOWN } };
+      row.Completeness = computeCompleteness(row.Fields);
+      row.UpdatedAt = new Date().toISOString();
+      repaired += 1;
+    }
+    if (repaired) this.repository.write(db);
+    return { ok: true, repaired };
   }
 
   _mergeWithPrefill(prefill, payload) {
