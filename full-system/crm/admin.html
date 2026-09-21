@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2c1405">
+<title>Signature Properties — Admin Panel</title>
+<style>
+:root{--brown:#2c1405;--brown2:#5c3317;--gold:#d4a017;--bg:#faf7f2;--card:#fff;--border:#e8ddd0;--text:#1c0a00;--muted:#7a6355;--ok:#16a34a;--danger:#dc2626}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.top{background:var(--brown);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:5}.brand{color:var(--gold);font-weight:800;text-decoration:none}.back{margin-left:auto;color:#fff;text-decoration:none;font-size:13px;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.1)}
+.page{max-width:1200px;margin:auto;padding:20px 16px 50px}.hero,.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;box-shadow:0 4px 18px rgba(60,25,10,.06);margin-bottom:16px}.hero{background:linear-gradient(135deg,var(--brown),var(--brown2));color:#fff}.eyebrow{color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.hero h1{margin:5px 0;font-size:24px}.muted{color:var(--muted);font-size:13px}.hero .muted{color:rgba(255,255,255,.75)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}.kpi .label{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700}.kpi .value{font-size:28px;font-weight:800;margin-top:5px}
+.card h2{margin:0 0 6px;font-size:18px}.card h3{margin:0 0 12px;font-size:15px}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field label{font-size:12px;font-weight:700;color:var(--muted)}input{height:44px;border:1px solid var(--border);border-radius:9px;padding:0 12px;font-size:16px;background:#fff}button{height:44px;border:0;border-radius:9px;padding:0 16px;background:var(--gold);color:var(--brown);font-weight:800;cursor:pointer}.full{grid-column:1/-1}.status{margin-top:10px;font-size:13px;font-weight:700}.ok{color:var(--ok)}.error{color:var(--danger)}.badge{display:inline-block;padding:4px 8px;border-radius:20px;background:#dcfce7;color:#166534;font-size:11px;font-weight:800}
+.links{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.links a{display:block;text-decoration:none;color:var(--brown);border:1px solid var(--border);border-radius:10px;padding:14px;font-weight:700;background:#fff}
+@media(max-width:700px){.grid{grid-template-columns:repeat(2,1fr)}.form,.links{grid-template-columns:1fr}.full{grid-column:auto}.hero h1{font-size:21px}}
+</style>
+</head>
+<body>
+<header class="top"><a class="brand" href="/">◉ Signature Properties</a><strong>Admin Panel</strong><a class="back" href="/">← Dashboard</a></header>
+<main class="page">
+<section class="hero"><div class="eyebrow">System Control Center</div><h1>Admin Panel</h1><div class="muted">Authenticated administration, security, users, roles and system controls.</div></section>
+<section class="grid" id="kpis">
+<div class="kpi"><div class="label">Total Users</div><div class="value">—</div></div>
+<div class="kpi"><div class="label">Active Users</div><div class="value">—</div></div>
+<div class="kpi"><div class="label">System Status</div><div class="value">—</div></div>
+<div class="kpi"><div class="label">PIN Status</div><div class="value">—</div></div>
+</section>
+<section class="card">
+<h2>Security / PIN</h2><div class="muted">First-time setup can leave Current PIN blank. After setup, Current PIN is required to change it.</div>
+<form class="form" id="pinForm" style="margin-top:14px">
+<div class="field"><label>Current PIN (blank for first setup)</label><input id="currentPin" name="currentPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="••••"></div>
+<div class="field"><label>New 4-digit PIN</label><input id="newPin" name="newPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" required></div>
+<div class="field"><label>Confirm new PIN</label><input id="confirmPin" name="confirmPin" type="password" inputmode="numeric" maxlength="4" autocomplete="new-password" placeholder="••••" required></div>
+<div class="full"><button type="submit">Save PIN</button><div id="status" class="status"></div></div>
+</form>
+</section>
+<section class="card"><h2>Admin Modules</h2><div class="links">
+<a href="#users">👥 Users & Roles</a><a href="#settings">⚙️ System Settings</a><a href="#health">🩺 System Health</a>
+</div></section>
+<section class="card" id="health"><h2>System Health</h2><div id="healthText" class="muted">Checking…</div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+async function api(path,options={}){const r=await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});let d={};try{d=await r.json()}catch{};return {r,d}}
+async function boot(){
+  const [o,s,h]=await Promise.all([api('/api/admin/overview'),api('/api/admin/settings'),api('/api/admin/health')]);
+  if(!o.d.ok){$('healthText').textContent=o.d.error||'Admin access required.';return}
+  const ov=o.d.data||{}, settings=s.d.data||{}, health=h.d.data||{};
+  const vals=[$('kpis').children[0].querySelector('.value'),$('kpis').children[1].querySelector('.value'),$('kpis').children[2].querySelector('.value'),$('kpis').children[3].querySelector('.value')];
+  vals[0].textContent=ov.totalUsers??0; vals[1].textContent=ov.activeUsers??0; vals[2].textContent=health.status||'UNKNOWN'; vals[3].textContent=settings.Security?.PinConfigured?'Configured':'Not configured';
+  $('healthText').innerHTML='<span class="badge">'+(health.status||'UNKNOWN')+'</span> '+((health.issues||[]).join(' • ')||'No reported issues');
+}
+$('pinForm').addEventListener('submit',async e=>{
+ e.preventDefault(); const current=$('currentPin').value.trim(), next=$('newPin').value.trim(), confirm=$('confirmPin').value.trim(), st=$('status');
+ st.className='status';
+ if(current && !/^\d{4}$/.test(current)){st.textContent='Current PIN must be exactly 4 digits.';st.classList.add('error');return}
+ if(!/^\d{4}$/.test(next)){st.textContent='New PIN must be exactly 4 digits.';st.classList.add('error');return}
+ if(next!==confirm){st.textContent='New PIN and confirmation do not match.';st.classList.add('error');return}
+ const {r,d}=await api('/api/admin/security/pin',{method:'PATCH',body:JSON.stringify({currentPin:current,newPin:next})});
+ st.textContent=d.ok?'PIN saved successfully.':(d.error||'PIN save failed.');
+ st.classList.add(d.ok?'ok':'error'); if(d.ok){e.target.reset();boot()}
+});
+boot();
+</script>
+</body>
+</html>
