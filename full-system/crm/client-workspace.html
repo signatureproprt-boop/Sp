@@ -1189,7 +1189,7 @@
     } catch(e) { showError('Failed to load workspace: ' + e.message); }
   }
 
-  function safePhone(v) { const raw=String(v??'').trim(); if(!raw || /^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw) || raw.includes('#ERROR')) return ''; const digits=raw.replace(/\\D/g,''); return digits.length>=7 ? digits : ''; }
+  function safePhone(v) { const raw=String(v??'').trim(); if(!raw || /^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw) || raw.includes('#ERROR')) return ''; const digits=raw.replace(/\D/g,''); return digits.length>=7 ? digits : ''; }
   function phoneLabel(v) { return safePhone(v) ? String(v).trim() : 'Phone unavailable'; }
   async function doLogout(){ await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{}); window.location.href='/login.html'; }
 
@@ -1228,8 +1228,14 @@
 
     const phone = safePhone(lead.PrimaryMobile||lead.Phone);
     const waPhone = safePhone(lead.WhatsApp || lead.PrimaryMobile || lead.Phone);
-    document.getElementById('btn-call').dataset.phone = phone;
-    document.getElementById('btn-whatsapp').dataset.phone = waPhone;
+    const callBtn = document.getElementById('btn-call');
+    const waBtn = document.getElementById('btn-whatsapp');
+    callBtn.dataset.phone = phone;
+    waBtn.dataset.phone = waPhone;
+    callBtn.style.opacity = phone ? '' : '.55';
+    waBtn.style.opacity = waPhone ? '' : '.55';
+    callBtn.setAttribute('aria-disabled', phone ? 'false' : 'true');
+    waBtn.setAttribute('aria-disabled', waPhone ? 'false' : 'true');
 
     const tags = (lead.Tags||[]).map(t => `<span class="tag" style="background:#e0e7ff;color:#3730a3">${esc(t)}</span>`).join(' ');
     document.getElementById('client-tags').innerHTML = tags;
