@@ -21,6 +21,20 @@ class SiteVisitBookingService {
     return ['Scheduled', 'Confirmed', 'Rescheduled', 'Completed', 'Cancelled', 'NoShow'].includes(v) ? v : 'Scheduled';
   }
 
+  _validateVisitSlot(visitDate, visitTime) {
+    const date = String(visitDate || '').trim();
+    const time = String(visitTime || '').trim();
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return 'visitDate must be YYYY-MM-DD';
+    const parsedDate = new Date(date + 'T00:00:00Z');
+    if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+      return 'visitDate is invalid';
+    }
+    if (!/^\\d{2}:\\d{2}$/.test(time)) return 'visitTime must be HH:MM';
+    const [hours, minutes] = time.split(':').map(Number);
+    if (hours > 23 || minutes > 59) return 'visitTime is invalid';
+    return null;
+  }
+
   _propertyBrief(prop) {
     if (!prop) return null;
     return {
@@ -84,6 +98,8 @@ class SiteVisitBookingService {
     if (!propertyIds.length) return { ok: false, error: 'At least one propertyId required' };
     if (!visitDate) return { ok: false, error: 'visitDate required (YYYY-MM-DD)' };
     if (!visitTime) return { ok: false, error: 'visitTime required (HH:MM)' };
+    const slotError = this._validateVisitSlot(visitDate, visitTime);
+    if (slotError) return { ok: false, error: slotError };
 
     const requirement = this.repo.readRequirement(requirementId);
     if (!requirement) return { ok: false, error: 'Requirement not found' };
@@ -100,6 +116,23 @@ class SiteVisitBookingService {
 
     const db = this.repo.read();
     db.SiteVisits = db.SiteVisits || [];
+    db.Shortlists = db.Shortlists || [];
+
+    // Site visit is downstream of shortlist: every selected property must
+    // already be actively shortlisted for this requirement.
+    const activeShortlisted = new Set(
+      db.Shortlists
+        .filter((row) => row.RequirementID === requirementId && row.Status === 'Active')
+        .map((row) => row.PropertyID)
+    );
+    const notShortlisted = propertyIds.filter((pid) => !activeShortlisted.has(pid));
+    if (notShortlisted.length) {
+      return {
+        ok: false,
+        error: 'Property must be actively shortlisted before site visit: ' + notShortlisted.join(', '),
+        code: 'PROPERTY_NOT_SHORTLISTED'
+      };
+    }
 
     const requestedStatus = this._validStatus(payload.status || payload.Status || 'Scheduled');
     const duplicate = db.SiteVisits.find((row) =>
@@ -218,6 +251,8 @@ class SiteVisitBookingService {
     const nextDate = patch.VisitDate || rows[0].VisitDate;
     const nextTime = patch.VisitTime || rows[0].VisitTime;
     const nextStatus = patch.Status || rows[0].Status;
+    const slotError = this._validateVisitSlot(nextDate, nextTime);
+    if (slotError) return { ok: false, error: slotError };
     const nextPropertyIds = Array.isArray(changes.propertyIds) ? changes.propertyIds : [];
     const propertyIdSet = nextPropertyIds.length ? new Set(nextPropertyIds) : new Set(rows.map((row) => row.PropertyID));
     const duplicate = db.SiteVisits.find((row) =>
