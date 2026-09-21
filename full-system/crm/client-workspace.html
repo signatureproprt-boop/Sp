@@ -757,8 +757,9 @@
       <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#78350f">🔒 Client ke naam, phone, aur email brokers ko <b>NAHI</b> dikhenge. Sirf requirement specs (BHK, budget, location, timeline) share honge.</div>
       <div style="font-size:12px;font-weight:700;color:var(--clr-brown);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Select Brokers</div>
       <div id="net-broker-list" style="max-height:280px;overflow-y:auto;margin-bottom:12px;border:1px solid var(--clr-border);border-radius:8px;padding:6px">Loading...</div>
-      <div style="font-size:12px;font-weight:700;color:var(--clr-brown);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Optional Message</div>
-      <textarea id="net-message" rows="2" placeholder="e.g. Urgent - client this week finalize karega" style="width:100%;padding:8px;border:1px solid var(--clr-border);border-radius:8px;font-family:inherit;font-size:13px;margin-bottom:12px"></textarea>
+      <div style="font-size:12px;font-weight:700;color:var(--clr-brown);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Broker WhatsApp Message</div>
+      <textarea id="net-message" rows="3" placeholder="Optional: Urgent requirement, possession timing, commission note…" style="width:100%;padding:9px;border:1px solid var(--clr-border);border-radius:8px;font-family:inherit;font-size:13px;margin-bottom:8px"></textarea>
+      <div style="font-size:10.5px;color:#6b7280;margin-bottom:12px">Template automatically includes secure requirement link + “client PII hidden”. Broker only sees requirement details.</div>
       <div id="net-links-out" style="display:none;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#166534"></div>
     </div>
     <div style="padding:12px 20px;border-top:1px solid var(--clr-border);text-align:right;background:#fdf8ec;border-radius:0 0 12px 12px">
@@ -2908,6 +2909,20 @@
   }
   function closeNetworkShareModal() { document.getElementById('net-share-modal').style.display = 'none'; }
 
+  function buildBrokerWhatsAppText(share, base) {
+    const url = `${base}/share/req/${share.Token}`;
+    const custom = document.getElementById('net-message').value.trim();
+    return `🏘️ *Signature Properties — Property Requirement*\\n\\nHi ${share.BrokerName},\\n\\nAapke network me matching property ho to is secure link se details dekho aur property submit karo:\\n\\n🔗 ${url}\\n\\n🔒 Client ka naam, mobile aur email confidential hai. Aapko sirf requirement details dikhengi.\\n${custom ? `\\n📝 Note: ${custom}\\n` : ''}\\nProperty milne par link ke andar *Submit Property* karo. 🙏`;
+  }
+
+  async function copyBrokerMessage(shareId) {
+    const links = window.__NET_SHARE_LINKS || [];
+    const item = links.find(x=>x.ShareID===shareId);
+    if (!item) return;
+    try { await navigator.clipboard.writeText(buildBrokerWhatsAppText(item, location.origin)); alert('Broker WhatsApp message copied.'); }
+    catch (_) { alert('Copy failed — WhatsApp button use karo.'); }
+  }
+
   async function sendNetworkShare() {
     const boxes = document.querySelectorAll('.net-broker-cb:checked');
     if (!boxes.length) { alert('Kam se kam ek broker select karo'); return; }
@@ -2921,16 +2936,17 @@
       if (!r.ok) throw new Error(r.error);
       const shares = r.data.shares || [];
       const base = location.origin;
+      window.__NET_SHARE_LINKS = shares;
       const links = shares.map(s => {
         const phone = String(s.BrokerPhone || '').replace(/\D/g, '');
         const url = `${base}/share/req/${s.Token}`;
-        const text = encodeURIComponent(`🏘️ Signature Properties\n\nHi ${s.BrokerName}, ek client ke liye property chahiye — details is secure link me hain (client ki koi PII nahi hai):\n\n${url}\n\nAgar matching maal ho to link kholke submit karo. 🙏`);
-        return { name: s.BrokerName, phone, url, waUrl: phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}` };
+        const text = encodeURIComponent(buildBrokerWhatsAppText(s, base));
+        return { ...s, name:s.BrokerName, phone, url, waUrl: phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}` };
       });
-      const listHtml = links.map(l => `<div style="margin-top:6px"><b>${esc(l.name)}</b> — <a href="${l.waUrl}" target="_blank" style="color:#166534;font-weight:700">📱 Send WhatsApp →</a></div>`).join('');
+      const listHtml = links.map(l => `<div style="margin-top:8px;padding:8px 0;border-top:1px solid #bbf7d0"><b>${esc(l.name)}</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px"><a href="${l.waUrl}" target="_blank" rel="noopener" style="background:#166534;color:#fff;padding:7px 10px;border-radius:7px;text-decoration:none;font-weight:800">📱 WhatsApp</a><button type="button" onclick="copyBrokerMessage('${esc(l.ShareID)}')" style="background:#fff;color:#166534;border:1px solid #86efac;padding:7px 10px;border-radius:7px;font-weight:800">📋 Copy</button></div></div>`).join('');
       const out = document.getElementById('net-links-out');
       out.style.display = 'block';
-      out.innerHTML = `<b>✅ ${shares.length} share link${shares.length>1?'s':''} created.</b> Har broker ko WhatsApp me bhejne ke liye click karo:${listHtml}`;
+      out.innerHTML = `<b>✅ ${shares.length} secure share link${shares.length>1?'s':''} created.</b><div style="margin-top:4px">Har broker ke liye alag WhatsApp message ready hai:</div>${listHtml}`;
       if (links[0]) window.open(links[0].waUrl, '_blank', 'noopener');
     } catch (e) { alert('Share failed: ' + e.message); }
   }
