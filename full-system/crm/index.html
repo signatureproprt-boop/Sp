@@ -32,7 +32,7 @@
     .topbar-nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
     .topbar-nav a.active { background: rgba(212,160,23,.22); color: var(--gold); }
     .hamburger { display: none; margin-left: auto; background: transparent; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 4px 8px; }
-    .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--gold-mid), var(--gold)); color: var(--brown-dark); display: grid; place-items: center; font-weight: 800; font-size: 12.5px; margin-left: 6px; }
+    .avatar { width: 32px; height: 32px; border-radius: 50%; border: 0; background: linear-gradient(135deg, var(--gold-mid), var(--gold)); color: var(--brown-dark); display: grid; place-items: center; font-weight: 800; font-size: 12.5px; margin-left: 6px; cursor: pointer; } .avatar:hover { filter: brightness(1.05); transform: translateY(-1px); }
 
     @media (max-width: 900px) {
       .hamburger { display: block; }
@@ -185,7 +185,7 @@
     <a href="/admin" id="admin-nav-link" style="color:#f0b429;font-weight:800">⚙️ Admin</a>
 </nav>
   <button class="hamburger" data-testid="nav-toggle" onclick="document.getElementById('nav').classList.toggle('open')">☰</button>
-  <div class="avatar" id="user-avatar" data-testid="user-avatar" title="">--</div>
+  <button class="avatar" id="user-avatar" data-testid="user-avatar" title="Logout" aria-label="Logout" onclick="doLogout()">--</button>
 </div>
 
 <div class="page">
