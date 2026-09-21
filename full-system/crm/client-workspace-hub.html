@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Client Workspace — Signature Properties</title>
+<style>
+:root{--brown:#2c1405;--brown2:#5c3317;--gold:#d4a017;--gold2:#f0b429;--bg:#faf7f2;--card:#fff;--border:#e8ddd0;--muted:#7a6355;--green:#16a34a;--red:#dc2626;--blue:#0284c7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#1c0a00;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.top{background:var(--brown);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:20}.brand{color:var(--gold2);font-weight:800;text-decoration:none;white-space:nowrap}.nav{display:flex;gap:4px;margin-left:auto;overflow:auto}.nav a{color:#d4b896;text-decoration:none;padding:7px 10px;font-size:13px;border-radius:7px;white-space:nowrap}.nav a.active{background:#ffffff18;color:#fff}.wrap{max-width:1280px;margin:auto;padding:22px 16px 60px}.hero{background:linear-gradient(135deg,var(--brown),#7a4a2a);color:#fff;border-radius:16px;padding:22px;margin-bottom:18px;box-shadow:0 8px 25px #3c190a18}.hero h1{margin:0;font-size:25px}.hero p{margin:6px 0 0;color:#eaded2;font-size:13px}.hero-row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:16px}.btn{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}.btn.gold{background:var(--gold);color:var(--brown)}.btn.light{background:#ffffff18;color:#fff;border:1px solid #ffffff35}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}.stat,.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 2px 8px #3c190a0b}.stat{padding:14px}.stat b{display:block;font-size:25px;color:var(--brown)}.stat span{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700}.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}.search{flex:1;min-width:220px;padding:11px 13px;border:1px solid var(--border);border-radius:9px;font-size:14px}.filter{padding:10px;border:1px solid var(--border);border-radius:9px;background:#fff}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{padding:16px;transition:.15s}.card:hover{transform:translateY(-2px);border-color:var(--gold)}.card-head{display:flex;justify-content:space-between;gap:10px}.name{font-size:16px;font-weight:800;color:var(--brown)}.id{font-size:10px;color:#a89686;margin-top:2px}.status{font-size:10px;font-weight:700;padding:4px 8px;border-radius:10px;background:#e0f2fe;color:#075985;height:max-content}.phone{margin:12px 0 8px;font-size:13px}.meta{font-size:12px;color:var(--muted);display:grid;grid-template-columns:1fr 1fr;gap:7px}.meta div{background:#faf7f2;border-radius:7px;padding:7px}.meta b{display:block;color:var(--brown);font-size:12px}.actions{display:flex;gap:7px;margin-top:13px}.actions a{flex:1;text-align:center;padding:8px;border-radius:7px;text-decoration:none;font-size:12px;font-weight:700;background:#fdf8ec;color:var(--brown);border:1px solid var(--border)}.actions a.primary{background:var(--gold);border-color:var(--gold);color:var(--brown)}.empty{text-align:center;padding:40px;color:var(--muted)}.load{text-align:center;padding:40px;color:var(--muted)}@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}.nav a:nth-child(n+5){display:none}}@media(max-width:560px){.grid{grid-template-columns:1fr}.wrap{padding:14px 10px 50px}.hero{padding:18px}.hero h1{font-size:21px}.stats{grid-template-columns:repeat(2,1fr)}.nav{display:none}}
+</style>
+</head>
+<body>
+<header class="top">
+<a class="brand" href="/">◉ Signature Properties</a>
+<nav class="nav">
+<a href="/">Dashboard</a><a href="/clients" class="active">Clients</a><a href="/inventory">Inventory</a><a href="/requirements-view">Requirements</a><a href="/duplicates">Duplicates</a><a href="/builder-projects">Builder Projects</a><a href="/broker-network">Broker Network</a><a href="/admin">Admin</a>
+</nav>
+</header>
+<main class="wrap">
+<section class="hero">
+<h1>Client Workspace</h1>
+<p>1 Client = 1 Lifetime Lead. Transactions and requirements live inside the client workspace.</p>
+<div class="hero-row"><div><strong>Client → Transaction → Requirement → Matching → Shortlist → Site Visit → Negotiation → Token → Deal</strong></div><div><a class="btn gold" href="#new" onclick="goNew()">＋ New Client</a><a class="btn light" href="/clients-directory">Client Directory</a></div></div>
+</section>
+<section class="stats">
+<div class="stat"><span>Total Clients</span><b id="s-total">—</b></div><div class="stat"><span>Active Requirements</span><b id="s-req">—</b></div><div class="stat"><span>Open Transactions</span><b id="s-txn">—</b></div><div class="stat"><span>Hot Clients</span><b id="s-hot">—</b></div>
+</section>
+<div class="toolbar">
+<input id="search" class="search" placeholder="Search client name, mobile, email…" oninput="render()">
+<select id="status" class="filter" onchange="render()"><option value="">All clients</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Won</option><option>Lost</option></select>
+<button class="btn" style="background:#fff;border:1px solid var(--border);color:var(--brown)" onclick="load()">↻ Refresh</button>
+</div>
+<section id="grid" class="grid"><div class="load">Loading clients…</div></section>
+</main>
+<script>
+let clients=[];
+const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const enc=s=>encodeURIComponent(s||'');
+function norm(v){const a={Verified:'Contacted',Active:'Qualified',Inactive:'Lost',Blacklisted:'Lost',Converted:'Won'};return a[String(v||'').trim()]||String(v||'New').trim()||'New'}
+function fmtBudget(r){if(!r)return '—';const f=n=>n==null?'':n>=1e7?'₹'+(n/1e7).toFixed(1)+'Cr':n>=1e5?'₹'+(n/1e5).toFixed(0)+'L':'₹'+Number(n).toLocaleString('en-IN');return [f(r.BudgetMin),f(r.BudgetMax)].filter(Boolean).join(' – ')||'—'}
+async function load(){
+ const grid=document.getElementById('grid');grid.innerHTML='<div class="load">Loading clients…</div>';
+ try{const res=await fetch('/api/v2/clients');const j=await res.json();if(!j.ok)throw new Error(j.error||'Failed to load');clients=(j.data||[]);updateStats();render()}
+ catch(e){grid.innerHTML='<div class="empty">Unable to load clients: '+esc(e.message)+'</div>'}
+}
+function updateStats(){
+ document.getElementById('s-total').textContent=clients.length;
+ document.getElementById('s-req').textContent=clients.reduce((n,c)=>n+Number(c._activeNeeds||0),0);
+ document.getElementById('s-txn').textContent=clients.reduce((n,c)=>n+Number(c._openTransactions||0),0);
+ document.getElementById('s-hot').textContent=clients.filter(c=>Number(typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore||0)>=70).length;
+}
+function render(){
+ const q=document.getElementById('search').value.trim().toLowerCase(), st=document.getElementById('status').value;
+ const rows=clients.filter(c=>{const status=norm(c.ClientStatus||c.LeadStatus);const hay=[c.ClientName,c.PrimaryMobile,c.Phone,c.Email].join(' ').toLowerCase();return(!q||hay.includes(q))&&(!st||status===st)});
+ const grid=document.getElementById('grid');
+ if(!rows.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No clients found.</div>';return}
+ grid.innerHTML=rows.map(c=>{
+  const r=(c._needSummaries||[])[0]||null, status=norm(c.ClientStatus||c.LeadStatus), score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
+  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(status)+'</span></div>'+
+  '<div class="phone">📞 '+esc(c.PrimaryMobile||c.Phone||'—')+'</div>'+
+  '<div class="meta"><div><span>Requirements</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Transactions</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
+  '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a><a href="tel:'+enc(c.PrimaryMobile||c.Phone||'')+'">☎ Call</a></div></article>'
+ }).join('')
+}
+async function goNew(){window.location.href='/clients-directory#new'}
+load();
+</script>
+</body>
+</html>
