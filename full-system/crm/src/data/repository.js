@@ -4834,6 +4834,7 @@ class JsonRepository {
     const db = this.ensureAdminCollections(this.read());
     const name = String(payload.Name || payload.name || '').trim();
     const email = String(payload.Email || payload.email || '').trim().toLowerCase();
+    const googleEmail = String(payload.GoogleEmail || payload.googleEmail || '').trim().toLowerCase();
     const mobile = String(payload.Mobile || payload.mobile || '').trim();
     const role = String(payload.Role || payload.role || 'AGENT').trim().toUpperCase();
     const status = String(payload.Status || payload.status || 'Active').trim();
@@ -4854,6 +4855,7 @@ class JsonRepository {
       Mobile: mobile,
       Role: role,
       Email: email,
+      GoogleEmail: googleEmail || undefined,
       Status: status,
       CompanyID: companyId || undefined,
       BrokerageID: brokerageId || undefined,
