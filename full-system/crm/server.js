@@ -7,6 +7,7 @@ const { SignatureRealtyRuntime } = require('./src/runtime/app');
 const { V2Router } = require('./src/api/v2Router');
 const { SESSION_COOKIE_NAME, getSessionMaxAgeSeconds } = require('./src/services/authService');
 const mongoStore = require('./src/data/mongoStore');
+const { PinLoginGuard } = require('./src/services/pinLoginGuard');
 
 const LOCAL_DEV_PORT = 3000;
 const PUBLIC_HOST = '0.0.0.0';
@@ -45,6 +46,11 @@ const HTML_CONTENT_SECURITY_POLICY = [
   "form-action 'self'",
   'upgrade-insecure-requests'
 ].join('; ');
+const pinLoginGuard = new PinLoginGuard({
+  mongoStore,
+  maxFailedAttempts: 5,
+  lockoutMs: 15 * 60 * 1000
+});
 const activeSockets = new Set();
 const recurringBackgroundTimers = new Set();
 let runtime;
@@ -2654,6 +2660,19 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/auth/pin-login' && req.method === 'POST') {
       const body = bodyForV2 || {};
       const submitted = String(body.pin || body.code || '').trim();
+      const guardKey = PinLoginGuard.keyFromRequest(req, AUTH_EXCHANGE_STATE_SECRET);
+      const guardState = await pinLoginGuard.checkAllowed(guardKey);
+      if (!guardState.allowed) {
+        logAuthEvent('pin_login_rejected', { reason: 'locked' });
+        sendJson(
+          res,
+          { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
+          429,
+          { 'Retry-After': String(Math.max(1, guardState.retryAfterSeconds)) }
+        );
+        return;
+      }
+
       const pinCredential = runtime?.repository?.getAdminPinCredential?.() || {
         credential: String(process.env.APP_PIN || '').trim(),
         source: 'env'
@@ -2666,8 +2685,32 @@ async function handleApi(req, res, url) {
         ? runtime.repository.verifyAdminPin(submitted, pinCredential.credential)
         : Boolean(submitted && safeSecretEquals(submitted, pinCredential.credential));
       if (!valid) {
-        logAuthEvent('pin_login_rejected', { reason: 'invalid_code' });
+        const failureState = await pinLoginGuard.recordFailure(guardKey);
+        logAuthEvent('pin_login_rejected', {
+          reason: failureState.locked ? 'locked_after_failures' : 'invalid_code'
+        });
+        if (failureState.locked) {
+          sendJson(
+            res,
+            { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
+            429,
+            { 'Retry-After': String(Math.max(1, failureState.retryAfterSeconds)) }
+          );
+          return;
+        }
         sendJson(res, { ok: false, error: 'Invalid code. Please try again.' }, 401);
+        return;
+      }
+
+      const resetOk = await pinLoginGuard.recordSuccess(guardKey);
+      if (!resetOk) {
+        logAuthEvent('pin_login_rejected', { reason: 'locked_during_verification' });
+        sendJson(
+          res,
+          { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
+          429,
+          { 'Retry-After': '1' }
+        );
         return;
       }
       const users = typeof runtime?.repository?.listUsers === 'function' ? (runtime.repository.listUsers() || []) : [];
