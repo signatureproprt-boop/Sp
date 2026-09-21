@@ -664,7 +664,7 @@ class V2Router {
     // ── /api/v2/clients/:leadId/workspace — canonical client workspace ───────
     // The workspace UI uses this V2 namespace. Keep identity validation here,
     // not only on the legacy /api/clients route, so a wrong LeadID can never render.
-    const v2WorkspaceMatch = pathname.match(/^\\/api\\/v2\\/clients\\/([^/]+)\\/workspace$/);
+    const v2WorkspaceMatch = pathname.match(/^\/api\/v2\/clients\/([^/]+)\/workspace$/);
     if (v2WorkspaceMatch && method === 'GET') {
       const requestedLeadId = String(v2WorkspaceMatch[1] || '').trim();
       const auth = this._requireActor(req, url);
