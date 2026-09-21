@@ -2628,14 +2628,20 @@ async function handleApi(req, res, url) {
     }
 
     if (pathname === '/api/auth/pin-login' && req.method === 'POST') {
-      const expected = String(process.env.APP_PIN || '').trim();
       const body = bodyForV2 || {};
       const submitted = String(body.pin || body.code || '').trim();
-      if (!expected) {
+      const pinCredential = runtime?.repository?.getAdminPinCredential?.() || {
+        credential: String(process.env.APP_PIN || '').trim(),
+        source: 'env'
+      };
+      if (!pinCredential.credential) {
         sendJson(res, { ok: false, error: 'PIN login is not configured' }, 503);
         return;
       }
-      if (!submitted || !safeSecretEquals(submitted, expected)) {
+      const valid = pinCredential.source === 'settings'
+        ? runtime.repository.verifyAdminPin(submitted, pinCredential.credential)
+        : Boolean(submitted && safeSecretEquals(submitted, pinCredential.credential));
+      if (!valid) {
         logAuthEvent('pin_login_rejected', { reason: 'invalid_code' });
         sendJson(res, { ok: false, error: 'Invalid code. Please try again.' }, 401);
         return;
