@@ -380,7 +380,7 @@ function write(db) {
     throw lastError || new Error('Mongo snapshot write failed');
   };
 
-  _writeQueue = _writeQueue.then(persist).catch((error) => {
+  _writeQueue = _writeQueue.catch(() => {}).then(persist).catch((error) => {
     _writeStats.failures += 1;
     _lastWriteError = error;
     console.error('[mongoStore] durable snapshot write failed:', error.message);
@@ -407,7 +407,7 @@ function clone(value) {
 function stableArrayIdKey(values) {
   if (!Array.isArray(values) || !values.length || !values.every((item) => item && typeof item === 'object' && !Array.isArray(item))) return null;
   const candidates = ['id', 'ID', 'Id'];
-  const discovered = Object.keys(values[0] || {}).filter((key) => /(?:^|_)(?:id|ID)$/i.test(key));
+  const discovered = Object.keys(values[0] || {}).filter((key) => /id$/i.test(key));
   for (const key of [...candidates, ...discovered]) {
     const seen = new Set();
     if (values.every((item) => item[key] != null && item[key] !== '')) {
