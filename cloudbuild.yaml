@@ -39,7 +39,7 @@ steps:
       - --max-instances=10
       - --concurrency=80
       - --timeout=120
-      - --no-allow-unauthenticated
+      - --allow-unauthenticated
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$SHORT_SHA
