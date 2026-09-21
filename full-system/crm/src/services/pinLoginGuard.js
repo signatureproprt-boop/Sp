@@ -33,19 +33,44 @@ class PinLoginGuard {
     this.memory = new Map();
   }
 
-  async beginAttempt(key) {
+  async checkAllowed(key) {
     const normalizedKey = String(key || '').trim();
     if (!normalizedKey) throw new Error('PIN guard key is required');
 
     const now = this.now();
     const nowDate = new Date(now);
+    const db = this.mongoStore?.isInitialized?.() ? this.mongoStore.getDb?.() : null;
+
+    if (db) {
+      const state = await db.collection(AUTH_SECURITY_COLLECTION).findOne({ _id: normalizedKey }) || {};
+      const lockedUntil = state.lockedUntil ? new Date(state.lockedUntil).getTime() : 0;
+      return {
+        allowed: lockedUntil <= now,
+        lockedUntil,
+        failedAttempts: Math.max(0, Number(state.failedAttempts) || 0),
+        retryAfterSeconds: lockedUntil > now ? Math.ceil((lockedUntil - now) / 1000) : 0
+      };
+    }
+
+    const current = cloneState(this.memory.get(normalizedKey));
+    return {
+      allowed: current.lockedUntil <= now,
+      lockedUntil: current.lockedUntil,
+      failedAttempts: current.failedAttempts,
+      retryAfterSeconds: current.lockedUntil > now ? Math.ceil((current.lockedUntil - now) / 1000) : 0
+    };
+  }
+
+  async recordFailure(key) {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey) throw new Error('PIN guard key is required');
+    const now = this.now();
     const lockoutDate = new Date(now + this.lockoutMs);
     const db = this.mongoStore?.isInitialized?.() ? this.mongoStore.getDb?.() : null;
 
     if (db) {
-      const collection = db.collection(AUTH_SECURITY_COLLECTION);
       const currentAttempts = { $ifNull: ['$failedAttempts', 0] };
-      const currentlyLocked = { $gt: [{ $ifNull: ['$lockedUntil', 0] }, nowDate] };
+      const currentlyLocked = { $gt: [{ $ifNull: ['$lockedUntil', 0] }, new Date(now)] };
       const nextAttempts = {
         $cond: [currentlyLocked, currentAttempts, { $add: [currentAttempts, 1] }]
       };
@@ -62,14 +87,13 @@ class PinLoginGuard {
           }
         ]
       };
-
-      const result = await collection.findOneAndUpdate(
+      const result = await db.collection(AUTH_SECURITY_COLLECTION).findOneAndUpdate(
         { _id: normalizedKey },
         [{
           $set: {
             failedAttempts: nextAttempts,
             lockedUntil: nextLockedUntil,
-            lastAttemptAt: nowDate
+            lastAttemptAt: new Date(now)
           }
         }],
         { upsert: true, returnDocument: 'after' }
@@ -77,7 +101,7 @@ class PinLoginGuard {
       const state = normalizeMongoResult(result) || {};
       const lockedUntil = state.lockedUntil ? new Date(state.lockedUntil).getTime() : 0;
       return {
-        allowed: lockedUntil <= now,
+        locked: lockedUntil > now,
         lockedUntil,
         failedAttempts: Math.max(0, Number(state.failedAttempts) || 0),
         retryAfterSeconds: lockedUntil > now ? Math.ceil((lockedUntil - now) / 1000) : 0
@@ -87,24 +111,18 @@ class PinLoginGuard {
     const current = cloneState(this.memory.get(normalizedKey));
     if (current.lockedUntil > now) {
       return {
-        allowed: false,
+        locked: true,
         lockedUntil: current.lockedUntil,
         failedAttempts: current.failedAttempts,
         retryAfterSeconds: Math.ceil((current.lockedUntil - now) / 1000)
       };
     }
-
     current.failedAttempts += 1;
     current.lastAttemptAt = now;
-    if (current.failedAttempts >= this.maxFailedAttempts) {
-      current.lockedUntil = now + this.lockoutMs;
-    } else {
-      current.lockedUntil = 0;
-    }
+    current.lockedUntil = current.failedAttempts >= this.maxFailedAttempts ? now + this.lockoutMs : 0;
     this.memory.set(normalizedKey, current);
-
     return {
-      allowed: true,
+      locked: current.lockedUntil > now,
       lockedUntil: current.lockedUntil,
       failedAttempts: current.failedAttempts,
       retryAfterSeconds: current.lockedUntil > now ? Math.ceil((current.lockedUntil - now) / 1000) : 0
