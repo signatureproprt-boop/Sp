@@ -675,6 +675,22 @@
   </div>
 </div>
 
+<!-- ── CLOSE / PAUSE REQUIREMENT MODAL ─────────────────────────────────── -->
+<div class="modal-overlay hidden" id="requirement-status-modal">
+  <div class="modal" style="width:500px">
+    <div class="modal-header"><span class="modal-title" id="requirement-status-title">Update Requirement Status</span><button class="modal-close" onclick="closeModal('requirement-status-modal')">&times;</button></div>
+    <div class="modal-body">
+      <div id="requirement-status-label" style="background:#faf7f2;border:1px solid var(--clr-border);border-radius:7px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px"></div>
+      <div class="form-group"><label id="requirement-status-reason-label">Reason</label>
+        <select id="requirement-status-reason"><option value="">— Select —</option><option>Deal Completed</option><option>Requirement Fulfilled</option><option>Client Put On Hold</option><option>Budget Pending</option><option>Waiting for Property</option><option>Requirement Changed</option><option>Other</option></select>
+      </div>
+      <div class="form-group" style="margin-top:10px"><label>Notes</label><textarea id="requirement-status-notes" rows="3" placeholder="Additional context…"></textarea></div>
+      <div id="requirement-status-error" class="form-error"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('requirement-status-modal')">Cancel</button><button class="btn btn-primary" id="requirement-status-submit" onclick="saveRequirementStatus()">Confirm</button></div>
+  </div>
+</div>
+
 <!-- ── ACTIVITY MODAL ────────────────────────────────────────────────────── -->
 <div class="modal-overlay hidden" id="activity-modal">
   <div class="modal">
@@ -1382,6 +1398,9 @@
         <button class="need-action-btn ghost"   data-testid="req-shortlist-${esc(reqId)}" onclick="toggleShortlist('${esc(reqId)}')">⭐ Shortlist</button>
         <button class="need-action-btn ghost"   data-testid="req-share-${esc(reqId)}" onclick="openNetworkShareModal('${esc(reqId)}')">👥 Share with Network</button>
         <button class="need-action-btn ghost"   onclick="openSiteVisitsContext('${esc(reqId)}')">🏠 Site Visits</button>
+        <button class="need-action-btn ghost"   onclick="openAddFollowupForRequirement('${esc(reqId)}')">📞 Follow-up</button>
+        <button class="need-action-btn ghost"   onclick="openRequirementStatusModal('${esc(reqId)}','Paused')">⏸ Hold</button>
+        <button class="need-action-btn ghost"   onclick="openRequirementStatusModal('${esc(reqId)}','Closed')">✓ Close</button>
         <button class="need-action-btn ghost"   onclick="showNextQuestionsSection('${esc(reqId)}')">💬 Ask</button>
         <button class="need-action-btn danger"  onclick="markLostReq('${esc(reqId)}')">✗ Lost</button>
       </div>
@@ -1701,6 +1720,59 @@
     } catch(e) {
       document.getElementById('lost-error').textContent = e.message;
     }
+  }
+
+  // ── Requirement lifecycle actions ─────────────────────────────────────────
+  let _requirementStatusReqId = null;
+  let _requirementStatusTarget = null;
+
+  function openRequirementStatusModal(reqId, targetStatus) {
+    const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
+    if (!req) return;
+    _requirementStatusReqId = reqId;
+    _requirementStatusTarget = targetStatus;
+    const label = [req.TransactionType, req.Category, req.SubCategory].filter(Boolean).join(' • ') || reqId;
+    document.getElementById('requirement-status-label').textContent = label + ' — ' + reqId;
+    document.getElementById('requirement-status-title').textContent = targetStatus === 'Paused' ? 'Put Requirement On Hold' : 'Close Requirement';
+    document.getElementById('requirement-status-reason-label').textContent = targetStatus === 'Paused' ? 'Hold Reason' : 'Close Reason';
+    document.getElementById('requirement-status-submit').textContent = targetStatus === 'Paused' ? 'Put On Hold' : 'Close Requirement';
+    document.getElementById('requirement-status-reason').value = '';
+    document.getElementById('requirement-status-notes').value = '';
+    document.getElementById('requirement-status-error').textContent = '';
+    document.getElementById('requirement-status-modal').classList.remove('hidden');
+  }
+
+  async function saveRequirementStatus() {
+    const reqId = _requirementStatusReqId;
+    const target = _requirementStatusTarget;
+    if (!reqId || !target) return;
+    const reason = document.getElementById('requirement-status-reason').value;
+    const notes = document.getElementById('requirement-status-notes').value.trim();
+    if (!reason) {
+      document.getElementById('requirement-status-error').textContent = 'Reason is required';
+      return;
+    }
+    const payload = target === 'Paused'
+      ? { RequirementStatus: target, HoldReason: reason, HoldNotes: notes || null }
+      : { RequirementStatus: target, ClosedReason: reason, ClosedNotes: notes || null };
+    try {
+      const res = await fetch('/api/requirements/' + encodeURIComponent(reqId), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      }).then(r => r.json());
+      if (!res.ok) {
+        document.getElementById('requirement-status-error').textContent = res.error || 'Failed to update requirement';
+        return;
+      }
+      closeModal('requirement-status-modal');
+      await loadWorkspace();
+    } catch (e) {
+      document.getElementById('requirement-status-error').textContent = e.message;
+    }
+  }
+
+  function openAddFollowupForRequirement(reqId) {
+    const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
+    openAddFollowupModal({ requirementId: reqId, transactionId: req?.TransactionID || '' });
   }
 
   // ── Score breakdown ───────────────────────────────────────────────────────────
@@ -2400,10 +2472,14 @@
     } catch(e) { document.getElementById('act-error').textContent = e.message; }
   }
 
-  function openAddFollowupModal() {
+  function openAddFollowupModal(options = {}) {
+    const modal = document.getElementById('followup-modal');
+    modal.dataset.requirementId = options.requirementId || '';
+    modal.dataset.transactionId = options.transactionId || '';
     document.getElementById('fu-error').textContent = '';
     document.getElementById('fu-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('fu-time').value = '10:00';
+    document.getElementById('fu-notes').value = options.notes || '';
     document.getElementById('followup-modal').classList.remove('hidden');
   }
 
@@ -2414,8 +2490,12 @@
       document.getElementById('fu-error').textContent = 'Due Date is required';
       return;
     }
+    const modal = document.getElementById('followup-modal');
     const payload = {
-      LeadID: LEAD_ID, ActivityType: document.getElementById('fu-type').value,
+      LeadID: LEAD_ID,
+      TransactionID: modal.dataset.transactionId || null,
+      RequirementID: modal.dataset.requirementId || null,
+      ActivityType: document.getElementById('fu-type').value,
       Priority: document.getElementById('fu-priority').value,
       DueAt: new Date(`${dueDate}T${dueTime}:00`).toISOString(),
       Notes: document.getElementById('fu-notes').value.trim()
