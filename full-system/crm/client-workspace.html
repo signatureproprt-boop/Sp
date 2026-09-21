@@ -2655,7 +2655,11 @@
       const scanned = Number.isFinite(Number(data.scanned)) ? Number(data.scanned) : 0;
       title.innerHTML = `🎯 Smart Matches <span style="color:#6b7280;font-weight:500;text-transform:none;letter-spacing:0">— ${total} of ${scanned} properties match</span>`;
       if (!matches.length) {
-        content.innerHTML = `<div style="padding:20px;text-align:center;color:#6b7280">No matching properties in inventory yet. <a href="/inventory" style="color:var(--clr-brown);font-weight:600">Add one →</a></div>`;
+        const emptyMessage = scanned === 0
+          ? 'Inventory has no active properties available for matching right now.'
+          : 'No properties match this requirement yet.';
+        const action = '<a href="/inventory" style="color:var(--clr-brown);font-weight:600">Open Inventory →</a>';
+        content.innerHTML = `<div style="padding:20px;text-align:center;color:#6b7280">${emptyMessage} ${action}</div>`;
       } else {
         content.innerHTML = matches.map(mm => smartMatchCard(mm, reqId)).join('');
       }
