@@ -302,6 +302,15 @@ class V2RequirementService {
       return { ok: false, error: `Invalid PipelineStage. Must be one of: ${PIPELINE_STAGES.join(', ')}` };
     }
 
+    // Data-quality guard: pipeline stage values must never be stored as a location.
+    const normalizedLocation1 = this._normalizeLocationValue(mergedPayload.Location1 ?? mergedPayload.location1);
+    if (normalizedLocation1 === null && (mergedPayload.Location1 !== undefined || mergedPayload.location1 !== undefined)) {
+      delete mergedPayload.Location1;
+      delete mergedPayload.location1;
+    } else if (normalizedLocation1 !== null) {
+      mergedPayload.Location1 = normalizedLocation1;
+    }
+
     // ── Numeric convenience extraction ────────────────────────────────────
 
     const budgetMin = this._num(mergedPayload.BudgetMin ?? mergedPayload.budgetMin);
@@ -360,7 +369,7 @@ class V2RequirementService {
       BudgetMax: budgetMax,
       BudgetType: mergedPayload.BudgetType || mergedPayload.budgetType || null,
       BudgetFlexibility: mergedPayload.BudgetFlexibility || mergedPayload.budgetFlexibility || null,
-      Location1: mergedPayload.Location1 || mergedPayload.location1 || null,
+      Location1: normalizedLocation1,
       Location2: mergedPayload.Location2 || mergedPayload.location2 || null,
       Location3: mergedPayload.Location3 || mergedPayload.location3 || null,
       AvoidLocations: mergedPayload.AvoidLocations || mergedPayload.avoidLocations || null,
@@ -530,6 +539,16 @@ class V2RequirementService {
     if (budgetMin !== null && payload.BudgetMin !== undefined) augmentedPatch.BudgetMin = budgetMin;
     if (budgetMax !== null && payload.BudgetMax !== undefined) augmentedPatch.BudgetMax = budgetMax;
 
+    // Prevent status/stage labels from entering Location1 during progressive edits.
+    const hasLocation1Patch = payload.Location1 !== undefined || payload.location1 !== undefined;
+    const rawLocation1Patch = payload.Location1 !== undefined ? payload.Location1 : payload.location1;
+    const normalizedLocation1Patch = hasLocation1Patch
+      ? this._normalizeLocationValue(rawLocation1Patch)
+      : this._normalizeLocationValue(existing.Location1);
+    if (hasLocation1Patch || normalizedLocation1Patch === null) {
+      augmentedPatch.Location1 = normalizedLocation1Patch;
+    }
+
     const newFieldsMap = mergeFieldsMap(existing.Fields || {}, augmentedPatch);
 
     // ── Track what changed for history ────────────────────────────────────
@@ -579,7 +598,7 @@ class V2RequirementService {
       BudgetMax: budgetMax,
       BudgetType: payload.BudgetType || payload.budgetType || existing.BudgetType,
       BudgetFlexibility: payload.BudgetFlexibility || payload.budgetFlexibility || existing.BudgetFlexibility,
-      Location1: payload.Location1 !== undefined ? payload.Location1 : (payload.location1 !== undefined ? payload.location1 : existing.Location1),
+      Location1: normalizedLocation1Patch,
       Location2: payload.Location2 !== undefined ? payload.Location2 : (payload.location2 !== undefined ? payload.location2 : existing.Location2),
       Location3: payload.Location3 !== undefined ? payload.Location3 : (payload.location3 !== undefined ? payload.location3 : existing.Location3),
       AvoidLocations: payload.AvoidLocations !== undefined ? payload.AvoidLocations : (payload.avoidLocations !== undefined ? payload.avoidLocations : existing.AvoidLocations),
@@ -780,6 +799,17 @@ class V2RequirementService {
     if (v === undefined || v === null || v === '') return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
+  }
+
+  _normalizeLocationValue(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return null;
+    const normalized = String(value).trim();
+    // These are workflow stages, not geographic locations.
+    if (PIPELINE_STAGES.some((stage) => stage.toLowerCase() === normalized.toLowerCase())) {
+      console.warn('[requirements] Ignoring pipeline stage supplied as Location1', { value: normalized });
+      return null;
+    }
+    return normalized;
   }
 
   _mergeWithPrefill(prefill, payload) {
