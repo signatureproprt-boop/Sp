@@ -75,3 +75,108 @@ test('site visit creates when property is shortlisted and slot is valid', () => 
   assert.equal(repo.read().SiteVisits.length, 1);
   assert.equal(repo.read().SiteVisits[0].ShortlistID, null);
 });
+
+
+test('site visit rejects unsupported property changes instead of silently ignoring them', () => {
+  const repo = makeRepo();
+  const svc = new SiteVisitBookingService(repo);
+  const created = svc.create({
+    requirementId: 'REQ-1',
+    propertyIds: ['PROP-1'],
+    visitDate: '2026-10-01',
+    visitTime: '11:00'
+  });
+  assert.equal(created.ok, true);
+
+  const result = svc.update(created.data.VisitBookingID, {
+    propertyIds: ['PROP-1']
+  }, { userId: 'agent-1' });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'PROPERTY_CHANGE_UNSUPPORTED');
+});
+
+test('legacy malformed slot can still be cancelled without slot validation', () => {
+  const repo = makeRepo();
+  repo.read().SiteVisits.push({
+    VisitID: 'VISIT-LEGACY-1',
+    VisitBookingID: 'BOOK-LEGACY-1',
+    LeadID: 'LEAD-1',
+    RequirementID: 'REQ-1',
+    PropertyID: 'PROP-1',
+    VisitDate: '',
+    VisitTime: 'invalid',
+    Status: 'Scheduled',
+    CreatedAt: '2026-01-01T00:00:00.000Z',
+    UpdatedAt: '2026-01-01T00:00:00.000Z'
+  });
+  const svc = new SiteVisitBookingService(repo);
+
+  const result = svc.cancel('BOOK-LEGACY-1', { userId: 'agent-1' });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.Status, 'Cancelled');
+});
+
+test('legacy malformed slot can still be completed without slot validation', () => {
+  const repo = makeRepo();
+  repo.read().SiteVisits.push({
+    VisitID: 'VISIT-LEGACY-2',
+    VisitBookingID: 'BOOK-LEGACY-2',
+    LeadID: 'LEAD-1',
+    RequirementID: 'REQ-1',
+    PropertyID: 'PROP-1',
+    VisitDate: 'bad-date',
+    VisitTime: 'bad-time',
+    Status: 'Scheduled',
+    CreatedAt: '2026-01-01T00:00:00.000Z',
+    UpdatedAt: '2026-01-01T00:00:00.000Z'
+  });
+  const svc = new SiteVisitBookingService(repo);
+
+  const result = svc.complete('BOOK-LEGACY-2', { userId: 'agent-1' });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.Status, 'Completed');
+});
+
+test('site visit rejects invalid explicit reschedule slot', () => {
+  const repo = makeRepo();
+  const svc = new SiteVisitBookingService(repo);
+  const created = svc.create({
+    requirementId: 'REQ-1',
+    propertyIds: ['PROP-1'],
+    visitDate: '2026-10-01',
+    visitTime: '11:00'
+  });
+  assert.equal(created.ok, true);
+
+  const result = svc.update(created.data.VisitBookingID, {
+    visitDate: '2026-99-99',
+    visitTime: '11:00'
+  }, { userId: 'agent-1' });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /visitDate is invalid/);
+});
+
+test('site visit accepts valid reschedule', () => {
+  const repo = makeRepo();
+  const svc = new SiteVisitBookingService(repo);
+  const created = svc.create({
+    requirementId: 'REQ-1',
+    propertyIds: ['PROP-1'],
+    visitDate: '2026-10-01',
+    visitTime: '11:00'
+  });
+  assert.equal(created.ok, true);
+
+  const result = svc.update(created.data.VisitBookingID, {
+    visitDate: '2026-10-02',
+    visitTime: '14:30'
+  }, { userId: 'agent-1' });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.VisitDate, '2026-10-02');
+  assert.equal(result.data.VisitTime, '14:30');
+});
