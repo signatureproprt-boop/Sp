@@ -1205,8 +1205,9 @@ class V2Router {
         .filter(a => a.LeadID === lead.LeadID)
         .sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime())[0];
 
-      // Active need summaries (up to 3)
-      const needSummaries = leadReqs.slice(0, 3).map(r => {
+      // Compact need summaries for client-list filtering.
+      // Include every requirement so filters never silently miss needs #4+.
+      const needSummaries = leadReqs.map(r => {
         const txn      = leadTxns.find(t => t.TransactionID === r.TransactionID);
         const budMin   = r.Fields?.BudgetMin?.value ?? r.BudgetMin;
         const budMax   = r.Fields?.BudgetMax?.value ?? r.BudgetMax;
@@ -1240,7 +1241,7 @@ class V2Router {
         ...lead,
         _activeNeeds:    leadReqs.length,
         _needSummaries:  needSummaries,
-        _moreNeeds:      Math.max(0, leadReqs.length - 3),
+        _moreNeeds:      0,
         _nextFollowUp:   pending[0] ? (pending[0].DueAt || pending[0].DueDate) : null,
         _lastContact:    lastAct ? lastAct.CreatedAt : lead.last_activity_at || null
       };
