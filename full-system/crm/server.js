@@ -4388,6 +4388,13 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (resource === 'security' && subResource === 'pin' && req.method === 'PATCH') {
+        const body = await readJson(req);
+        const payload = await runtime.changeAdminPin(body, actor);
+        sendJson(res, payload, payload.statusCode || (payload.ok ? 200 : 400));
+        return;
+      }
+
       if (resource === 'settings') {
         if (req.method === 'GET') {
           const payload = await runtime.getAdminSettings(actor);
