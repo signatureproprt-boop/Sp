@@ -941,6 +941,16 @@ class SignatureRealtyRuntime {
     return this.repository.updateSettings(payload, auth.actor);
   }
 
+  async changeAdminPin(payload = {}, actor = {}) {
+    const auth = this.requireAdminPermission(actor, 'SETTINGS_MANAGE');
+    if (!auth.ok) return auth;
+    return this.repository.changeAdminPin(
+      payload.currentPin || payload.current || '',
+      payload.newPin || payload.new || '',
+      auth.actor
+    );
+  }
+
   async getAdminMasters(filters = {}, actor = {}) {
     const auth = this.requireAdminPermission(actor, 'MASTERS_MANAGE');
     if (!auth.ok) return auth;
