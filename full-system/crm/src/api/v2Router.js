@@ -1173,7 +1173,10 @@ class V2Router {
       const loc = filters.location.toLowerCase();
       const l1 = (req.Fields?.Location1?.value ?? req.Location1 ?? '').toLowerCase();
       const l2 = (req.Fields?.Location2?.value ?? req.Location2 ?? '').toLowerCase();
-      if (l1 && !l1.includes(loc) && l2 && !l2.includes(loc)) return false;
+      const hasLocation = Boolean(l1 || l2);
+      const locationMatches = (l1 && l1.includes(loc)) || (l2 && l2.includes(loc));
+      if (hasLocation && !locationMatches) return false;
+      if (!hasLocation) return false;
     }
 
     // BHK
@@ -1205,8 +1208,9 @@ class V2Router {
         .filter(a => a.LeadID === lead.LeadID)
         .sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime())[0];
 
-      // Active need summaries (up to 3)
-      const needSummaries = leadReqs.slice(0, 3).map(r => {
+      // Compact need summaries for client-list filtering.
+      // Include every requirement so filters never silently miss needs #4+.
+      const needSummaries = leadReqs.map(r => {
         const txn      = leadTxns.find(t => t.TransactionID === r.TransactionID);
         const budMin   = r.Fields?.BudgetMin?.value ?? r.BudgetMin;
         const budMax   = r.Fields?.BudgetMax?.value ?? r.BudgetMax;
@@ -1240,7 +1244,7 @@ class V2Router {
         ...lead,
         _activeNeeds:    leadReqs.length,
         _needSummaries:  needSummaries,
-        _moreNeeds:      Math.max(0, leadReqs.length - 3),
+        _moreNeeds:      0,
         _nextFollowUp:   pending[0] ? (pending[0].DueAt || pending[0].DueDate) : null,
         _lastContact:    lastAct ? lastAct.CreatedAt : lead.last_activity_at || null
       };
@@ -1285,16 +1289,22 @@ class V2Router {
       brokerageId: String(actor?.brokerageId || actor?.brokerageID || lead.BrokerageID || '').trim()
     };
     const leadDocsResult = await this.documentSvc.listDocuments({ EntityType: 'Lead', EntityID: leadId }, actor || {}, docContext);
-    const requirementDocs = [];
-    const transactionDocs = [];
-    for (const id of Array.from(requirementIds)) {
-      const result = await this.documentSvc.listDocuments({ EntityType: 'Requirement', EntityID: id }, actor || {}, docContext);
-      if (result.ok && Array.isArray(result.data)) requirementDocs.push(...result.data);
-    }
-    for (const id of Array.from(transactionIds)) {
-      const result = await this.documentSvc.listDocuments({ EntityType: 'Transaction', EntityID: id }, actor || {}, docContext);
-      if (result.ok && Array.isArray(result.data)) transactionDocs.push(...result.data);
-    }
+    const requirementDocResults = await Promise.all(
+      Array.from(requirementIds).map((id) =>
+        this.documentSvc.listDocuments({ EntityType: 'Requirement', EntityID: id }, actor || {}, docContext)
+      )
+    );
+    const transactionDocResults = await Promise.all(
+      Array.from(transactionIds).map((id) =>
+        this.documentSvc.listDocuments({ EntityType: 'Transaction', EntityID: id }, actor || {}, docContext)
+      )
+    );
+    const requirementDocs = requirementDocResults.flatMap((result) =>
+      result.ok && Array.isArray(result.data) ? result.data : []
+    );
+    const transactionDocs = transactionDocResults.flatMap((result) =>
+      result.ok && Array.isArray(result.data) ? result.data : []
+    );
     const leadDocs = leadDocsResult.ok && Array.isArray(leadDocsResult.data) ? leadDocsResult.data : [];
     const documents = [];
     const seenDocumentIds = new Set();
