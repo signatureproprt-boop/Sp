@@ -2751,7 +2751,7 @@
       </tr>`;
     content.innerHTML = `
       <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px">
-        <button data-testid="sl-whatsapp-${esc(reqId)}" onclick="shareShortlistOnWhatsApp('${esc(reqId)}')" style="background:#25d366;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer">📱 WhatsApp Share</button>
+        <button data-testid="sl-whatsapp-${esc(reqId)}" onclick="shareShortlistOnWhatsApp('${esc(reqId)}')" style="background:#25d366;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer">📱 WhatsApp Client</button>
         <button data-testid="sv-schedule-${esc(reqId)}" onclick="openScheduleVisitModal('${esc(reqId)}')" style="background:#0f766e;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer">🏠 Schedule Site Visit</button>
       </div>
       <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
@@ -2961,7 +2961,10 @@
     const brokerName  = (workspace?.agent?.Name) || 'Signature Properties';
 
     const lines = [];
-    lines.push(`🏠 *Signature Properties* — Shortlist for *${clientName}*`);
+    lines.push(`🏠 *Signature Properties*`);
+    lines.push(`Hi *${clientName}* 👋`);
+    lines.push('');
+    lines.push(`Aapki requirement ke according ye ${rows.length} shortlisted propert${rows.length===1?'y':'ies'} select ki hain:`);
     lines.push('');
     rows.forEach((r, i) => {
       const p = r.Property || {};
@@ -2993,9 +2996,9 @@
       if (videos.length) lines.push(`   🎥 Video: ${videos[0]}`);
       lines.push('');
     });
-    lines.push(`Chalo dekh lete hain — call/visit karne ke liye reply karo 🙏`);
+    lines.push(`Inme se jo pasand aaye uska number reply kar do. Main price, availability aur site visit confirm karwa dunga. 🙏`);
     lines.push('');
-    lines.push(`— ${brokerName}`);
+    lines.push(`— ${brokerName}\nSignature Properties`);
 
     const text = lines.join('\n');
     const url = clientPhone
