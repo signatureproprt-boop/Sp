@@ -8,6 +8,13 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
+  - name: node:22-alpine
+    entrypoint: sh
+    args:
+      - -c
+      - npm install && npm test
+    dir: full-system/crm
+
   - name: gcr.io/cloud-builders/docker
     args:
       - build
