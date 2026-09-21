@@ -661,6 +661,28 @@ class V2Router {
       return this._json(result.statusCode || (result.ok ? 201 : 400), result);
     }
 
+    // ── /api/v2/clients/:leadId/workspace — canonical client workspace ───────
+    // The workspace UI uses this V2 namespace. Keep identity validation here,
+    // not only on the legacy /api/clients route, so a wrong LeadID can never render.
+    const v2WorkspaceMatch = pathname.match(/^\\/api\\/v2\\/clients\\/([^/]+)\\/workspace$/);
+    if (v2WorkspaceMatch && method === 'GET') {
+      const requestedLeadId = String(v2WorkspaceMatch[1] || '').trim();
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const lead = this.repo.readLead(requestedLeadId);
+      const access = this.accessSvc.authorizeLead(auth.actor, lead, { permissions: ['LEADS_VIEW', 'LEADS_READ'] });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error === 'Not found' ? 'Client not found' : access.error });
+      const result = await this._buildClientWorkspace(requestedLeadId, auth.actor);
+      const returnedLeadId = String(result.data?.lead?.LeadID || '').trim();
+      if (!result.ok || returnedLeadId !== requestedLeadId) {
+        console.error('[workspace] CLIENT_ID_MISMATCH', { requestedLeadId, returnedLeadId });
+        return this._json(result.ok ? 409 : 404, result.ok
+          ? { ok: false, error: 'Client workspace identity mismatch' }
+          : result);
+      }
+      return this._json(200, result);
+    }
+
     // ── /api/v2/clients/query  (need-based client query — Phase 15) ──────────
     if (pathname === '/api/v2/clients/query' && method === 'GET') {
       const auth = this._requireActor(req, url);
@@ -1227,6 +1249,18 @@ class V2Router {
   async _buildClientWorkspace(leadId, actor = null) {
     const lead = this.repo.readLead(leadId);
     if (!lead) return { ok: false, error: 'Client not found' };
+
+    // Workspace always exposes a fresh persisted ClientScore. This also repairs
+    // older leads created before score persistence was wired into the workspace.
+    try {
+      const scoreResult = this.scoringSvc.recalculateClientScore(leadId);
+      if (scoreResult.ok) {
+        const refreshedLead = this.repo.readLead(leadId);
+        if (refreshedLead) Object.assign(lead, refreshedLead);
+      }
+    } catch (error) {
+      console.warn('[workspace] ClientScore refresh failed', { leadId, error: error.message });
+    }
 
     const transactions = this.txnSvc.listTransactionsByLead(leadId);
     const requirements = this.reqSvc.listRequirementsByLead(leadId);
