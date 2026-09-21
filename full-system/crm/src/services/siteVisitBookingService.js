@@ -251,10 +251,24 @@ class SiteVisitBookingService {
     const nextDate = patch.VisitDate || rows[0].VisitDate;
     const nextTime = patch.VisitTime || rows[0].VisitTime;
     const nextStatus = patch.Status || rows[0].Status;
-    const slotError = this._validateVisitSlot(nextDate, nextTime);
-    if (slotError) return { ok: false, error: slotError };
-    const nextPropertyIds = Array.isArray(changes.propertyIds) ? changes.propertyIds : [];
-    const propertyIdSet = nextPropertyIds.length ? new Set(nextPropertyIds) : new Set(rows.map((row) => row.PropertyID));
+    const slotChanged = Object.prototype.hasOwnProperty.call(patch, 'VisitDate') ||
+      Object.prototype.hasOwnProperty.call(patch, 'VisitTime');
+    if (slotChanged) {
+      const slotError = this._validateVisitSlot(nextDate, nextTime);
+      if (slotError) return { ok: false, error: slotError };
+    }
+
+    // Property changes are not persisted by this booking model. Reject them
+    // explicitly rather than silently using them only for duplicate detection.
+    if (Array.isArray(changes.propertyIds) || Array.isArray(changes.PropertyIDs)) {
+      return {
+        ok: false,
+        error: 'Site visit property changes are not supported; create a new booking with the required shortlisted properties',
+        code: 'PROPERTY_CHANGE_UNSUPPORTED'
+      };
+    }
+
+    const propertyIdSet = new Set(rows.map((row) => row.PropertyID));
     const duplicate = db.SiteVisits.find((row) =>
       row &&
       row.VisitBookingID !== bookingId &&
