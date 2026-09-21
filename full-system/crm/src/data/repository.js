@@ -186,7 +186,7 @@ class JsonRepository {
     const bootstrapGoogleEmail = String(
       process.env.SIG_REALTY_BOOTSTRAP_ADMIN_GOOGLE_EMAIL || ''
     ).trim().toLowerCase();
-    if (bootstrapGoogleEmail && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(bootstrapGoogleEmail)) {
+    if (bootstrapGoogleEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(bootstrapGoogleEmail)) {
       if (String(systemAdmin.GoogleEmail || '').trim().toLowerCase() !== bootstrapGoogleEmail) {
         systemAdmin.GoogleEmail = bootstrapGoogleEmail;
         systemAdmin.Status = 'Active';
