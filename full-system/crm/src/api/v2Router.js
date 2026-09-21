@@ -210,6 +210,15 @@ class V2Router {
       const access = this.accessSvc.authorizeLead(auth.actor, lead, { permissions: ['LEADS_VIEW', 'LEADS_READ'] });
       if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error === 'Not found' ? 'Client not found' : access.error });
       const result = await this._buildClientWorkspace(leadId, auth.actor);
+      // Workspace identity invariant: never return a different client's data.
+      if (result.ok) {
+        const requestedLeadId = String(leadId || '').trim();
+        const returnedLeadId = String(result.data?.lead?.LeadID || '').trim();
+        if (!returnedLeadId || returnedLeadId !== requestedLeadId) {
+          console.error('[workspace] CLIENT_ID_MISMATCH', { requestedLeadId, returnedLeadId });
+          return this._json(409, { ok: false, error: 'Client workspace identity mismatch' });
+        }
+      }
       return this._json(result.ok ? 200 : 404, result);
     }
 
