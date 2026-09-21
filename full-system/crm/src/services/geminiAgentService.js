@@ -27,10 +27,10 @@ function buildCrmContext(repository) {
       builderProjects: Array.isArray(db.BuilderProjects) ? db.BuilderProjects.length : 0,
       followUps: Array.isArray(db.FollowUps) ? db.FollowUps.length : 0
     },
-    leads: compactRows(db.Leads, ['LeadID', 'ClientName', 'ClientStatus', 'LeadStatus', 'City', 'Source', 'AssignedAgentID', 'UpdatedAt']),
-    requirements: compactRows(db.Requirements, ['RequirementID', 'LeadID', 'TransactionType', 'Category', 'BudgetMin', 'BudgetMax', 'Location1', 'Status']),
+    leads: compactRows(db.Leads, ['ClientStatus', 'LeadStatus', 'City', 'Source', 'UpdatedAt']),
+    requirements: compactRows(db.Requirements, ['TransactionType', 'Category', 'BudgetMin', 'BudgetMax', 'Location1', 'Status']),
     builderProjects: compactRows(db.BuilderProjects, ['ProjectID', 'ProjectName', 'BuilderName', 'Location1', 'Category', 'ProjectStatus', 'PriceMin', 'PriceMax', 'PossessionDate']),
-    followUps: compactRows(db.FollowUps, ['FollowUpID', 'LeadID', 'DueDate', 'Type', 'Status', 'Notes'])
+    followUpSummary: { total: Array.isArray(db.FollowUps) ? db.FollowUps.length : 0, open: Array.isArray(db.FollowUps) ? db.FollowUps.filter((row) => String(row?.Status || '').toUpperCase() !== 'DONE').length : 0 }
   };
 }
 

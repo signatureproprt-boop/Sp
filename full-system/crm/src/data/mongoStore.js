@@ -139,12 +139,15 @@ let _initAttempts = 0;
 let _clientCreations = 0;
 let _writeQueue = Promise.resolve();
 let _lastWriteError = null;
-let _writeStats = { successes: 0, failures: 0, lastWriteAt: null };
+let _writeStats = { successes: 0, failures: 0, conflicts: 0, lastWriteAt: null };
 let _lastLocalWriteAt = 0;
 let _pollTimer = null;
 let _pollFailureCount = 0;
 let _reconnectPromise = null;
 let _reconnectAttempts = 0;
+
+const SNAPSHOT_WRITE_LEASE_MS = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_LEASE_MS', 120000);
+const SNAPSHOT_WRITE_RETRIES = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_RETRIES', 5);
 
 function isEnabled() {
   return getStorageMode() === 'mongo' && !!getMongoUrl();
@@ -166,7 +169,7 @@ function createMongoClient(mongoUrl) {
     minPoolSize: 1,
     heartbeatFrequencyMS: 10000
   };
-  if (/^mongodb\+srv:/i.test(mongoUrl) || /[?&](?:tls|ssl)=true(?:&|$)/i.test(mongoUrl)) {
+  if (/^mongodb\\+srv:/i.test(mongoUrl) || /[?&](?:tls|ssl)=true(?:&|$)/i.test(mongoUrl)) {
     mongoOptions.tls = true;
     mongoOptions.tlsAllowInvalidCertificates = false;
     mongoOptions.tlsAllowInvalidHostnames = false;
@@ -174,26 +177,14 @@ function createMongoClient(mongoUrl) {
   return new MongoClient(mongoUrl, mongoOptions);
 }
 
-/**
- * Returns the already-connected Mongo `Db` handle (same client/connection
- * used for the db_snapshot document), or null if Mongo mode isn't
- * initialized. Lets other modules (e.g. GridFS object storage) reuse the
- * existing connection instead of opening a second MongoClient.
- */
 function getDb() {
   return _initialized ? _db : null;
 }
 
-/**
- * Async init — connect to Mongo, load the snapshot into memory. If Mongo
- * is empty, seed from the JSON file (if present) so the first-time
- * migration is transparent. Must be awaited before `.listen()` starts.
- */
 async function initMongo(fallbackJsonPath) {
   if (!isEnabled()) return { skipped: true, reason: 'STORAGE_MODE!=mongo or missing MONGO_URL' };
   if (_initialized) return { skipped: true, reason: 'already initialized' };
   if (_initPromise) return _initPromise;
-
   _initPromise = initMongoOnce(fallbackJsonPath).catch((error) => {
     _initPromise = null;
     throw error;
@@ -210,7 +201,6 @@ async function initMongoOnce(fallbackJsonPath) {
   console.log('[mongo] target URL:', sanitizeMongoUrl(mongoUrl));
 
   try {
-    console.log('[mongo] connection attempt');
     _client = createMongoClient(mongoUrl);
     try {
       await _client.connect();
@@ -232,8 +222,6 @@ async function initMongoOnce(fallbackJsonPath) {
       return { ok: true, source: 'mongo', size: JSON.stringify(_cache).length };
     }
 
-    // Fresh install — start with empty cache; JsonRepository.ensureDatabase()
-    // will populate seed collections into `write()` which we then persist.
     _cache = {};
     _initialized = true;
     console.log('[mongo] initialization complete');
@@ -241,9 +229,7 @@ async function initMongoOnce(fallbackJsonPath) {
     return { ok: true, source: 'fresh', size: 0 };
   } catch (error) {
     _lastWriteError = error;
-    if (!_client || _db) {
-      logMongoInitializationError(error);
-    }
+    if (!_client || _db) logMongoInitializationError(error);
     console.error('[mongo] target URL:', sanitizeMongoUrl(mongoUrl));
     throw error;
   }
@@ -251,35 +237,26 @@ async function initMongoOnce(fallbackJsonPath) {
 
 async function reconnectMongo() {
   if (_reconnectPromise) return _reconnectPromise;
-
   _reconnectAttempts += 1;
   _reconnectPromise = (async () => {
     const previousClient = _client;
     const mongoUrl = getMongoUrl();
     const mongoDb = getMongoDb();
     let replacementClient = null;
-
     try {
       console.warn('[mongoStore] reconnecting after consecutive poll failures');
       replacementClient = createMongoClient(mongoUrl);
       await replacementClient.connect();
       const replacementDb = replacementClient.db(mongoDb);
       await replacementDb.command({ ping: 1 });
-      if (!replacementDb || typeof replacementDb.collection !== 'function') {
-        throw new Error('Mongo reconnect returned an invalid database handle');
-      }
-
       _client = replacementClient;
       _db = replacementDb;
       _pollFailureCount = 0;
       replacementClient = null;
       console.log('[mongoStore] reconnect successful');
-
       if (previousClient && previousClient !== _client) {
         await _writeQueue;
-        try {
-          await previousClient.close();
-        } catch (closeError) {
+        try { await previousClient.close(); } catch (closeError) {
           console.error('[mongoStore] previous client close failed:', closeError.message);
         }
       }
@@ -287,27 +264,16 @@ async function reconnectMongo() {
     } catch (error) {
       console.error('[mongoStore] reconnect failed:', error.message);
       if (replacementClient) {
-        try {
-          await replacementClient.close();
-        } catch (_) {}
+        try { await replacementClient.close(); } catch (_) {}
       }
       return false;
     } finally {
       _reconnectPromise = null;
     }
   })();
-
   return _reconnectPromise;
 }
 
-/**
- * Cross-replica sync: with 2+ app instances sharing one Mongo, each keeps
- * its own in-memory `_cache`. Poll Mongo every MONGO_POLL_INTERVAL_MS and adopt
- * the snapshot only if it is newer than anything WE wrote recently, so we
- * never clobber our own in-flight write with a stale read from another
- * replica that hasn't caught up yet. Bounds cross-replica staleness to
- * ~POLL_INTERVAL_MS instead of "until this process restarts".
- */
 function startPolling() {
   if (_pollTimer) return;
   _pollTimer = setInterval(pollOnce, MONGO_POLL_INTERVAL_MS);
@@ -324,33 +290,20 @@ async function pollOnce() {
     _pollFailureCount = 0;
     if (snap && snap.payload && snap.updatedAt) {
       const snapTime = new Date(snap.updatedAt).getTime();
-      if (snapTime > _lastLocalWriteAt) {
-        _cache = snap.payload;
-      }
+      if (snapTime > _lastLocalWriteAt) _cache = snap.payload;
     }
   } catch (e) {
     _pollFailureCount += 1;
     console.error('[mongoStore] poll refresh failed:', e.message);
-    if (_pollFailureCount >= POLL_FAILURES_BEFORE_RECONNECT) {
-      await reconnectMongo();
-    }
+    if (_pollFailureCount >= POLL_FAILURES_BEFORE_RECONNECT) await reconnectMongo();
   }
 }
 
-/**
- * Deep-clone the current cache and return it (mirrors JsonRepository.read()).
- * Mutations by callers stay in their local copy until write(db) commits.
- */
 function read() {
   if (!_initialized) throw new Error('mongoStore.read() called before initMongo()');
   return JSON.parse(JSON.stringify(_cache));
 }
 
-/**
- * Read a single collection without deep-cloning the entire database snapshot.
- * This is intentionally read-only and returns a detached array so existing
- * synchronous repository callers cannot mutate the Mongo cache accidentally.
- */
 function readCollection(collection) {
   if (!_initialized) throw new Error('mongoStore.readCollection() called before initMongo()');
   const key = String(collection || '').trim();
@@ -360,42 +313,229 @@ function readCollection(collection) {
 }
 
 /**
- * Replace the cache and enqueue a persist. Persist runs asynchronously
- * but is chained through _writeQueue so writes never race with each
- * other. Errors are surfaced through _lastWriteError and stats.
+ * Snapshot writes use a distributed Mongo lock plus a three-way merge:
+ *   base = this replica's snapshot when the mutation started
+ *   desired = this replica's new snapshot
+ *   remote = latest committed snapshot in Mongo
+ *
+ * This preserves concurrent changes made by other Cloud Run instances
+ * instead of blindly replacing the entire remote snapshot with a stale copy.
+ * Object fields are merged recursively. Arrays containing stable *ID keys
+ * are merged by record identity; primitive/unkeyed arrays use last-writer
+ * semantics because there is no safe identity to merge on.
  */
 function write(db) {
   if (!_initialized) throw new Error('mongoStore.write() called before initMongo()');
-  _cache = db;
+
+  const base = JSON.parse(JSON.stringify(_cache || {}));
+  const desired = JSON.parse(JSON.stringify(db || {}));
+  _cache = desired;
   _lastLocalWriteAt = Date.now();
-  const snapshot = JSON.parse(JSON.stringify(db));
-  _writeQueue = _writeQueue.then(async () => {
-    try {
-      const activeDb = _db;
-      if (!activeDb) throw new Error('Mongo database handle is unavailable');
-      await activeDb.collection(SNAP_COLL).replaceOne(
-        { _id: SNAP_ID },
-        { _id: SNAP_ID, payload: snapshot, updatedAt: new Date() },
-        { upsert: true }
-      );
-      _writeStats.successes += 1;
-      _writeStats.lastWriteAt = new Date();
-      _lastWriteError = null;
-    } catch (e) {
-      _writeStats.failures += 1;
-      _lastWriteError = e;
-      console.error('[mongoStore] Write failed:', e.message);
+
+  const persist = async () => {
+    const activeDb = _db;
+    if (!activeDb) throw new Error('Mongo database handle is unavailable');
+
+    let lastError = null;
+    for (let attempt = 1; attempt <= SNAPSHOT_WRITE_RETRIES; attempt += 1) {
+      try {
+        const result = await withDistributedLock('db-snapshot-write', async () => {
+          const current = await activeDb.collection(SNAP_COLL).findOne(
+            { _id: SNAP_ID },
+            { projection: { payload: 1, updatedAt: 1 }, maxTimeMS: POLL_QUERY_MAX_TIME_MS }
+          );
+          const remote = current && current.payload ? current.payload : {};
+          const merged = threeWayMerge(base, desired, remote);
+
+          await activeDb.collection(SNAP_COLL).replaceOne(
+            { _id: SNAP_ID },
+            {
+              _id: SNAP_ID,
+              payload: merged,
+              updatedAt: new Date(),
+              schemaVersion: 2
+            },
+            { upsert: true }
+          );
+
+          _cache = merged;
+          return { merged, hadRemoteDivergence: !deepEqual(base, remote) };
+        }, { leaseMs: SNAPSHOT_WRITE_LEASE_MS });
+
+        if (result.acquired) {
+          _writeStats.successes += 1;
+          if (result.result && result.result.hadRemoteDivergence) _writeStats.conflicts += 1;
+          _writeStats.lastWriteAt = new Date();
+          _lastWriteError = null;
+          return result.result;
+        }
+
+        await delay(Math.min(250 * attempt, 1000));
+      } catch (error) {
+        lastError = error;
+        if (attempt < SNAPSHOT_WRITE_RETRIES) await delay(Math.min(250 * attempt, 1000));
+      }
     }
+
+    throw lastError || new Error('Mongo snapshot write failed');
+  };
+
+  _writeQueue = _writeQueue.catch(() => {}).then(persist).catch((error) => {
+    _writeStats.failures += 1;
+    _lastWriteError = error;
+    console.error('[mongoStore] durable snapshot write failed:', error.message);
+    throw error;
   });
+
+  // Preserve the existing synchronous repository contract while exposing a
+  // Promise for future callers that want request-level durability.
+  return _writeQueue;
 }
 
-/**
- * Await the next flush of the write queue. Call before graceful shutdown.
- */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function deepEqual(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function stableArrayIdKey(values) {
+  if (!Array.isArray(values) || !values.length || !values.every((item) => item && typeof item === 'object' && !Array.isArray(item))) return null;
+  const candidates = ['id', 'ID', 'Id'];
+  const discovered = Object.keys(values[0] || {}).filter((key) => /id$/i.test(key));
+  for (const key of [...candidates, ...discovered]) {
+    if (values.every((item) => item[key] != null && item[key] !== '')) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function mergeArray(base, desired, remote) {
+  const key = stableArrayIdKey([...base, ...desired, ...remote]);
+  if (!key) {
+    if (deepEqual(desired, base)) return clone(remote);
+    if (deepEqual(remote, base)) return clone(desired);
+    return clone(desired);
+  }
+
+  const hasUniqueIds = (rows) => {
+    const ids = new Set();
+    for (const row of rows || []) {
+      const id = String(row[key]);
+      if (ids.has(id)) return false;
+      ids.add(id);
+    }
+    return true;
+  };
+  if (!hasUniqueIds(base) || !hasUniqueIds(desired) || !hasUniqueIds(remote)) {
+    return clone(desired);
+  }
+  const baseMap = new Map((base || []).map((row) => [String(row[key]), row]));
+  const desiredMap = new Map((desired || []).map((row) => [String(row[key]), row]));
+  const remoteMap = new Map((remote || []).map((row) => [String(row[key]), row]));
+  const order = [];
+  for (const row of remote || []) if (!order.includes(String(row[key]))) order.push(String(row[key]));
+  for (const row of desired || []) if (!order.includes(String(row[key]))) order.push(String(row[key]));
+
+  const out = [];
+  for (const id of order) {
+    const b = baseMap.get(id);
+    const d = desiredMap.get(id);
+    const r = remoteMap.get(id);
+
+    if (b !== undefined && d === undefined) {
+      if (r !== undefined && !deepEqual(r, b)) out.push(clone(r));
+      continue;
+    }
+    if (b === undefined && d !== undefined) {
+      out.push(clone(r === undefined ? d : threeWayMerge({}, d, r)));
+      continue;
+    }
+    if (d === undefined && r === undefined) continue;
+    out.push(clone(threeWayMerge(b === undefined ? {} : b, d === undefined ? {} : d, r === undefined ? {} : r)));
+  }
+  return out;
+}
+
+function threeWayMerge(base, desired, remote) {
+  if (deepEqual(desired, base)) return clone(remote);
+  if (deepEqual(remote, base)) return clone(desired);
+  if (Array.isArray(base) && Array.isArray(desired) && Array.isArray(remote)) {
+    return mergeArray(base, desired, remote);
+  }
+  if (base && desired && remote &&
+      typeof base === 'object' && typeof desired === 'object' && typeof remote === 'object' &&
+      !Array.isArray(base) && !Array.isArray(desired) && !Array.isArray(remote)) {
+    const keys = new Set([...Object.keys(base), ...Object.keys(desired), ...Object.keys(remote)]);
+    const out = {};
+    for (const key of keys) {
+      const hasB = Object.prototype.hasOwnProperty.call(base, key);
+      const hasD = Object.prototype.hasOwnProperty.call(desired, key);
+      const hasR = Object.prototype.hasOwnProperty.call(remote, key);
+      if (!hasD && hasB) {
+        if (!hasR || deepEqual(remote[key], base[key])) continue;
+        out[key] = clone(remote[key]);
+        continue;
+      }
+      if (!hasR && hasD) {
+        if (!hasB || !deepEqual(desired[key], base[key])) out[key] = clone(desired[key]);
+        continue;
+      }
+      out[key] = threeWayMerge(hasB ? base[key] : {}, hasD ? desired[key] : {}, hasR ? remote[key] : {});
+    }
+    return out;
+  }
+  // Same scalar/shape changed on both sides: desired is the deterministic
+  // winner for this exact field; unrelated concurrent fields are preserved
+  // by the recursive merge above.
+  return clone(desired);
+}
+
 async function flush() {
-  await _writeQueue;
+  try {
+    await _writeQueue;
+  } catch (_) {}
   return { ..._writeStats, lastError: _lastWriteError ? _lastWriteError.message : null };
 }
+
+async function withDistributedLock(lockName, fn, options = {}) {
+  if (!_initialized || !_db) throw new Error('Mongo store is not initialized');
+  const name = String(lockName || '').trim();
+  if (!name) throw new Error('lockName is required');
+  const leaseMs = Number.isFinite(Number(options.leaseMs)) && Number(options.leaseMs) > 0 ? Number(options.leaseMs) : 240000;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + leaseMs);
+  const owner = cryptoRandomToken();
+  const locks = _db.collection('distributed_locks');
+  try {
+    const result = await locks.findOneAndUpdate(
+      { _id: name, $or: [{ expiresAt: { $lte: now } }, { expiresAt: { $exists: false } }] },
+      { $set: { owner, expiresAt, updatedAt: now }, $setOnInsert: { _id: name, createdAt: now } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    const lockDoc = result && result.value ? result.value : result;
+    if (!lockDoc || lockDoc.owner !== owner) return { acquired: false };
+    try {
+      return { acquired: true, result: await fn() };
+    } finally {
+      await locks.deleteOne({ _id: name, owner }).catch(() => {});
+    }
+  } catch (error) {
+    if (error && error.code === 11000) return { acquired: false };
+    throw error;
+  }
+}
+
+function cryptoRandomToken() {
+  return require('node:crypto').randomBytes(16).toString('hex');
+}
+
 
 function close() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
@@ -432,9 +572,12 @@ module.exports = {
   flush,
   close,
   stats,
+  withDistributedLock,
   MONGO_SOCKET_TIMEOUT_MS,
   MONGO_CONNECT_TIMEOUT_MS,
   MONGO_SERVER_SELECTION_TIMEOUT_MS,
   MONGO_POLL_INTERVAL_MS,
-  __pollOnceForTests: pollOnce
+  __pollOnceForTests: pollOnce,
+  __threeWayMergeForTests: threeWayMerge,
+  __mergeArrayForTests: mergeArray
 };
