@@ -826,6 +826,15 @@ async function flushCriticalAuthStateWrite() {
   }
 }
 
+// Auth state is security-critical but must never block the browser's OAuth
+// callback on a full Mongo snapshot flush. Cloud Run can terminate the request
+// while Mongo is busy with background sync/snapshot work.
+function queueAuthStatePersistence() {
+  flushCriticalAuthStateWrite().catch((error) => {
+    console.warn('[auth] auth-state persistence queued:', error.message);
+  });
+}
+
 async function persistAuthExchangeState(repository, record) {
   if (!repository || typeof repository.upsertAuthExchangeState !== 'function') {
     throw new Error('Auth exchange state persistence is unavailable');
@@ -1126,7 +1135,7 @@ async function consumeAuthExchangeState(headers = {}, submittedState, contextVal
   const persistedExpiresAt = persisted.expiresAt ? new Date(persisted.expiresAt).getTime() : null;
   if (Number.isFinite(persistedExpiresAt) && persistedExpiresAt <= Date.now()) {
     repository.deleteAuthExchangeState?.(validated.state);
-    await flushCriticalAuthStateWrite();
+    queueAuthStatePersistence();
     return invalidAuthStateResult('state_expired');
   }
   if (persisted.consumedAt) {
@@ -1158,7 +1167,7 @@ async function consumeAuthExchangeState(headers = {}, submittedState, contextVal
     ? repository.consumeAuthExchangeState(validated.state, new Date().toISOString())
     : { ok: false, reason: 'missing' };
   if (!consumeResult.ok) {
-    await flushCriticalAuthStateWrite();
+    queueAuthStatePersistence();
     if (consumeResult.reason === 'expired') {
       return invalidAuthStateResult('state_expired');
     }
@@ -1167,7 +1176,7 @@ async function consumeAuthExchangeState(headers = {}, submittedState, contextVal
     }
     return invalidAuthStateResult('signature_invalid');
   }
-  await flushCriticalAuthStateWrite();
+  queueAuthStatePersistence();
   return {
     ok: true,
     state: validated.state,
