@@ -24,12 +24,12 @@ class SiteVisitBookingService {
   _validateVisitSlot(visitDate, visitTime) {
     const date = String(visitDate || '').trim();
     const time = String(visitTime || '').trim();
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return 'visitDate must be YYYY-MM-DD';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'visitDate must be YYYY-MM-DD';
     const parsedDate = new Date(date + 'T00:00:00Z');
     if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
       return 'visitDate is invalid';
     }
-    if (!/^\\d{2}:\\d{2}$/.test(time)) return 'visitTime must be HH:MM';
+    if (!/^\d{2}:\d{2}$/.test(time)) return 'visitTime must be HH:MM';
     const [hours, minutes] = time.split(':').map(Number);
     if (hours > 23 || minutes > 59) return 'visitTime is invalid';
     return null;
