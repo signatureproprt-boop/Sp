@@ -4935,7 +4935,8 @@ appServer = http.createServer(async (req, res) => {
 
   // ── V2 page routing — extensionless URLs → .html files ─────────────────────
   const V2_ROUTES = {
-    '/clients':             '/clients.html',
+    '/clients':             '/client-workspace-hub.html',
+    '/clients-directory':    '/clients.html',
     '/leads-kanban':        '/leads-kanban.html',
     '/property-investment-analyzer': '/property-investment-analyzer.html',
     '/client-workspace':    '/client-workspace.html',
