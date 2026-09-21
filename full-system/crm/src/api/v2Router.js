@@ -89,6 +89,9 @@ class V2Router {
     this.depSvc.seedDependencyConfigIfEmpty();
     // Phase 12: seed ScoringConfig on startup (idempotent)
     this.scoringSvc.seedScoringConfigIfEmpty();
+    // One-time/idempotent data-quality repair for legacy requirements where a
+    // workflow stage (e.g. "New") was accidentally stored as Location1.
+    this.reqSvc.repairLocationStageCollisions();
   }
 
   /**
