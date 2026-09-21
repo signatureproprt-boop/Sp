@@ -17,13 +17,13 @@
     body { background: var(--clr-bg); color: var(--clr-text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height: 100vh; }
 
     /* Nav */
-    .topnav { background: #2c1405; color: #fff; display: flex; align-items: center; padding: 0 24px; height: 52px; gap: 8px; }
+    .topnav { background: #2c1405; color: #fff; display: flex; align-items: center; padding: 0 16px; min-height: 52px; gap: 8px; position: sticky; top:0; z-index:40; box-shadow:0 2px 8px rgba(0,0,0,.15); }
     .topnav a { color: #d4b896; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 14px; }
     .topnav a:hover { background: rgba(255,255,255,.1); color: #fff; }
     .topnav .brand { font-weight: 800; font-size: 15px; color: var(--clr-gold-mid); margin-right: 20px; letter-spacing:.02em; }
     .topnav .breadcrumb { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #9a8070; }
     .topnav .breadcrumb a { color: #9a8070; }
-    .topnav-right { margin-left: auto; }
+    .topnav-right { margin-left: auto; display:flex; align-items:center; gap:8px; }.mobile-nav-toggle{display:none;background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer;padding:4px 8px}.topnav-avatar{width:32px;height:32px;border-radius:50%;border:0;background:linear-gradient(135deg,#f0b429,#d4a017);color:#2c1405;font-weight:800;font-size:12px;display:grid;place-items:center;cursor:pointer;flex-shrink:0}.mobile-nav{display:flex;gap:4px;margin-left:auto}.mobile-nav a{color:#d4b896;text-decoration:none;padding:7px 10px;border-radius:7px;font-size:13px;white-space:nowrap}.mobile-nav a.active{background:rgba(212,160,23,.22);color:#fff}
 
     /* Client header */
     .client-header { background: linear-gradient(135deg,#2c1405 0%,#5c3317 100%); color: #fff; padding: 20px 24px; }
@@ -267,6 +267,7 @@
       .workspace-body { grid-template-columns: 1fr; }
       .info-col { border-left: none; border-top: 1px solid var(--clr-border); order: -1; padding: 12px 16px; }
     }
+    @media (max-width: 900px) {.mobile-nav{display:none;position:fixed;top:52px;left:0;right:0;background:#2c1405;flex-direction:column;padding:8px 12px 14px;box-shadow:0 8px 20px rgba(0,0,0,.3);z-index:45}.mobile-nav.open{display:flex}.mobile-nav a{padding:12px 14px;font-size:14px}.mobile-nav-toggle{display:block;margin-left:auto}.topnav-right{display:none}.topnav-avatar{margin-left:0}}
     @media (max-width: 640px) {
       .client-actions { flex-wrap: wrap; }
       .need-two-col { grid-template-columns: 1fr; }
@@ -279,15 +280,13 @@
 <body>
 
 <nav class="topnav">
-  <span class="brand" style="display:inline-flex;align-items:center;gap:8px"><img src="/assets/signature-mark.svg" alt="logo" style="width:26px;height:26px;border-radius:50%;object-fit:cover" />Signature Properties</span>
-  <div class="breadcrumb">
-    <a href="/clients">Clients</a>
-    <span>›</span>
-    <span id="nav-client-name">Loading…</span>
-  </div>
-  <div class="topnav-right">
-    <a href="/clients" style="color:#94a3b8;font-size:13px;">← All Clients</a>
-  </div>
+  <a class="brand" href="/" style="display:inline-flex;align-items:center;gap:8px"><img src="/assets/signature-mark.svg" alt="logo" style="width:28px;height:28px;border-radius:50%;object-fit:cover" />Signature Properties</a>
+  <div class="breadcrumb" style="display:none"><a href="/clients">Clients</a><span>›</span><span id="nav-client-name">Loading…</span></div>
+  <nav class="mobile-nav" id="workspace-mobile-nav">
+    <a href="/">Dashboard</a><a href="/clients" class="active">Clients</a><a href="/inventory">Inventory</a><a href="/requirements-view">Requirements</a><a href="/duplicates">Duplicates</a><a href="/builder-projects">🏗️ Builder Projects</a><a href="/broker-network">👥 Broker Network</a><a href="/calculators">🧮 Calculators</a><a href="/digital-card">🪪 Digital Card</a><a href="/admin">⚙️ Admin</a>
+  </nav>
+  <button class="mobile-nav-toggle" aria-label="Open menu" onclick="document.getElementById('workspace-mobile-nav').classList.toggle('open')">☰</button>
+  <button class="topnav-avatar" title="Logout" aria-label="Logout" onclick="doLogout()">SA</button>
 </nav>
 
 <div id="workspace-loader" class="loader">Loading client workspace…</div>
@@ -1190,6 +1189,10 @@
     } catch(e) { showError('Failed to load workspace: ' + e.message); }
   }
 
+  function safePhone(v) { const raw=String(v??'').trim(); if(!raw || /^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw) || raw.includes('#ERROR')) return ''; const digits=raw.replace(/\\D/g,''); return digits.length>=7 ? digits : ''; }
+  function phoneLabel(v) { return safePhone(v) ? String(v).trim() : 'Phone unavailable'; }
+  async function doLogout(){ await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{}); window.location.href='/login.html'; }
+
   function renderAll() {
     const lead = workspace.lead;
     document.title = `${lead.ClientName||'Client'} — Signature Properties`;
@@ -1217,13 +1220,14 @@
         `<div class="score-ring ${cls}" title="Client Score: ${score}/100">${score}</div>`;
     }
 
-    document.getElementById('meta-phone').innerHTML  = `📱 ${esc(lead.PrimaryMobile||lead.Phone||'—')}`;
+    const displayPhone = lead.PrimaryMobile||lead.Phone;
+    document.getElementById('meta-phone').innerHTML  = `📱 ${esc(phoneLabel(displayPhone))}`;
     document.getElementById('meta-email').innerHTML  = `✉️ ${esc(lead.Email||'—')}`;
     document.getElementById('meta-source').innerHTML = `🏷️ ${esc(lead.Source||lead.LeadSource||'—')}`;
     document.getElementById('meta-agent').innerHTML  = `👤 ${esc(lead.AssignedAgentID||'—')}`;
 
-    const phone = (lead.PrimaryMobile||lead.Phone||'').replace(/\D/g,'');
-    const waPhone = String(lead.WhatsApp || lead.PrimaryMobile || lead.Phone || '').replace(/\D/g,'');
+    const phone = safePhone(lead.PrimaryMobile||lead.Phone);
+    const waPhone = safePhone(lead.WhatsApp || lead.PrimaryMobile || lead.Phone);
     document.getElementById('btn-call').dataset.phone = phone;
     document.getElementById('btn-whatsapp').dataset.phone = waPhone;
 
