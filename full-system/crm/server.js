@@ -891,10 +891,12 @@ function extractProviderSessionIdentity(payload = {}) {
 function findActiveUserByEmail(email) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized || typeof runtime?.repository?.listUsers !== 'function') return null;
-  return (runtime.repository.listUsers() || []).find((user) => (
-    String(user?.Email || '').trim().toLowerCase() === normalized &&
-    String(user?.Status || '').trim().toUpperCase() === 'ACTIVE'
-  )) || null;
+  return (runtime.repository.listUsers() || []).find((user) => {
+    if (String(user?.Status || '').trim().toUpperCase() !== 'ACTIVE') return false;
+    const googleEmail = String(user?.GoogleEmail || '').trim().toLowerCase();
+    const registeredEmail = String(user?.Email || '').trim().toLowerCase();
+    return googleEmail === normalized || registeredEmail === normalized;
+  }) || null;
 }
 
 async function fetchAuthProviderSessionData(sessionId) {
