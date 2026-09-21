@@ -50,6 +50,8 @@ tr:last-child td { border-bottom:none; }
 .badge.pending { background:#fef3c7; color:#78350f; }
 .badge.paid { background:#dcfce7; color:#166534; }
 select.inline-edit, input.inline-edit { padding:5px 8px; border:1px solid var(--border); border-radius:6px; font-size:12.5px; font-family:inherit; }
+.mobile-tools{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.mobile-search{flex:1;min-width:180px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px}.broker-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.broker-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:13px;box-shadow:0 2px 8px rgba(92,51,23,.05)}.broker-card-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.broker-name{font-size:14px;font-weight:800;color:var(--brown)}.broker-agency{font-size:11px;color:var(--text-light);margin-top:2px}.broker-phone{display:inline-flex;margin-top:10px;color:var(--brown);font-weight:700;text-decoration:none;font-size:12px}.broker-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}.broker-tag{background:var(--gold-soft);border-radius:999px;padding:4px 7px;font-size:10px;color:var(--brown);font-weight:700}.broker-card-actions{display:flex;gap:7px;margin-top:11px}.broker-card-actions .btn{flex:1;padding:8px 7px;font-size:11px}
+@media(max-width:700px){.topnav{height:auto;padding:9px 10px;overflow-x:auto;white-space:nowrap}.topnav .brand{margin-right:5px}.topnav a{font-size:11px;padding:6px 7px}.page{padding:14px 10px}.page-h{margin-bottom:14px}.page-h h1{font-size:19px}.broker-cards{grid-template-columns:1fr}.tabs{overflow-x:auto}.tab{white-space:nowrap;padding:9px 11px}.modal{max-height:94vh}.form-grid{grid-template-columns:1fr}.field.full{grid-column:1}}
 </style>
 </head>
 <body>
@@ -74,7 +76,10 @@ select.inline-edit, input.inline-edit { padding:5px 8px; border:1px solid var(--
     <div class="tab" data-testid="tab-commission" onclick="switchTab('commission')">💰 Commission Ledger</div>
   </div>
 
-  <div id="tab-panel-brokers"><div id="tbl-wrap"><div class="empty">Loading...</div></div></div>
+  <div id="tab-panel-brokers">
+  <div class="mobile-tools"><input id="broker-search" class="mobile-search" placeholder="Search broker, agency, phone, specialization…" oninput="render()"><select id="broker-trust-filter" class="btn ghost" onchange="render()" style="padding:9px"><option value="">All Trust Levels</option><option>High</option><option>Medium</option><option>Low</option></select></div>
+  <div id="tbl-wrap"><div class="empty">Loading...</div></div>
+</div>
   <div id="tab-panel-shares" style="display:none"><div id="shares-wrap"><div class="empty">Loading...</div></div></div>
   <div id="tab-panel-commission" style="display:none"><div id="commission-wrap"><div class="empty">Loading...</div></div></div>
 </div>
@@ -119,16 +124,20 @@ function render() {
     $('tbl-wrap').innerHTML = '<div class="empty">Koi broker abhi nahi hai. Upar "+ Add Broker" dabao aur apne trusted network ko add karo.</div>';
     return;
   }
-  $('tbl-wrap').innerHTML = `<table data-testid="brokers-table">
-    <thead><tr><th>Name</th><th>Phone</th><th>Agency</th><th>Trust</th><th>Specialization</th><th></th></tr></thead>
-    <tbody>${BROKERS.map(b => `<tr data-testid="broker-row-${esc(b.NetworkBrokerID)}">
-      <td><b>${esc(b.Name)}</b>${b.Active===false?' <span style="color:#991b1b;font-size:10px">INACTIVE</span>':''}</td>
-      <td><a href="tel:${esc((b.Phone || '').replace(/\D/g, ''))}" style="color:var(--brown);text-decoration:none;font-weight:600">${esc(b.Phone)}</a></td>
-      <td>${esc(b.Agency||'—')}</td>
-      <td><span class="trust ${(b.TrustLevel||'medium').toLowerCase()}">${esc(b.TrustLevel||'Medium')}</span></td>
-      <td style="font-size:12px;color:var(--text-light)">${(b.Specializations||[]).map(s => `<span style="background:var(--gold-soft);padding:2px 8px;border-radius:8px;margin-right:3px">${esc(s)}</span>`).join('')}</td>
-      <td style="text-align:right"><button class="btn ghost" onclick="edit('${esc(b.NetworkBrokerID)}')">Edit</button> <button class="btn danger" onclick="del('${esc(b.NetworkBrokerID)}')">✕</button></td>
-    </tr>`).join('')}</tbody></table>`;
+  const q=($('broker-search')?.value||'').trim().toLowerCase();
+  const trust=($('broker-trust-filter')?.value||'').trim().toLowerCase();
+  const rows=BROKERS.filter(b=>{
+    const hay=[b.Name,b.Phone,b.Agency,(b.Specializations||[]).join(' ')].join(' ').toLowerCase();
+    return (!q||hay.includes(q))&&(!trust||String(b.TrustLevel||'').toLowerCase()===trust);
+  });
+  $('tbl-wrap').innerHTML = `
+  <div class="broker-cards">${rows.map(b => `<article class="broker-card" data-testid="broker-row-${esc(b.NetworkBrokerID)}">
+    <div class="broker-card-top"><div><div class="broker-name">${esc(b.Name)}${b.Active===false?' <span style="color:#991b1b;font-size:9px">INACTIVE</span>':''}</div><div class="broker-agency">${esc(b.Agency||'Independent Broker')}</div></div><span class="trust ${(b.TrustLevel||'medium').toLowerCase()}">${esc(b.TrustLevel||'Medium')}</span></div>
+    <a class="broker-phone" href="tel:${esc((b.Phone||'').replace(/\D/g,''))}">📞 ${esc(b.Phone)}</a>
+    <div class="broker-tags">${(b.Specializations||[]).map(s=>`<span class="broker-tag">${esc(s)}</span>`).join('')||'<span style="font-size:10px;color:var(--text-light)">No specialization added</span>'}</div>
+    <div class="broker-card-actions"><button class="btn ghost" onclick="edit('${esc(b.NetworkBrokerID)}')">✏️ Edit</button><button class="btn danger" onclick="del('${esc(b.NetworkBrokerID)}')">🗑 Remove</button></div>
+  </article>`).join('')||'<div class="empty" style="grid-column:1/-1">No broker matches this filter.</div>'}</div>`;
+
 }
 function openBrokerModal() {
   EDITING_ID = null;
