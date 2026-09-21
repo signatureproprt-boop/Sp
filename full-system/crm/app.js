@@ -3216,6 +3216,8 @@ async function renderAdmin() {
             <div class="card-header"><h3>Users</h3><span class="badge green">Persistent</span></div>
             <form id="adminUserForm" class="form-stack admin-form-grid">
               <input name="Name" placeholder="Name" required />
+              <input name="Email" type="email" placeholder="Registered / Business Email" required />
+              <input name="GoogleEmail" type="email" placeholder="Google Login Email (OAuth)" />
               <input name="Email" placeholder="Email" type="email" required />
               <input name="Mobile" placeholder="Mobile" />
               <select name="Role"><option>ADMIN</option><option>MANAGER</option><option selected>AGENT</option></select>
