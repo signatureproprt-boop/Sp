@@ -1113,6 +1113,7 @@ class V2Router {
 
     return this._queryClientsByNeed({
       txnType, category, subCategory: subCat, budgetMin, budgetMax, location, bhk, q,
+      needSource: source,
       clientStatus, lifecycle, source, tag, agentId, clientType, page, limit
     }, actor);
   }
@@ -1196,6 +1197,10 @@ class V2Router {
   }
 
   _reqMatchesFilters(req, filters, txns) {
+    if (filters.needSource) {
+      const source = req.Fields?.Source?.value ?? req.Source ?? req.RequirementSource ?? '';
+      if (!source || String(source).toLowerCase() !== String(filters.needSource).toLowerCase()) return false;
+    }
     if (filters.txnType) {
       const reqTxnType = req.TransactionType || (txns.find(t => t.TransactionID === req.TransactionID) || {}).TransactionType;
       if (reqTxnType && reqTxnType.toLowerCase() !== String(filters.txnType).toLowerCase()) return false;
