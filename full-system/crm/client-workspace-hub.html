@@ -101,15 +101,56 @@ function buildQuery(){
  p.set('page',String(queryState.page)); p.set('limit',String(queryState.limit));
  return p;
 }
+async function fetchJsonWithTimeout(url, options={}, timeoutMs=12000){
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),timeoutMs);
+ try{
+   const res=await fetch(url,{...options,signal:controller.signal});
+   const text=await res.text();
+   let json={};
+   try{json=text?JSON.parse(text):{}}catch(_){json={ok:false,error:text||('HTTP '+res.status)}}
+   if(!res.ok||json.ok===false) throw new Error(json.error||('HTTP '+res.status));
+   return json;
+ }catch(e){
+   if(e.name==='AbortError') throw new Error('Clients API timed out after 12 seconds');
+   throw e;
+ }finally{clearTimeout(timer)}
+}
 async function load(resetPage=false){
  if(resetPage)queryState.page=1;
  queryState.loading=true;
  const grid=document.getElementById('grid');
  grid.innerHTML='<div class="load" style="grid-column:1/-1">Loading clients…</div>';
+ const queryUrl='/api/v2/clients/query?'+buildQuery().toString();
  try{
-   const res=await fetch('/api/v2/clients/query?'+buildQuery().toString(),{credentials:'include'});
-   const j=await res.json();
-   if(!res.ok||!j.ok)throw new Error(j.error||'Failed to load clients');
+   let j;
+   try{
+     j=await fetchJsonWithTimeout(queryUrl,{credentials:'include'});
+   }catch(primaryError){
+     // Safe compatibility fallback: older V2 list endpoint.
+     const p=new URLSearchParams();
+     const q=document.getElementById('search').value.trim();
+     const status=document.getElementById('status').value;
+     const source=document.getElementById('source').value;
+     if(q)p.set('q',q);
+     if(status)p.set('status',status);
+     if(source)p.set('source',source);
+     p.set('limit','100');
+     const fallback=await fetchJsonWithTimeout('/api/v2/clients?'+p.toString(),{credentials:'include'});
+     const rows=Array.isArray(fallback.data)?fallback.data:[];
+     const start=(queryState.page-1)*queryState.limit;
+     const pageRows=rows.slice(start,start+queryState.limit);
+     j={ok:true,data:pageRows,totalCount:rows.length,summary:{
+       totalClients:rows.length,
+       hotCount:rows.filter(x=>Number(typeof x.ClientScore==='object'?x.ClientScore?.total:x.ClientScore||0)>=70).length,
+       activeNeeds:rows.reduce((n,x)=>n+Number(x._activeNeeds||0),0),
+       openTransactions:rows.reduce((n,x)=>n+Number(x._openTransactions||0),0)
+     },pagination:{
+       page:queryState.page,limit:queryState.limit,total:rows.length,
+       totalPages:Math.max(1,Math.ceil(rows.length/queryState.limit)),
+       hasNext:start+pageRows.length<rows.length,hasPrev:queryState.page>1
+     }};
+   }
    clients=Array.isArray(j.data)?j.data:[];
    queryState=Object.assign(queryState,j.pagination||{});
    updateStats(j.totalCount,j.summary||{});
