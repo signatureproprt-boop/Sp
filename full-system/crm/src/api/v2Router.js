@@ -1182,13 +1182,20 @@ class V2Router {
     const total = visible.length;
     const visibleLeadIds = new Set(visible.map(l => l.LeadID));
     const hotCount = visible.filter(l => Number(typeof l.ClientScore === 'object' ? l.ClientScore?.total : l.ClientScore || 0) >= 70).length;
-    const activeNeeds = reqs.filter(r => visibleLeadIds.has(r.LeadID)).length;
+    const activeNeeds = reqs.filter(r => {
+      if (!visibleLeadIds.has(r.LeadID)) return false;
+      const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
+      return !status || status === 'ACTIVE';
+    }).length;
     const openTransactions = txns.filter(t => visibleLeadIds.has(t.LeadID) && !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length;
     const page = Math.max(1, Number(filters.page || 1) || 1);
     const limit = Math.min(100, Math.max(1, Number(filters.limit || 24) || 24));
     const start = (page - 1) * limit;
     const pageRows = visible.slice(start, start + limit);
-    const enriched = this._enrichClientsForList(pageRows);
+    const enriched = this._enrichClientsForList(pageRows).map((client) => ({
+      ...client,
+      _openTransactions: txns.filter(t => t.LeadID === client.LeadID && !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length
+    }));
 
     return {
       ok: true,
