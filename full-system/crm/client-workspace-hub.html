@@ -46,10 +46,10 @@
 <div class="filter-wrap"><label>Status</label><select id="status" onchange="render()"><option value="">All Status</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Won</option><option>Lost</option></select></div>
 <div class="filter-wrap"><label>Client Type</label><select id="clientType" onchange="render()"><option value="">All Clients</option><option value="investor">Investors</option><option value="normal">Non-Investors</option></select></div>
 <div class="filter-wrap"><label>Budget</label><select id="budget" onchange="render()"><option value="">Any Budget</option><option value="under50">Under ₹50L</option><option value="50to100">₹50L–₹1Cr</option><option value="100to200">₹1–2Cr</option><option value="over200">₹2Cr+</option></select></div>
-<div class="filter-wrap"><label>Location</label><select id="location" onchange="render()"><option value="">All Locations</option></select></div>
+<div class="filter-wrap"><label>Location</label><input id="location" class="filter" placeholder="Surat / area" oninput="scheduleLoad()"></div>
 <div class="filter-wrap"><label>Source</label><select id="source" onchange="render()"><option value="">All Sources</option><option>Own</option><option>Builder</option><option>Broker</option><option>Owner</option></select></div>
 </div>
-<section id="grid" class="grid"><div class="load">Loading clients…</div></section>
+<section id="grid" class="grid"><div class="load">Loading clients…</div></section><div id="pager" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px"></div>
 </main>
 <div id="new-client-modal" class="modal" onclick="if(event.target===this)closeNewClient()">
   <div class="modal-box">
@@ -72,6 +72,8 @@
 </div>
 <script>
 let clients=[];
+let queryState={page:1,limit:24,total:0,totalPages:1,loading:false};
+let searchTimer=null;
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const enc=s=>encodeURIComponent(s||'');
 function safePhone(v){const raw=String(v??'').trim();if(!raw||/^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw)||raw.includes('#ERROR'))return '';const digits=raw.replace(/\D/g,'');return digits.length>=7?digits:'';}
@@ -79,66 +81,67 @@ function phoneLabel(v){return safePhone(v)?String(v).trim():'Phone unavailable';
 async function doLogout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});window.location.href='/login.html';}
 function norm(v){const a={Verified:'Contacted',Active:'Qualified',Inactive:'Lost',Blacklisted:'Lost',Converted:'Won'};return a[String(v||'').trim()]||String(v||'New').trim()||'New'}
 function fmtBudget(r){if(!r)return '—';const f=n=>n==null?'':n>=1e7?'₹'+(n/1e7).toFixed(1)+'Cr':n>=1e5?'₹'+(n/1e5).toFixed(0)+'L':'₹'+Number(n).toLocaleString('en-IN');return [f(r.BudgetMin),f(r.BudgetMax)].filter(Boolean).join(' – ')||'—'}
-async function load(){
- const grid=document.getElementById('grid');grid.innerHTML='<div class="load">Loading clients…</div>';
- try{const res=await fetch('/api/v2/clients');const j=await res.json();if(!j.ok)throw new Error(j.error||'Failed to load');clients=(j.data||[]);populateLocations();updateStats();render()}
- catch(e){grid.innerHTML='<div class="empty">Unable to load clients: '+esc(e.message)+'</div>'}
+function budgetRange(v){return ({under50:[null,4999999],50to100:[5000000,9999999],100to200:[10000000,19999999],over200:[20000000,null]})[v]||[null,null]}
+function buildQuery(){
+ const p=new URLSearchParams();
+ const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
+ const cat=document.getElementById('category').value, txn=FILTER_TXN, bud=document.getElementById('budget').value;
+ const loc=document.getElementById('location').value.trim(), source=document.getElementById('source').value, type=document.getElementById('clientType').value;
+ if(q)p.set('q',q); if(status)p.set('status',status); if(cat)p.set('category',cat); if(txn)p.set('transactionType',txn);
+ if(loc)p.set('location',loc); if(source)p.set('source',source); if(type)p.set('clientType',type);
+ const [min,max]=budgetRange(bud); if(min!=null)p.set('budgetMin',String(min)); if(max!=null)p.set('budgetMax',String(max));
+ p.set('page',String(queryState.page)); p.set('limit',String(queryState.limit));
+ return p;
 }
-function updateStats(){
- document.getElementById('s-total').textContent=clients.length;
- document.getElementById('s-req').textContent=clients.reduce((n,c)=>n+Number(c._activeNeeds||0),0);
- document.getElementById('s-txn').textContent=clients.reduce((n,c)=>n+Number(c._openTransactions||0),0);
- document.getElementById('s-hot').textContent=clients.filter(c=>Number(typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore||0)>=70).length;
-}
-let FILTER_TXN='';
-function setChip(el, key, value){
- if(key==='txn') FILTER_TXN=value;
- document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));
- render();
-}
-function firstNeed(c){return (c._needSummaries||[])[0]||{}}
-function needValue(n, keys){
- for(const k of keys){const v=n?.[k]; if(v!==undefined&&v!==null&&String(v).trim()!=='') return v}
- return '';
-}
-function budgetNumber(n){ return Number(needValue(n,['BudgetMax','Budget','BudgetTo','MaxBudget'])||0); }
-function investorFlag(c){ return JSON.stringify(c||{}).toLowerCase().includes('investor'); }
-function populateLocations(){
- const sel=document.getElementById('location'); if(!sel)return;
- const current=sel.value;
- const values=[...new Set(clients.flatMap(c=>(c._needSummaries||[]).map(n=>needValue(n,['Location1','Location','locations'])).flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).map(String)))].sort();
- sel.innerHTML='<option value="">All Locations</option>'+values.map(v=>'<option>'+esc(v)+'</option>').join('');
- if(values.includes(current)) sel.value=current;
-}
-function render(){
- const q=document.getElementById('search').value.trim().toLowerCase(), st=document.getElementById('status').value;
- const cat=document.getElementById('category').value, type=document.getElementById('clientType').value, bud=document.getElementById('budget').value, loc=document.getElementById('location').value, source=document.getElementById('source').value;
- const rows=clients.filter(c=>{
-  const status=norm(c.ClientStatus||c.LeadStatus), hay=[c.ClientName,c.PrimaryMobile,c.Phone,c.Email].join(' ').toLowerCase(), needs=c._needSummaries||[];
-  const matchingNeeds=needs.filter(n=>{
-   const txn=String(needValue(n,['TransactionType','transactionType','Transaction'])||'').trim(), category=String(needValue(n,['Category','category'])||'').trim();
-   const location=needValue(n,['Location1','Location','locations']), locText=Array.isArray(location)?location.join(' '):String(location||''), b=budgetNumber(n);
-   const categoryOk=!cat||category.toLowerCase()===cat.toLowerCase(), txnOk=!FILTER_TXN||txn.toLowerCase()===FILTER_TXN.toLowerCase(), locOk=!loc||locText.toLowerCase().includes(loc.toLowerCase());
-   const budgetOk=!bud||(bud==='under50'&&b>0&&b<5000000)||(bud==='50to100'&&b>=5000000&&b<10000000)||(bud==='100to200'&&b>=10000000&&b<20000000)||(bud==='over200'&&b>=20000000);
-   return categoryOk&&txnOk&&locOk&&budgetOk;
-  });
-  const needMatch=(!cat&&!FILTER_TXN&&!loc&&!bud)||matchingNeeds.length>0;
-  const investorOk=!type||(type==='investor'&&investorFlag(c))||(type==='normal'&&!investorFlag(c));
-  const sourceOk=!source||JSON.stringify(needs).toLowerCase().includes(source.toLowerCase());
-  return(!q||hay.includes(q))&&(!st||status===st)&&needMatch&&investorOk&&sourceOk;
- });
+async function load(resetPage=false){
+ if(resetPage)queryState.page=1;
+ queryState.loading=true;
  const grid=document.getElementById('grid');
- if(!rows.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No clients found.</div>';return}
+ grid.innerHTML='<div class="load" style="grid-column:1/-1">Loading clients…</div>';
+ try{
+   const res=await fetch('/api/v2/clients/query?'+buildQuery().toString(),{credentials:'include'});
+   const j=await res.json();
+   if(!res.ok||!j.ok)throw new Error(j.error||'Failed to load clients');
+   clients=Array.isArray(j.data)?j.data:[];
+   queryState=Object.assign(queryState,j.pagination||{});
+   updateStats(j.totalCount);
+   render();
+   renderPager();
+ }catch(e){
+   grid.innerHTML='<div class="empty" style="grid-column:1/-1">Unable to load clients: '+esc(e.message)+'<br><button class="btn" style="margin-top:12px;background:#fdf8ec;color:var(--brown)" onclick="load()">Retry</button></div>';
+   document.getElementById('pager').innerHTML='';
+ }finally{queryState.loading=false}
+}
+function updateStats(total){document.getElementById('s-total').textContent=Number(total??queryState.total??0);document.getElementById('s-req').textContent=clients.reduce((n,c)=>n+Number(c._activeNeeds||0),0);document.getElementById('s-txn').textContent=clients.reduce((n,c)=>n+Number(c._openTransactions||0),0);document.getElementById('s-hot').textContent=clients.filter(c=>Number(typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore||0)>=70).length}
+let FILTER_TXN='';
+function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
+function scheduleLoad(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>load(true),300)}
+function firstNeed(c){return (c._needSummaries||[])[0]||{}}
+function needValue(n,keys){for(const k of keys){const v=n?.[k];if(v!==undefined&&v!==null&&String(v).trim()!=='')return v}return ''}
+function budgetNumber(n){return Number(needValue(n,['BudgetMax','Budget','BudgetTo','MaxBudget'])||0)}
+function investorFlag(c){return Array.isArray(c.Tags)&&c.Tags.includes('Investor')}
+function render(){
+ const rows=clients;
+ const grid=document.getElementById('grid');
+ if(!rows.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No clients found for the selected filters.</div>';return}
  grid.innerHTML=rows.map(c=>{
-  const r=firstNeed(c), status=norm(c.ClientStatus||c.LeadStatus), score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
-  const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'', cat=needValue(r,['Category','category'])||'';
-  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(status)+'</span></div>'+
-  '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+'</div>'+
+  const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
+  const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'',cat=needValue(r,['Category','category'])||'';
+  const stamp=c._lastContact||c.UpdatedAt||c.CreatedAt;
+  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(status)+'</span></div>'+
+  '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source" style="background:#f3e8ff;color:#6b21a8">Investor</span>':'')+'</div>'+
   '<div class="phone">📞 '+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</div>'+
   '<div class="meta"><div><span>Requirements</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Transactions</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
+  '<div style="font-size:10px;color:var(--muted);margin-top:9px">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
   '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="tel:'+enc(safePhone(c.PrimaryMobile||c.Phone))+'">☎ Call</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
  }).join('')
 }
+function renderPager(){
+ const el=document.getElementById('pager'),p=queryState;
+ if(!p.total){el.innerHTML='';return}
+ el.innerHTML='<button class="btn" style="background:#fff;border:1px solid var(--border);color:var(--brown)" '+(p.hasPrev?'':'disabled')+' onclick="changePage(-1)">← Previous</button><span style="font-size:12px;color:var(--muted)">Page '+p.page+' of '+p.totalPages+' · '+p.total+' clients</span><button class="btn" style="background:#fff;border:1px solid var(--border);color:var(--brown)" '+(p.hasNext?'':'disabled')+' onclick="changePage(1)">Next →</button>'
+}
+function changePage(delta){const next=queryState.page+delta;if(next<1||next>queryState.totalPages)return;queryState.page=next;load()}
 function openNewClient(){document.getElementById('new-client-modal').classList.add('show');document.getElementById('nc-name').focus()}
 function closeNewClient(){document.getElementById('new-client-modal').classList.remove('show')}
 async function createClient(){
