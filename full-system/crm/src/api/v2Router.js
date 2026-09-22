@@ -1141,7 +1141,14 @@ class V2Router {
     let result = hasNeedFilters ? leads.filter(l => matchingLeadIds.has(l.LeadID)) : [...leads];
 
     if (filters.clientStatus) {
-      result = result.filter(l => (l.ClientStatus || l.LeadStatus) === filters.clientStatus);
+      const statusMap = {
+        Contacted: ['Contacted', 'Verified'],
+        Qualified: ['Qualified', 'Active'],
+        Lost: ['Lost', 'Inactive', 'Blacklisted'],
+        Won: ['Won', 'Converted']
+      };
+      const allowedStatuses = statusMap[filters.clientStatus] || [filters.clientStatus];
+      result = result.filter(l => allowedStatuses.includes(l.ClientStatus || l.LeadStatus));
     }
     if (filters.lifecycle) {
       result = result.filter(l => l.ClientLifecycle === filters.lifecycle);
