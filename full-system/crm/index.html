@@ -82,7 +82,7 @@ function setDataStatus(ok,message){const el=document.getElementById('data-status
 function render(){
   const ex=dashboardReport?.executive||{},pipe=dashboardReport?.pipeline||{},fin=dashboardReport?.financial||{};
   document.getElementById('kClients').textContent=Number(ex.totalLeads??leads.length);
-  document.getElementById('kHot').textContent=Number(ex.hotLeads??leads.filter(hot).length);
+  document.getElementById('kHot').textContent=Number(ex.hotLeads??leads.filter(l=>Number(typeof l.ClientScore==='object'?l.ClientScore?.total:l.ClientScore||0)>=70||hot(l)).length);
   document.getElementById('kVisits').textContent=Number(pipe.siteVisit??visits.length);
   document.getElementById('kNegotiation').textContent=Number(pipe.negotiation||0);
   document.getElementById('kDeals').textContent=Number(pipe.token||0)+Number(pipe.deal||0);
@@ -117,7 +117,7 @@ async function boot(){
     setDataStatus(true,'Refreshing…');
     const [rr,lr,tr,fr,dr]=await Promise.all([
       get('/api/reports/dashboard'),
-      get('/api/leads'),
+      get('/api/v2/clients'),
       get('/api/reports/dashboard?datePreset=today'),
       get('/api/v2/followups?preset=today&limit=100'),
       get('/api/v2/followups?preset=overdue&limit=100')
@@ -130,7 +130,7 @@ async function boot(){
 
     dashboardReport=rr.data||{};
     todayDashboardReport=tr.data||{};
-    leads=Array.isArray(lr.data)?lr.data:[];
+    leads=Array.isArray(lr.data)?lr.data:(Array.isArray(lr.data?.data)?lr.data.data:[]);
     const followRows=[...(Array.isArray(fr.data)?fr.data:[]),...(Array.isArray(dr.data)?dr.data:[])];
     const seenFollowups=new Set();
     const f=followRows.filter(row=>{const id=String(row?.FollowUpID||row?.followUpId||row?.TaskID||row?.id||'');if(id){if(seenFollowups.has(id))return false;seenFollowups.add(id)}return true;});
