@@ -242,7 +242,13 @@ class JsonRepository {
   write(db) {
     if (mongoStore.isEnabled()) {
       if (mongoStore.isInitialized()) {
-        mongoStore.write(db);
+        const persistence = mongoStore.write(db);
+        // The repository API is intentionally synchronous. Attach a rejection
+        // handler here so a background Mongo durability failure cannot become
+        // an unhandled rejection and terminate the CRM process.
+        persistence.catch((error) => {
+          console.error('[repository] Mongo background persistence failed:', error.message);
+        });
         return;
       }
       this._memoryDb = JSON.parse(JSON.stringify(db));
