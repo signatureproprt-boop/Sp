@@ -73,7 +73,7 @@ async function auth(){const e=await exchange().catch(x=>({ok:false,error:x.messa
 async function doLogout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});location.href='/login.html'}
 const esc=x=>String(x??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),initials=n=>{const p=String(n||'?').trim().split(/\s+/);return((p[0]||'?')[0]+(p[1]||'')[0]).toUpperCase()},digits=x=>String(x||'').replace(/\D/g,'');
 const get=async u=>{const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);try{const r=await fetch(u,{cache:'no-store',credentials:'include',signal:controller.signal});const data=await r.json().catch(()=>({ok:false,error:'Invalid response'}));return r.ok?data:{...data,ok:false,error:data.error||('HTTP '+r.status)}}catch(e){return{ok:false,error:e.name==='AbortError'?'Request timed out':e.message}}finally{clearTimeout(timer)}};
-let leads=[],inv=[],visits=[];let dashboardReport=null;
+let leads=[],visits=[];let dashboardReport=null,todayDashboardReport=null;
 function hot(l){return(l.Tags||[]).some(x=>/hot/i.test(x))||/hot/i.test(String(l.ClientStatus||''))}
 function money(v){const n=Number(v||0);if(!n)return '₹0';if(n>=10000000)return '₹'+(n/10000000).toFixed(1)+'Cr';if(n>=100000)return '₹'+(n/100000).toFixed(1)+'L';return '₹'+Math.round(n).toLocaleString('en-IN')}
 function rel(d){if(!d)return '—';const dt=new Date(d);if(Number.isNaN(dt.getTime()))return '—';const s=(Date.now()-dt)/1000;if(s<0)return 'upcoming';if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
@@ -91,72 +91,56 @@ function render(){
   document.getElementById('mPending').textContent=money(fin.pendingBrokerage||0);
   document.getElementById('mTotal').textContent=money(fin.grossBrokerage||0);
 
-  const today=new Date().toDateString();
-  const todayVisits=visits.filter(v=>{const d=safeDate(v.VisitDate||v.visitDate||v.date);return d&&d.toDateString()===today;});
+  const todayReport= todayDashboardReport?.pipeline||{};
+  const todayVisitCount=Number(todayReport.siteVisit||0);
   document.getElementById('work').innerHTML=
     '<div class="work-row"><a href="/clients"><span class="work-label">Overdue / due follow-ups</span><span class="work-count warn">'+Number(document.getElementById("kFollow").textContent||0)+'</span></a></div>'+
-    '<div class="work-row"><a href="/client-workspace"><span class="work-label">Site visits today</span><span class="work-count blue">'+todayVisits.length+'</span></a></div>'+
+    '<div class="work-row"><a href="/client-workspace"><span class="work-label">Site visits today</span><span class="work-count blue">'+todayVisitCount+'</span></a></div>'+
     '<div class="work-row"><a href="/client-workspace"><span class="work-label">Negotiations</span><span class="work-count">'+Number(pipe.negotiation||0)+'</span></a></div>'+
     '<div class="work-row"><a href="/admin"><span class="work-label">Token / deal actions</span><span class="work-count">'+(Number(pipe.token||0)+Number(pipe.deal||0))+'</span></a></div>';
 
   const recent=[...leads].filter(x=>x&&typeof x==='object').sort((a,b)=>new Date(b.CreatedAt||b.UpdatedAt||b.CreatedDate||0)-new Date(a.CreatedAt||a.UpdatedAt||a.CreatedDate||0)).slice(0,5);
-  document.getElementById('clients').innerHTML=recent.length?recent.map(l=>'<div class="client"><div class="initial">'+esc(initials(l.ClientName))+'</div><div><div class="cname">'+esc(l.ClientName||l.LeadID)+'</div><div class="cmeta">'+esc([l.City,l.LeadSource].filter(Boolean).join(' · '))+' · '+esc(rel(l.CreatedAt))+'</div></div><span class="status '+(hot(l)?'hot':'active')+'">'+(hot(l)?'Hot':'Active')+'</span></div>').join(''):'<div class="empty">No recent client activity.</div>';
+  document.getElementById('clients').innerHTML=recent.length?recent.map(l=>{const name=l.ClientName||l.Name||l.FullName||l.LeadName||l.LeadID||'Client';const stamp=l.CreatedAt||l.CreatedDate||l.CreatedOn||l.UpdatedAt||l.UpdatedDate;return '<div class="client"><div class="initial">'+esc(initials(name))+'</div><div><div class="cname">'+esc(name)+'</div><div class="cmeta">'+esc([l.City,l.LeadSource||l.Source].filter(Boolean).join(' · '))+' · '+esc(rel(stamp))+'</div></div><span class="status '+(hot(l)?'hot':'active')+'">'+(hot(l)?'Hot':'Active')+'</span></div>'}).join(''):'<div class="empty">No recent client activity.</div>';
 
-  document.getElementById('activity').innerHTML=recent.length?recent.map(l=>'<div class="activity"><span class="dot"></span><div class="atext"><b>'+esc(l.ClientName||l.LeadID)+'</b> added<div class="atime">'+esc(rel(l.CreatedAt))+' · <a href="/client-workspace?id='+encodeURIComponent(l.LeadID)+'">Open</a></div></div></div>').join(''):'<div class="empty">No recent activity.</div>';
+  document.getElementById('activity').innerHTML=recent.length?recent.map(l=>{const name=l.ClientName||l.Name||l.FullName||l.LeadName||l.LeadID||'Client';const stamp=l.CreatedAt||l.CreatedDate||l.CreatedOn||l.UpdatedAt||l.UpdatedDate;return '<div class="activity"><span class="dot"></span><div class="atext"><b>'+esc(name)+'</b> added<div class="atime">'+esc(rel(stamp))+' · <a href="/client-workspace?id='+encodeURIComponent(l.LeadID||'')+'">Open</a></div></div></div>'}).join(''):'<div class="empty">No recent activity.</div>';
 
-  if(apiState.visits.ok){
-    document.getElementById('visits').innerHTML=todayVisits.length?todayVisits.slice(0,8).map(v=>{
-      const d=safeDate(v.VisitDate||v.visitDate||v.date);
-      const time=String(v.VisitTime||v.visitTime||'').trim();
-      if(!d)return '';
-      const client=v.ClientName||v.clientName||v.LeadName||v.LeadID||v.leadId||'Client';
-      const property=v.PropertyName||v.propertyName||v.PropertyID||v.propertyId||'Property';
-      return '<div class="work-row"><a href="/client-workspace"><span class="work-label">'+esc(client)+' · '+esc(property)+'</span><span class="work-count blue">'+esc(time||d.toLocaleDateString('en-IN'))+'</span></a></div>';
-    }).join(''):'<div class="empty">No site visits scheduled for today.</div>';
-  }else{
-    document.getElementById('visits').innerHTML='<div class="empty">Site visits unavailable — '+esc(apiState.visits.error||'API error')+'</div>';
-  }
+  document.getElementById('visits').innerHTML=apiState.visits.ok?(todayVisitCount?'<div class="work-row"><a href="/client-workspace"><span class="work-label">'+todayVisitCount+' site visit'+(todayVisitCount===1?'':'s')+' scheduled today</span><span class="work-count blue">'+todayVisitCount+'</span></a></div>':'<div class="empty">No site visits scheduled for today.</div>'):'<div class="empty">Site visit reporting unavailable — '+esc(apiState.visits.error||'API error')+'</div>';
 
-  const a=inv.filter(x=>!x._deleted);
-  const cats={Residential:0,Commercial:0,Land:0,Industrial:0};
-  a.forEach(x=>{const c=Object.keys(cats).find(k=>new RegExp(k,'i').test(String(x.Category||x.PropertyType||'')));if(c)cats[c]++;});
+  const invSummary=dashboardReport?.inventory||{};
   document.getElementById('inventory').innerHTML=apiState.inventory.ok?
-    '<div class="inventory"><div class="invtag"><b>'+a.length+'</b><span>Available</span></div>'+Object.entries(cats).map(([k,v])=>'<div class="invtag"><b>'+v+'</b><span>'+k+'</span></div>').join('')+'</div>':
-    '<div class="empty">Inventory unavailable — '+esc(apiState.inventory.error||'API error')+'</div>';
+    '<div class="inventory"><div class="invtag"><b>'+Number(invSummary.totalProperties||0)+'</b><span>Total</span></div><div class="invtag"><b>'+Number(invSummary.available||0)+'</b><span>Available</span></div><div class="invtag"><b>'+Number(invSummary.underNegotiation||0)+'</b><span>Negotiation</span></div><div class="invtag"><b>'+Number(invSummary.tokenized||0)+'</b><span>Tokenized</span></div></div>':
+    '<div class="empty">Inventory reporting unavailable — '+esc(apiState.inventory.error||'API error')+'</div>';
 }
 const apiState={report:{ok:false,error:''},leads:{ok:false,error:''},inventory:{ok:false,error:''},visits:{ok:false,error:''},followups:{ok:false,error:''}};
 async function boot(){
   try{
     setDataStatus(true,'Refreshing…');
-    const [rr,lr,ir,vr,fr,dr]=await Promise.all([
+    const [rr,lr,tr,fr,dr]=await Promise.all([
       get('/api/reports/dashboard'),
       get('/api/leads'),
-      get('/api/v2/inventory'),
-      get('/api/v2/site-visit-bookings?leadId=all'),
+      get('/api/reports/dashboard?datePreset=today'),
       get('/api/v2/followups?preset=today&limit=100'),
       get('/api/v2/followups?preset=overdue&limit=100')
     ]);
     apiState.report={ok:!!rr.ok,error:rr.error||''};
     apiState.leads={ok:!!lr.ok,error:lr.error||''};
-    apiState.inventory={ok:!!ir.ok,error:ir.error||''};
-    apiState.visits={ok:!!vr.ok,error:vr.error||''};
+    apiState.inventory={ok:!!rr.ok,error:rr.error||''};
+    apiState.visits={ok:!!tr.ok,error:tr.error||''};
     apiState.followups={ok:!!(fr.ok||dr.ok),error:fr.error||dr.error||''};
 
     dashboardReport=rr.data||{};
+    todayDashboardReport=tr.data||{};
     leads=Array.isArray(lr.data)?lr.data:[];
-    inv=Array.isArray(ir.data)?ir.data:[];
-    visits=Array.isArray(vr.data)?vr.data:[];
     const followRows=[...(Array.isArray(fr.data)?fr.data:[]),...(Array.isArray(dr.data)?dr.data:[])];
     const seenFollowups=new Set();
     const f=followRows.filter(row=>{const id=String(row?.FollowUpID||row?.followUpId||row?.TaskID||row?.id||'');if(id){if(seenFollowups.has(id))return false;seenFollowups.add(id)}return true;});
     document.getElementById('kFollow').textContent=f.length;
     document.getElementById('kVisits').textContent=Number((dashboardReport.pipeline||{}).siteVisit??visits.length);
     render();
-    const allOk=rr.ok && lr.ok && ir.ok && vr.ok;
+    const allOk=rr.ok && lr.ok && tr.ok;
     setDataStatus(allOk,'Updated '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}));
     if(!rr.ok) console.warn('Dashboard report unavailable:',rr.error);
-    if(!vr.ok) console.warn('Site visits unavailable:',vr.error);
-    if(!ir.ok) console.warn('Inventory unavailable:',ir.error);
+    if(!tr.ok) console.warn('Today site-visit report unavailable:',tr.error);
   }catch(e){
     setDataStatus(false,'Data unavailable — refresh');
     document.querySelectorAll('.loading').forEach(x=>x.textContent='Data unavailable — refresh');
