@@ -1192,10 +1192,7 @@ class V2Router {
     const limit = Math.min(100, Math.max(1, Number(filters.limit || 24) || 24));
     const start = (page - 1) * limit;
     const pageRows = visible.slice(start, start + limit);
-    const enriched = this._enrichClientsForList(pageRows).map((client) => ({
-      ...client,
-      _openTransactions: txns.filter(t => t.LeadID === client.LeadID && !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length
-    }));
+    const enriched = this._enrichClientsForList(pageRows);
 
     return {
       ok: true,
@@ -1265,55 +1262,88 @@ class V2Router {
     const fus  = db.FollowUps   || [];
     const acts = db.Activities  || [];
 
+    // Build indexes once. The client list is paginated, so enrichment must be
+    // O(total rows + page rows), not O(page rows × every table row).
+    const reqByLead = new Map();
+    for (const r of reqs) {
+      if (!r.LeadID) continue;
+      if (!reqByLead.has(r.LeadID)) reqByLead.set(r.LeadID, []);
+      reqByLead.get(r.LeadID).push(r);
+    }
+    const txnByLead = new Map();
+    const txnById = new Map();
+    for (const t of txns) {
+      if (t.TransactionID) txnById.set(t.TransactionID, t);
+      if (!t.LeadID) continue;
+      if (!txnByLead.has(t.LeadID)) txnByLead.set(t.LeadID, []);
+      txnByLead.get(t.LeadID).push(t);
+    }
+    const nextFollowUpByLead = new Map();
+    for (const f of fus) {
+      if (!f.LeadID || ['COMPLETED','CANCELLED'].includes(String(f.Status || '').toUpperCase())) continue;
+      const current = nextFollowUpByLead.get(f.LeadID);
+      const currentTime = current ? new Date(current.DueAt || current.DueDate || '').getTime() : Infinity;
+      const nextTime = new Date(f.DueAt || f.DueDate || '').getTime();
+      if (!current || (Number.isFinite(nextTime) && nextTime < currentTime)) nextFollowUpByLead.set(f.LeadID, f);
+    }
+    const lastActivityByLead = new Map();
+    for (const a of acts) {
+      if (!a.LeadID) continue;
+      const current = lastActivityByLead.get(a.LeadID);
+      if (!current || new Date(a.CreatedAt || 0).getTime() > new Date(current.CreatedAt || 0).getTime()) {
+        lastActivityByLead.set(a.LeadID, a);
+      }
+    }
+
     return leads.map(lead => {
-      const leadReqs = reqs.filter(r => r.LeadID === lead.LeadID);
-      const leadTxns = txns.filter(t => t.LeadID === lead.LeadID);
-      const pending  = fus.filter(f => f.LeadID === lead.LeadID && f.Status !== 'COMPLETED' && f.Status !== 'CANCELLED')
-        .sort((a, b) => new Date(a.DueAt || a.DueDate || '').getTime() - new Date(b.DueAt || b.DueDate || '').getTime());
+      const leadReqs = reqByLead.get(lead.LeadID) || [];
+      const leadTxns = txnByLead.get(lead.LeadID) || [];
+      const pending = nextFollowUpByLead.get(lead.LeadID);
+      const lastAct = lastActivityByLead.get(lead.LeadID);
 
-      const lastAct = acts
-        .filter(a => a.LeadID === lead.LeadID)
-        .sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime())[0];
-
-      // Compact need summaries for client-list filtering.
-      // Include every requirement so filters never silently miss needs #4+.
       const needSummaries = leadReqs.map(r => {
-        const txn      = leadTxns.find(t => t.TransactionID === r.TransactionID);
-        const budMin   = r.Fields?.BudgetMin?.value ?? r.BudgetMin;
-        const budMax   = r.Fields?.BudgetMax?.value ?? r.BudgetMax;
-        const loc1     = r.Fields?.Location1?.value ?? r.Location1;
-        const loc2     = r.Fields?.Location2?.value ?? r.Location2;
-        const bhkMin   = r.Fields?.BHKMin?.value    ?? r.BHKMin ?? r.BHK;
-        const rpsfMin  = r.Fields?.RatePerSqFtMin?.value ?? r.RatePerSqFtMin;
-        const rpsfMax  = r.Fields?.RatePerSqFtMax?.value ?? r.RatePerSqFtMax;
-        const society  = r.Fields?.SocietyName?.value ?? r.SocietyName;
-        const carpet   = r.Fields?.CarpetArea?.value ?? r.CarpetArea;
+        const txn = r.TransactionID ? txnById.get(r.TransactionID) : null;
+        const budMin = r.Fields?.BudgetMin?.value ?? r.BudgetMin;
+        const budMax = r.Fields?.BudgetMax?.value ?? r.BudgetMax;
+        const loc1 = r.Fields?.Location1?.value ?? r.Location1;
+        const loc2 = r.Fields?.Location2?.value ?? r.Location2;
+        const bhkMin = r.Fields?.BHKMin?.value ?? r.BHKMin ?? r.BHK;
+        const rpsfMin = r.Fields?.RatePerSqFtMin?.value ?? r.RatePerSqFtMin;
+        const rpsfMax = r.Fields?.RatePerSqFtMax?.value ?? r.RatePerSqFtMax;
+        const society = r.Fields?.SocietyName?.value ?? r.SocietyName;
+        const carpet = r.Fields?.CarpetArea?.value ?? r.CarpetArea;
+        const reqStatus = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
         return {
-          RequirementID:   r.RequirementID,
+          RequirementID: r.RequirementID,
           TransactionType: r.TransactionType || txn?.TransactionType,
-          Category:        r.Category,
-          SubCategory:     r.SubCategory,
-          BudgetMin:       budMin,
-          BudgetMax:       budMax,
-          Location:        loc1,
-          Location1:       loc1,
-          Location2:       loc2,
-          BHK:             bhkMin,
-          RatePerSqFtMin:  rpsfMin,
-          RatePerSqFtMax:  rpsfMax,
-          SocietyName:     society,
-          CarpetArea:      carpet,
-          Score:           r.RequirementScore
+          Category: r.Category,
+          SubCategory: r.SubCategory,
+          BudgetMin: budMin,
+          BudgetMax: budMax,
+          Location: loc1,
+          Location1: loc1,
+          Location2: loc2,
+          BHK: bhkMin,
+          RatePerSqFtMin: rpsfMin,
+          RatePerSqFtMax: rpsfMax,
+          SocietyName: society,
+          CarpetArea: carpet,
+          Score: r.RequirementScore,
+          RequirementStatus: reqStatus || 'ACTIVE'
         };
       });
 
       return {
         ...lead,
-        _activeNeeds:    leadReqs.length,
-        _needSummaries:  needSummaries,
-        _moreNeeds:      0,
-        _nextFollowUp:   pending[0] ? (pending[0].DueAt || pending[0].DueDate) : null,
-        _lastContact:    lastAct ? lastAct.CreatedAt : lead.last_activity_at || null
+        _activeNeeds: leadReqs.filter(r => {
+          const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
+          return !status || status === 'ACTIVE';
+        }).length,
+        _needSummaries: needSummaries,
+        _moreNeeds: 0,
+        _nextFollowUp: pending ? (pending.DueAt || pending.DueDate) : null,
+        _lastContact: lastAct ? lastAct.CreatedAt : lead.last_activity_at || null,
+        _openTransactions: leadTxns.filter(t => !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length
       };
     });
   }
