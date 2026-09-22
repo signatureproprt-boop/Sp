@@ -33,7 +33,7 @@ button,input{font:inherit}.topbar{height:58px;background:#fff;border-bottom:1px 
 <button class="hamb" onclick="location.href='/clients'" aria-label="Menu">☰</button>
 </header>
 <main class="page">
-<section class="head"><div><h1>Dashboard</h1><p id="welcome">Business overview and today's priorities</p></div><a class="primary" href="/clients">＋ New Client</a></section>
+<section class="head"><div><h1>Dashboard</h1><p id="welcome">Business overview and today's priorities</p></div><div style="display:flex;gap:7px;align-items:center"><span id="data-status" style="font-size:10px;color:var(--muted)">Loading data…</span><button class="primary" id="refresh-dashboard" type="button">↻ Refresh</button><a class="primary" href="/clients">＋ New Client</a></div></section>
 
 <section class="kpis">
 <div class="kpi"><div class="label">Clients</div><div class="value" id="kClients">—</div><div class="sub">Total</div></div>
@@ -78,6 +78,7 @@ function hot(l){return(l.Tags||[]).some(x=>/hot/i.test(x))||/hot/i.test(String(l
 function money(v){const n=Number(v||0);if(!n)return '₹0';if(n>=10000000)return '₹'+(n/10000000).toFixed(1)+'Cr';if(n>=100000)return '₹'+(n/100000).toFixed(1)+'L';return '₹'+Math.round(n).toLocaleString('en-IN')}
 function rel(d){if(!d)return '—';const dt=new Date(d);if(Number.isNaN(dt.getTime()))return '—';const s=(Date.now()-dt)/1000;if(s<0)return 'upcoming';if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
 function safeDate(v){const d=new Date(v);return Number.isNaN(d.getTime())?null:d}
+function setDataStatus(ok,message){const el=document.getElementById('data-status');if(!el)return;el.textContent=message|| (ok?'Live data':'Data unavailable');el.style.color=ok?'var(--ok)':'var(--danger)'}
 function render(){
   const ex=dashboardReport?.executive||{},pipe=dashboardReport?.pipeline||{},fin=dashboardReport?.financial||{};
   document.getElementById('kClients').textContent=Number(ex.totalLeads??leads.length);
@@ -126,6 +127,7 @@ function render(){
 const apiState={report:{ok:false,error:''},leads:{ok:false,error:''},inventory:{ok:false,error:''},visits:{ok:false,error:''},followups:{ok:false,error:''}};
 async function boot(){
   try{
+    setDataStatus(true,'Refreshing…');
     const [rr,lr,ir,vr,fr,dr]=await Promise.all([
       get('/api/reports/dashboard'),
       get('/api/leads'),
@@ -144,19 +146,24 @@ async function boot(){
     leads=Array.isArray(lr.data)?lr.data:[];
     inv=Array.isArray(ir.data)?ir.data:[];
     visits=Array.isArray(vr.data)?vr.data:[];
-    const f=[...(Array.isArray(fr.data)?fr.data:[]),...(Array.isArray(dr.data)?dr.data:[])];
+    const followRows=[...(Array.isArray(fr.data)?fr.data:[]),...(Array.isArray(dr.data)?dr.data:[])];
+    const seenFollowups=new Set();
+    const f=followRows.filter(row=>{const id=String(row?.FollowUpID||row?.followUpId||row?.TaskID||row?.id||'');if(id){if(seenFollowups.has(id))return false;seenFollowups.add(id)}return true;});
     document.getElementById('kFollow').textContent=f.length;
     document.getElementById('kVisits').textContent=Number((dashboardReport.pipeline||{}).siteVisit??visits.length);
     render();
-
+    const allOk=rr.ok && lr.ok && ir.ok && vr.ok;
+    setDataStatus(allOk,'Updated '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}));
     if(!rr.ok) console.warn('Dashboard report unavailable:',rr.error);
     if(!vr.ok) console.warn('Site visits unavailable:',vr.error);
     if(!ir.ok) console.warn('Inventory unavailable:',ir.error);
   }catch(e){
+    setDataStatus(false,'Data unavailable — refresh');
     document.querySelectorAll('.loading').forEach(x=>x.textContent='Data unavailable — refresh');
     console.error(e);
   }
 }
+document.getElementById('refresh-dashboard')?.addEventListener('click',()=>boot());
 auth().then(x=>x&&boot());
 </script>
 </body>
