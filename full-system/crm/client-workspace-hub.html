@@ -169,7 +169,6 @@ async function createClient(){
   closeNewClient();window.location.href='/client-workspace?id='+encodeURIComponent(j.client?.leadId||j.leadId||'');
  }catch(e){err.textContent='Network error: '+e.message}
 }
-populateLocations();
 load();
 </script>
 </body>
