@@ -135,7 +135,7 @@ async function boot(){
     const seenFollowups=new Set();
     const f=followRows.filter(row=>{const id=String(row?.FollowUpID||row?.followUpId||row?.TaskID||row?.id||'');if(id){if(seenFollowups.has(id))return false;seenFollowups.add(id)}return true;});
     document.getElementById('kFollow').textContent=f.length;
-    document.getElementById('kVisits').textContent=Number((dashboardReport.pipeline||{}).siteVisit??visits.length);
+    document.getElementById('kVisits').textContent=Number((dashboardReport.pipeline||{}).siteVisit||0);
     render();
     const allOk=rr.ok && lr.ok && tr.ok;
     setDataStatus(allOk,'Updated '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}));
