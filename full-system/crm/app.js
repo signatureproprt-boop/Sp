@@ -2000,7 +2000,10 @@ async function renderDealCenter() {
       <section class="card-section">
         <div class="card-header">
           <h2>Deal Center</h2>
-          <span class="badge green">Token / Agreement / Registration</span>
+          <div class="top-actions">
+            <span class="badge green">Token / Agreement / Registration</span>
+            <button class="btn btn-primary" id="recordTokenBtn">＋ Record Token</button>
+          </div>
         </div>
         <div class="reports-grid">
           <article class="report-box">
@@ -2054,9 +2057,156 @@ async function renderDealCenter() {
     if (openBtn) {
       openBtn.addEventListener('click', () => renderCommission());
     }
+    const recordTokenBtn = document.getElementById('recordTokenBtn');
+    if (recordTokenBtn) {
+      recordTokenBtn.addEventListener('click', () => renderTokenReceiptForm());
+    }
   } catch (error) {
     content.innerHTML = `<section class="card-section"><div class="match-error">Could not load deal center: ${escapeHtml(error.message)}</div></section>`;
   }
+}
+
+async function renderTokenReceiptForm(preselected = {}) {
+  const content = document.getElementById('app-content');
+  let negotiations = [];
+  try {
+    const response = await fetch('/api/negotiations');
+    const payload = await response.json();
+    negotiations = payload.data || [];
+  } catch (_) {}
+
+  const selected = preselected || {};
+  const negotiationOptions = negotiations.map((n) =>
+    '<option value="' + escapeHtml(n.NegotiationID) + '" data-lead="' + escapeHtml(n.LeadID || '') +
+    '" data-req="' + escapeHtml(n.RequirementID || '') + '" data-property="' + escapeHtml(n.PropertyID || '') + '"' +
+    (n.NegotiationID === selected.NegotiationID ? ' selected' : '') + '>' +
+    escapeHtml(n.NegotiationID + ' • ' + (n.Status || 'OPEN')) + '</option>'
+  ).join('');
+
+  content.innerHTML = `
+    <section class="card-section">
+      <div class="card-header">
+        <div><h2>Token Receipt & Deal Terms</h2><div class="tiny">Transaction-specific token, client, owner and brokerage record</div></div>
+        <button class="btn btn-soft" id="cancelTokenForm">Back to Deal Center</button>
+      </div>
+
+      <form id="tokenReceiptForm" class="form-stack">
+        <div class="card-header"><h2>1. Transaction & Property</h2><span class="badge gold">Required</span></div>
+        <div class="two-col">
+          <label class="field"><span>Negotiation</span><select name="NegotiationID" id="tokenNegotiation" required><option value="">Select negotiation</option>${negotiationOptions}</select></label>
+          <label class="field"><span>Transaction Type</span><select name="TransactionType" id="tokenTransactionType" required>
+            <option value="Sale">Sale</option><option value="Purchase">Purchase</option><option value="Rent">Rent</option><option value="Rent Out">Rent Out</option><option value="Lease">Lease</option><option value="Lease Out">Lease Out</option>
+          </select></label>
+          <label class="field"><span>Lead / Client ID</span><input name="LeadID" value="${escapeHtml(selected.LeadID || '')}" required></label>
+          <label class="field"><span>Requirement ID</span><input name="RequirementID" value="${escapeHtml(selected.RequirementID || '')}" required></label>
+          <label class="field"><span>Property ID</span><input name="PropertyID" value="${escapeHtml(selected.PropertyID || '')}" required></label>
+          <label class="field"><span>Final Deal Value (₹)</span><input name="FinalDealValue" type="number" min="0" step="0.01" required></label>
+        </div>
+
+        <div class="card-header"><h2>2. Buyer / Client Details</h2><span class="badge slate">Transaction party</span></div>
+        <div class="two-col">
+          <label class="field"><span>Buyer / Client ID</span><input name="BuyerClientID"></label>
+          <label class="field"><span>Full Name</span><input name="BuyerName" required></label>
+          <label class="field"><span>Father / Spouse Name</span><input name="BuyerFatherSpouse"></label>
+          <label class="field"><span>Mobile</span><input name="BuyerMobile" required></label>
+          <label class="field"><span>Email</span><input name="BuyerEmail" type="email"></label>
+          <label class="field"><span>PAN / ID Reference</span><input name="BuyerPAN"></label>
+          <label class="field wide"><span>Address</span><textarea name="BuyerAddress"></textarea></label>
+        </div>
+
+        <div class="card-header"><h2>3. Seller / Owner Details</h2><span class="badge slate">Transaction party</span></div>
+        <div class="two-col">
+          <label class="field"><span>Seller / Owner Client ID</span><input name="SellerClientID"></label>
+          <label class="field"><span>Full Name</span><input name="SellerName" required></label>
+          <label class="field"><span>Father / Spouse Name</span><input name="SellerFatherSpouse"></label>
+          <label class="field"><span>Mobile</span><input name="SellerMobile" required></label>
+          <label class="field"><span>Email</span><input name="SellerEmail" type="email"></label>
+          <label class="field"><span>PAN / ID Reference</span><input name="SellerPAN"></label>
+          <label class="field wide"><span>Address</span><textarea name="SellerAddress"></textarea></label>
+        </div>
+
+        <div class="card-header"><h2>4. Token Payment</h2><span class="badge green">Receipt</span></div>
+        <div class="two-col">
+          <label class="field"><span>Token Amount (₹)</span><input name="TokenAmount" type="number" min="0" step="0.01" required></label>
+          <label class="field"><span>Received Amount (₹)</span><input name="PaidAmount" type="number" min="0" step="0.01" required></label>
+          <label class="field"><span>Payment Mode</span><select name="PaymentMode"><option>UPI</option><option>BANK_TRANSFER</option><option>CHEQUE</option><option>CASH</option><option>OTHER</option></select></label>
+          <label class="field"><span>UTR / Cheque / Reference</span><input name="Reference"></label>
+          <label class="field"><span>Token Date</span><input name="TokenDate" type="date" required></label>
+          <label class="field"><span>Payment Terms</span><input name="PaymentTerms"></label>
+        </div>
+
+        <div class="card-header"><h2>5. Brokerage Discussion & Split</h2><span class="badge gold">Commercial terms</span></div>
+        <div class="two-col">
+          <label class="field"><span>Brokerage Type</span><select name="BrokerageType"><option value="PERCENTAGE">Percentage</option><option value="FIXED">Fixed</option></select></label>
+          <label class="field"><span>Brokerage %</span><input name="BrokeragePercent" type="number" min="0" step="0.01"></label>
+          <label class="field"><span>Total Brokerage (₹)</span><input name="BrokerageAmount" type="number" min="0" step="0.01" required></label>
+          <label class="field"><span>Brokerage Payer</span><select name="BrokeragePayer"><option>Buyer</option><option>Seller</option><option>Both</option><option>Other</option><option>NONE</option></select></label>
+          <label class="field"><span>Primary Broker</span><input name="PrimaryBroker" required></label>
+          <label class="field"><span>Broker Company</span><input name="PrimaryBrokerCompany" value="Signature Properties" required></label>
+          <label class="field"><span>Brokerage Payment Milestone</span><select name="BrokeragePaymentMilestone"><option>Token</option><option>Agreement</option><option>Registration</option><option>Possession</option><option>Custom</option></select></label>
+          <label class="field"><span>Brokerage Due Date</span><input name="BrokerageDueDate" type="date"></label>
+          <label class="field wide"><span>Broker / Co-broker Split Notes</span><textarea name="BrokerageSplitNotes" placeholder="Example: Primary 60%, Co-broker 40%"></textarea></label>
+        </div>
+
+        <div class="card-header"><h2>6. Company Rules & Brokerage Acknowledgement</h2><span class="badge red">Important</span></div>
+        <div style="background:#fff8e7;border:1px solid #ead7a2;border-radius:8px;padding:14px;font-size:13px;line-height:1.6">
+          Brokerage terms recorded above form part of the transaction record. The responsible party is expected to pay the agreed brokerage according to the recorded milestone. If payment is delayed or disputed, the brokerage may issue a written demand/notice and pursue legally available recovery or dispute-resolution remedies, subject to the signed agreement and applicable law.
+          Any change to deal value, brokerage, payer or broker split must be recorded as an authorized amendment in the CRM.
+        </div>
+        <label class="field" style="margin-top:12px"><span><input type="checkbox" name="BrokerageTermsAccepted" value="true" required style="width:auto;margin-right:8px"> I confirm that the brokerage amount, payer, broker names, split and payment milestone have been discussed and recorded correctly.</span></label>
+        <label class="field"><span>Special Terms / Legal Notes</span><textarea name="Notes"></textarea></label>
+
+        <div class="top-actions">
+          <button class="btn btn-soft" type="button" id="cancelTokenForm2">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save Token & Generate Receipt Record</button>
+        </div>
+        <div id="tokenFormStatus" class="tiny"></div>
+      </form>
+    </section>
+  `;
+
+  document.getElementById('cancelTokenForm').onclick = () => renderDealCenter();
+  document.getElementById('cancelTokenForm2').onclick = () => renderDealCenter();
+
+  const negotiationSelect = document.getElementById('tokenNegotiation');
+  negotiationSelect.addEventListener('change', () => {
+    const opt = negotiationSelect.options[negotiationSelect.selectedIndex];
+    if (!opt) return;
+    document.querySelector('[name="LeadID"]').value = opt.dataset.lead || '';
+    document.querySelector('[name="RequirementID"]').value = opt.dataset.req || '';
+    document.querySelector('[name="PropertyID"]').value = opt.dataset.property || '';
+  });
+
+  document.getElementById('tokenReceiptForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const payload = Object.fromEntries(data.entries());
+    payload.TokenAmount = Number(payload.TokenAmount || 0);
+    payload.PaidAmount = Number(payload.PaidAmount || 0);
+    payload.FinalDealValue = Number(payload.FinalDealValue || 0);
+    payload.BrokeragePercent = Number(payload.BrokeragePercent || 0);
+    payload.BrokerageAmount = Number(payload.BrokerageAmount || 0);
+    payload.BrokerageTermsAccepted = data.get('BrokerageTermsAccepted') === 'true';
+    payload.BuyerDetails = { Name: payload.BuyerName, FatherSpouse: payload.BuyerFatherSpouse, Mobile: payload.BuyerMobile, Email: payload.BuyerEmail, PAN: payload.BuyerPAN, Address: payload.BuyerAddress };
+    payload.SellerDetails = { Name: payload.SellerName, FatherSpouse: payload.SellerFatherSpouse, Mobile: payload.SellerMobile, Email: payload.SellerEmail, PAN: payload.SellerPAN, Address: payload.SellerAddress };
+    payload.BrokerageTermsAcceptedAt = new Date().toISOString();
+    payload.BrokerageTermsAcceptedBy = 'current-user';
+    payload.BrokerageTermsVersion = 'v1';
+    payload.Status = payload.PaidAmount >= payload.TokenAmount && payload.TokenAmount > 0 ? 'PAID' : payload.PaidAmount > 0 ? 'PARTIAL' : 'PENDING';
+
+    const status = document.getElementById('tokenFormStatus');
+    status.textContent = 'Saving token...';
+    try {
+      const response = await fetch('/api/tokens', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Could not save token');
+      status.textContent = 'Token recorded successfully.';
+      setTimeout(() => renderDealCenter(), 500);
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
 }
 
 async function renderCommission() {
