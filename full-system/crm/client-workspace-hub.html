@@ -127,7 +127,11 @@ async function load(resetPage=false){
    try{
      j=await fetchJsonWithTimeout(queryUrl,{credentials:'include'});
    }catch(primaryError){
-     // Safe compatibility fallback: older V2 list endpoint.
+     // Only use the legacy endpoint for route compatibility errors.
+     // Never retry a timeout/5xx request because the legacy endpoint enriches
+     // the full client set and can amplify a backend performance problem.
+     const retryable = /HTTP (404|405)/.test(String(primaryError?.message || ''));
+     if (!retryable) throw primaryError;
      const p=new URLSearchParams();
      const q=document.getElementById('search').value.trim();
      const status=document.getElementById('status').value;
