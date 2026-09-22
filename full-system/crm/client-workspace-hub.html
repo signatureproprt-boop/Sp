@@ -29,7 +29,7 @@
 <div class="stat"><span>Total Clients</span><b id="s-total">—</b></div><div class="stat"><span>Active Requirements</span><b id="s-req">—</b></div><div class="stat"><span>Open Transactions</span><b id="s-txn">—</b></div><div class="stat"><span>Hot Clients</span><b id="s-hot">—</b></div>
 </section>
 <div class="toolbar">
-<input id="search" class="search" placeholder="Search client name, mobile, email…" oninput="render()">
+<input id="search" class="search" placeholder="Search client name, mobile, email…" oninput="scheduleLoad()">
 <button class="btn" style="background:#fff;border:1px solid var(--border);color:var(--brown)" onclick="load()">↻ Refresh</button>
 </div>
 <div class="chips">
@@ -42,12 +42,12 @@
 <button class="chip" data-txn="Lease Out" onclick="setChip(this,'txn','Lease Out')">📤 Lease Out</button>
 </div>
 <div class="filters">
-<div class="filter-wrap"><label>Property Type</label><select id="category" onchange="render()"><option value="">All Types</option><option>Residential</option><option>Commercial</option><option>Industrial</option><option>Land</option><option>Agriculture</option></select></div>
-<div class="filter-wrap"><label>Status</label><select id="status" onchange="render()"><option value="">All Status</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Won</option><option>Lost</option></select></div>
-<div class="filter-wrap"><label>Client Type</label><select id="clientType" onchange="render()"><option value="">All Clients</option><option value="investor">Investors</option><option value="normal">Non-Investors</option></select></div>
-<div class="filter-wrap"><label>Budget</label><select id="budget" onchange="render()"><option value="">Any Budget</option><option value="under50">Under ₹50L</option><option value="50to100">₹50L–₹1Cr</option><option value="100to200">₹1–2Cr</option><option value="over200">₹2Cr+</option></select></div>
+<div class="filter-wrap"><label>Property Type</label><select id="category" onchange="load(true)"><option value="">All Types</option><option>Residential</option><option>Commercial</option><option>Industrial</option><option>Land</option><option>Agriculture</option></select></div>
+<div class="filter-wrap"><label>Status</label><select id="status" onchange="load(true)"><option value="">All Status</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Won</option><option>Lost</option></select></div>
+<div class="filter-wrap"><label>Client Type</label><select id="clientType" onchange="load(true)"><option value="">All Clients</option><option value="investor">Investors</option><option value="normal">Non-Investors</option></select></div>
+<div class="filter-wrap"><label>Budget</label><select id="budget" onchange="load(true)"><option value="">Any Budget</option><option value="under50">Under ₹50L</option><option value="50to100">₹50L–₹1Cr</option><option value="100to200">₹1–2Cr</option><option value="over200">₹2Cr+</option></select></div>
 <div class="filter-wrap"><label>Location</label><input id="location" class="filter" placeholder="Surat / area" oninput="scheduleLoad()"></div>
-<div class="filter-wrap"><label>Source</label><select id="source" onchange="render()"><option value="">All Sources</option><option>Own</option><option>Builder</option><option>Broker</option><option>Owner</option></select></div>
+<div class="filter-wrap"><label>Source</label><select id="source" onchange="load(true)"><option value="">All Sources</option><option>Own</option><option>Builder</option><option>Broker</option><option>Owner</option></select></div>
 </div>
 <section id="grid" class="grid"><div class="load">Loading clients…</div></section><div id="pager" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px"></div>
 </main>
@@ -104,7 +104,7 @@ async function load(resetPage=false){
    if(!res.ok||!j.ok)throw new Error(j.error||'Failed to load clients');
    clients=Array.isArray(j.data)?j.data:[];
    queryState=Object.assign(queryState,j.pagination||{});
-   updateStats(j.totalCount);
+   updateStats(j.totalCount,j.summary||{});
    render();
    renderPager();
  }catch(e){
@@ -112,7 +112,7 @@ async function load(resetPage=false){
    document.getElementById('pager').innerHTML='';
  }finally{queryState.loading=false}
 }
-function updateStats(total){document.getElementById('s-total').textContent=Number(total??queryState.total??0);document.getElementById('s-req').textContent=clients.reduce((n,c)=>n+Number(c._activeNeeds||0),0);document.getElementById('s-txn').textContent=clients.reduce((n,c)=>n+Number(c._openTransactions||0),0);document.getElementById('s-hot').textContent=clients.filter(c=>Number(typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore||0)>=70).length}
+function updateStats(total,summary={}){document.getElementById('s-total').textContent=Number(summary.totalClients??total??queryState.total??0);document.getElementById('s-req').textContent=Number(summary.activeNeeds??0);document.getElementById('s-txn').textContent=Number(summary.openTransactions??0);document.getElementById('s-hot').textContent=Number(summary.hotCount??0)}
 let FILTER_TXN='';
 function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
 function scheduleLoad(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>load(true),300)}
