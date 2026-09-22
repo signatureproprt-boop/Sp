@@ -71,7 +71,7 @@ class ShortlistServiceV2 {
 
   buildView(row) {
     const req = this.repo.readRequirement(row.RequirementID);
-    const prop = this.repo.find('Inventory', 'PropertyID', row.PropertyID);
+    const prop = row.IsManual ? null : this.repo.find('Inventory', 'PropertyID', row.PropertyID);
     return {
       ShortlistID: row.ShortlistID,
       RequirementID: row.RequirementID,
@@ -85,7 +85,8 @@ class ShortlistServiceV2 {
       CreatedAt: row.CreatedAt,
       UpdatedAt: row.UpdatedAt,
       RequirementCode: req?.RequirementCode || row.RequirementID,
-      Property: this._propertySnapshot(prop)
+      IsManual: !!row.IsManual,
+      Property: row.IsManual ? (row.ManualProperty || {}) : this._propertySnapshot(prop)
     };
   }
 
@@ -150,6 +151,60 @@ class ShortlistServiceV2 {
       this.repo.addTimelineEntry(row.LeadID, 'Shortlist', row.ShortlistID, 'SHORTLISTED', 'Property shortlisted', row);
     } catch (_) { /* non-fatal */ }
     return { ok: true, alreadyShortlisted: false, data: this.buildView(row) };
+  }
+
+  addManual(requirementId, payload = {}) {
+    if (!requirementId) return { ok: false, error: 'requirementId required' };
+    const req = this.repo.readRequirement(requirementId);
+    if (!req) return { ok: false, error: 'Requirement not found' };
+
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    const title = String(payload.title || payload.name || '').trim();
+    if (!title) return { ok: false, error: 'Manual property name/title is required' };
+
+    const propertyId = 'MANUAL-' + this.repo.createId('SL');
+    const row = {
+      ShortlistID: this.repo.createId('SL'),
+      RequirementID: requirementId,
+      LeadID: req.LeadID,
+      PropertyID: propertyId,
+      IsManual: true,
+      ManualProperty: {
+        Title: title,
+        Category: payload.category || req.Category || null,
+        SubCategory: payload.subCategory || null,
+        Location1: payload.location || null,
+        SocietyName: payload.societyName || null,
+        AskingPrice: payload.askingPrice != null ? Number(payload.askingPrice) : null,
+        AskingRatePerSqFt: payload.ratePerSqFt != null ? Number(payload.ratePerSqFt) : null,
+        CarpetArea: payload.carpetArea != null ? Number(payload.carpetArea) : null,
+        BHK: payload.bhk || null,
+        FurnishingType: payload.furnishing || null,
+        InventorySource: payload.source || 'Manual',
+        ListingFor: payload.listingFor || req.TransactionType || null,
+        Status: payload.status || 'Manual Entry',
+        PhotoUrl: payload.photoUrl || null,
+        MediaLinks: { photos: [], videos: [], brochures: [] },
+        ProjectName: payload.projectName || null,
+        BuilderName: payload.builderName || null
+      },
+      MatchID: null,
+      Status: 'Active',
+      Priority: this._validPriority(payload.priority),
+      Notes: String(payload.notes || ''),
+      MatchScore: null,
+      MatchLevel: 'MANUAL',
+      CreatedBy: payload.createdBy || 'system',
+      RemovedAt: null,
+      RemovedBy: null,
+      CreatedAt: this._now(),
+      UpdatedAt: this._now()
+    };
+    db.Shortlists.push(row);
+    this.repo.write(db);
+    try { this.repo.addTimelineEntry(row.LeadID, 'Shortlist', row.ShortlistID, 'SHORTLISTED_MANUAL', 'Manual property shortlisted', row); } catch (_) {}
+    return { ok: true, data: this.buildView(row) };
   }
 
   remove(requirementId, propertyId, removedBy = 'system') {
