@@ -76,7 +76,7 @@ const get=async u=>{const controller=new AbortController();const timer=setTimeou
 let leads=[],inv=[],visits=[];let dashboardReport=null;
 function hot(l){return(l.Tags||[]).some(x=>/hot/i.test(x))||/hot/i.test(String(l.ClientStatus||''))}
 function money(v){const n=Number(v||0);if(!n)return '₹0';if(n>=10000000)return '₹'+(n/10000000).toFixed(1)+'Cr';if(n>=100000)return '₹'+(n/100000).toFixed(1)+'L';return '₹'+Math.round(n).toLocaleString('en-IN')}
-function rel(d){if(!d)return '—';const s=(Date.now()-new Date(d))/1000;if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
+function rel(d){if(!d)return '—';const dt=new Date(d);if(Number.isNaN(dt.getTime()))return '—';const s=(Date.now()-dt)/1000;if(s<0)return 'upcoming';if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
 function safeDate(v){const d=new Date(v);return Number.isNaN(d.getTime())?null:d}
 function render(){
   const ex=dashboardReport?.executive||{},pipe=dashboardReport?.pipeline||{},fin=dashboardReport?.financial||{};
@@ -98,7 +98,7 @@ function render(){
     '<div class="work-row"><a href="/client-workspace"><span class="work-label">Negotiations</span><span class="work-count">'+Number(pipe.negotiation||0)+'</span></a></div>'+
     '<div class="work-row"><a href="/admin"><span class="work-label">Token / deal actions</span><span class="work-count">'+(Number(pipe.token||0)+Number(pipe.deal||0))+'</span></a></div>';
 
-  const recent=[...leads].filter(x=>x.CreatedAt).sort((a,b)=>new Date(b.CreatedAt)-new Date(a.CreatedAt)).slice(0,5);
+  const recent=[...leads].filter(x=>x&&typeof x==='object').sort((a,b)=>new Date(b.CreatedAt||b.UpdatedAt||b.CreatedDate||0)-new Date(a.CreatedAt||a.UpdatedAt||a.CreatedDate||0)).slice(0,5);
   document.getElementById('clients').innerHTML=recent.length?recent.map(l=>'<div class="client"><div class="initial">'+esc(initials(l.ClientName))+'</div><div><div class="cname">'+esc(l.ClientName||l.LeadID)+'</div><div class="cmeta">'+esc([l.City,l.LeadSource].filter(Boolean).join(' · '))+' · '+esc(rel(l.CreatedAt))+'</div></div><span class="status '+(hot(l)?'hot':'active')+'">'+(hot(l)?'Hot':'Active')+'</span></div>').join(''):'<div class="empty">No recent client activity.</div>';
 
   document.getElementById('activity').innerHTML=recent.length?recent.map(l=>'<div class="activity"><span class="dot"></span><div class="atext"><b>'+esc(l.ClientName||l.LeadID)+'</b> added<div class="atime">'+esc(rel(l.CreatedAt))+' · <a href="/client-workspace?id='+encodeURIComponent(l.LeadID)+'">Open</a></div></div></div>').join(''):'<div class="empty">No recent activity.</div>';
@@ -107,6 +107,7 @@ function render(){
     document.getElementById('visits').innerHTML=todayVisits.length?todayVisits.slice(0,8).map(v=>{
       const d=safeDate(v.VisitDate||v.visitDate||v.date);
       const time=String(v.VisitTime||v.visitTime||'').trim();
+      if(!d)return '';
       const client=v.ClientName||v.clientName||v.LeadName||v.LeadID||v.leadId||'Client';
       const property=v.PropertyName||v.propertyName||v.PropertyID||v.propertyId||'Property';
       return '<div class="work-row"><a href="/client-workspace"><span class="work-label">'+esc(client)+' · '+esc(property)+'</span><span class="work-count blue">'+esc(time||d.toLocaleDateString('en-IN'))+'</span></a></div>';
