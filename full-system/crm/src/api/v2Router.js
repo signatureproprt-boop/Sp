@@ -1094,62 +1094,105 @@ class V2Router {
    * Params: transactionType, category, subCategory, budgetMin, budgetMax, location, bhk, q
    */
   _queryClients(url, actor = null) {
-    const txnType   = url.searchParams.get('transactionType') || url.searchParams.get('type');
-    const category  = url.searchParams.get('category');
-    const subCat    = url.searchParams.get('subCategory')    || url.searchParams.get('subcat');
-    const budgetMin = url.searchParams.get('budgetMin') ? Number(url.searchParams.get('budgetMin')) : null;
-    const budgetMax = url.searchParams.get('budgetMax') ? Number(url.searchParams.get('budgetMax')) : null;
-    const location  = url.searchParams.get('location');
-    const bhk       = url.searchParams.get('bhk') ? Number(url.searchParams.get('bhk')) : null;
-    const q         = url.searchParams.get('q') || url.searchParams.get('search');
+    const txnType      = url.searchParams.get('transactionType') || url.searchParams.get('type');
+    const category     = url.searchParams.get('category');
+    const subCat       = url.searchParams.get('subCategory') || url.searchParams.get('subcat');
+    const budgetMin    = url.searchParams.get('budgetMin') ? Number(url.searchParams.get('budgetMin')) : null;
+    const budgetMax    = url.searchParams.get('budgetMax') ? Number(url.searchParams.get('budgetMax')) : null;
+    const location     = url.searchParams.get('location');
+    const bhk          = url.searchParams.get('bhk') ? Number(url.searchParams.get('bhk')) : null;
+    const q            = url.searchParams.get('q') || url.searchParams.get('search');
+    const clientStatus = url.searchParams.get('status') || undefined;
+    const lifecycle    = url.searchParams.get('lifecycle') || undefined;
+    const source       = url.searchParams.get('source') || undefined;
+    const tag          = url.searchParams.get('tag') || undefined;
+    const agentId      = url.searchParams.get('agentId') || undefined;
+    const clientType   = url.searchParams.get('clientType') || undefined;
+    const page         = Math.max(1, Number(url.searchParams.get('page') || 1) || 1);
+    const limit        = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 24) || 24));
 
-    return this._queryClientsByNeed({ txnType, category, subCategory: subCat, budgetMin, budgetMax, location, bhk, q }, actor);
+    return this._queryClientsByNeed({
+      txnType, category, subCategory: subCat, budgetMin, budgetMax, location, bhk, q,
+      clientStatus, lifecycle, source, tag, agentId, clientType, page, limit
+    }, actor);
   }
 
   _queryClientsByNeed(filters = {}, actor = null) {
-    const db   = this.repo.read();
-    const reqs = db.Requirements || [];
+    const db    = this.repo.read();
+    const reqs  = db.Requirements || [];
     const leads = db.Leads || [];
     const txns  = db.Transactions || [];
 
-    // Find requirements matching filters
-    const matchingLeadIds = new Set();
+    const hasNeedFilters = Boolean(
+      filters.txnType || filters.category || filters.subCategory ||
+      filters.budgetMin != null || filters.budgetMax != null ||
+      filters.location || filters.bhk || filters.needSource
+    );
 
-    for (const req of reqs) {
-      if (!this._reqMatchesFilters(req, filters, txns)) continue;
-      if (req.LeadID) matchingLeadIds.add(req.LeadID);
+    const matchingLeadIds = new Set();
+    if (hasNeedFilters) {
+      for (const req of reqs) {
+        if (!this._reqMatchesFilters(req, filters, txns)) continue;
+        if (req.LeadID) matchingLeadIds.add(req.LeadID);
+      }
     }
 
-    // If no need-filters specified, return all clients enriched
-    const sourceLeads = (filters.txnType || filters.category || filters.subCategory ||
-                         filters.budgetMin || filters.budgetMax || filters.location ||
-                         filters.bhk || filters.q)
-      ? leads.filter(l => matchingLeadIds.has(l.LeadID))
-      : leads;
+    let result = hasNeedFilters ? leads.filter(l => matchingLeadIds.has(l.LeadID)) : [...leads];
 
-    // Text search on lead fields
-    let result = sourceLeads;
+    if (filters.clientStatus) {
+      result = result.filter(l => (l.ClientStatus || l.LeadStatus) === filters.clientStatus);
+    }
+    if (filters.lifecycle) {
+      result = result.filter(l => l.ClientLifecycle === filters.lifecycle);
+    }
+    if (filters.agentId) {
+      result = result.filter(l => l.AssignedAgentID === filters.agentId);
+    }
+    if (filters.tag) {
+      result = result.filter(l => Array.isArray(l.Tags) && l.Tags.includes(filters.tag));
+    }
+    if (filters.clientType === 'investor') {
+      result = result.filter(l => Array.isArray(l.Tags) && l.Tags.includes('Investor'));
+    } else if (filters.clientType === 'normal') {
+      result = result.filter(l => !(Array.isArray(l.Tags) && l.Tags.includes('Investor')));
+    }
     if (filters.q) {
       const q = String(filters.q).toLowerCase();
+      const qDigits = q.replace(/\\D/g, '');
       result = result.filter(l => {
-        const name   = (l.ClientName || l.Name || '').toLowerCase();
-        const mobile = (l.PrimaryMobile || l.Phone || '').replace(/\D/g, '');
-        const email  = (l.Email || '').toLowerCase();
-        const lid    = (l.LeadID || '').toLowerCase();
-        const qDigits = q.replace(/\D/g, '');
+        const name  = String(l.ClientName || l.Name || '').toLowerCase();
+        const mobile = String(l.PrimaryMobile || l.Phone || '').replace(/\\D/g, '');
+        const email = String(l.Email || '').toLowerCase();
+        const lid   = String(l.LeadID || '').toLowerCase();
         return name.includes(q) || (qDigits && mobile.includes(qDigits)) || email.includes(q) || lid.includes(q);
       });
     }
 
-    // Deduplicate by LeadID
-    const seen = new Set();
-    const deduped = [];
-    for (const l of result) {
-      if (!seen.has(l.LeadID)) { seen.add(l.LeadID); deduped.push(l); }
-    }
+    const visible = actor ? this.accessSvc.filterReadableLeads(result, actor) : result;
+    visible.sort((a, b) => new Date(b.UpdatedAt || b.CreatedAt || 0).getTime() - new Date(a.UpdatedAt || a.CreatedAt || 0).getTime());
 
-    const enriched = this._enrichClientsForList(actor ? this.accessSvc.filterReadableLeads(deduped, actor) : deduped);
-    return { ok: true, data: enriched, count: enriched.length, filters };
+    const total = visible.length;
+    const page = Math.max(1, Number(filters.page || 1) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit || 24) || 24));
+    const start = (page - 1) * limit;
+    const pageRows = visible.slice(start, start + limit);
+    const enriched = this._enrichClientsForList(pageRows);
+
+    return {
+      ok: true,
+      data: enriched,
+      count: enriched.length,
+      totalCount: total,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        hasNext: start + enriched.length < total,
+        hasPrev: page > 1
+      },
+      filters
+    };
   }
 
   _reqMatchesFilters(req, filters, txns) {
