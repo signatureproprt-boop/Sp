@@ -2278,6 +2278,21 @@ async function handleApi(req, res, url) {
             });
             if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
           }
+          if (leadId === 'all') {
+            // Dashboard/reporting use-case: return all booking groups visible to the actor.
+            const db = runtime.repository.read();
+            const visibleRows = (db.SiteVisits || []).filter((row) => {
+              if (!row?.LeadID || !row?.VisitBookingID) return false;
+              const lead = runtime.repository.readLead(row.LeadID);
+              return accessSvc.authorizeLead(actor, lead, {
+                permissions: ['SITE_VISIT_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
+                hideExistence: true
+              }).ok;
+            });
+            const data = svc._groupBookings(visibleRows);
+            sendJson(res, { ok: true, data, count: data.length });
+            return;
+          }
           if (leadId) {
             const lead = runtime.repository.readLead(leadId);
             const leadAccess = accessSvc.authorizeLead(actor, lead, {
