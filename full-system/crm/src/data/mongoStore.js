@@ -373,17 +373,48 @@ function write(db) {
         await delay(Math.min(250 * attempt, 1000));
       } catch (error) {
         lastError = error;
+        const diagnostic = serializeMongoError(error);
+        console.error('[mongoStore] snapshot write attempt failed:', JSON.stringify({
+          attempt,
+          retries: SNAPSHOT_WRITE_RETRIES,
+          name: diagnostic.name || null,
+          message: diagnostic.message || null,
+          code: diagnostic.code == null ? null : diagnostic.code,
+          codeName: diagnostic.codeName || null,
+          reason: diagnostic.reason || null,
+          cause: diagnostic.cause || null
+        }));
         if (attempt < SNAPSHOT_WRITE_RETRIES) await delay(Math.min(250 * attempt, 1000));
       }
     }
 
+    if (lastError) {
+      const diagnostic = serializeMongoError(lastError);
+      console.error('[mongoStore] snapshot write exhausted retries:', JSON.stringify({
+        retries: SNAPSHOT_WRITE_RETRIES,
+        name: diagnostic.name || null,
+        message: diagnostic.message || null,
+        code: diagnostic.code == null ? null : diagnostic.code,
+        codeName: diagnostic.codeName || null,
+        reason: diagnostic.reason || null,
+        cause: diagnostic.cause || null
+      }));
+    }
     throw lastError || new Error('Mongo snapshot write failed');
   };
 
   _writeQueue = _writeQueue.catch(() => {}).then(persist).catch((error) => {
     _writeStats.failures += 1;
     _lastWriteError = error;
-    console.error('[mongoStore] durable snapshot write failed:', error.message);
+    const diagnostic = serializeMongoError(error);
+    console.error('[mongoStore] durable snapshot write failed:', JSON.stringify({
+      name: diagnostic.name || null,
+      message: diagnostic.message || null,
+      code: diagnostic.code == null ? null : diagnostic.code,
+      codeName: diagnostic.codeName || null,
+      reason: diagnostic.reason || null,
+      cause: diagnostic.cause || null
+    }));
     throw error;
   });
 
