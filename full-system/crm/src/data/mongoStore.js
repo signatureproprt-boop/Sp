@@ -146,8 +146,12 @@ let _pollFailureCount = 0;
 let _reconnectPromise = null;
 let _reconnectAttempts = 0;
 
-const SNAPSHOT_WRITE_LEASE_MS = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_LEASE_MS', 120000);
-const SNAPSHOT_WRITE_RETRIES = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_RETRIES', 5);
+// Keep the distributed snapshot lock short-lived so a crashed Cloud Run
+// instance cannot block all writers for minutes. Writers retry long enough
+// to bridge normal multi-instance startup/rollout contention.
+const SNAPSHOT_WRITE_LEASE_MS = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_LEASE_MS', 15000);
+const SNAPSHOT_WRITE_RETRIES = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_RETRIES', 12);
+const SNAPSHOT_WRITE_RETRY_DELAY_MS = getPositiveIntegerEnv('MONGO_SNAPSHOT_WRITE_RETRY_DELAY_MS', 2000);
 
 function isEnabled() {
   return getStorageMode() === 'mongo' && !!getMongoUrl();
@@ -367,10 +371,17 @@ function write(db) {
           if (result.result && result.result.hadRemoteDivergence) _writeStats.conflicts += 1;
           _writeStats.lastWriteAt = new Date();
           _lastWriteError = null;
+          console.log('[mongoStore] snapshot lock acquired and write succeeded:', JSON.stringify({ attempt }));
           return result.result;
         }
 
-        await delay(Math.min(250 * attempt, 1000));
+        console.warn('[mongoStore] snapshot lock busy; retrying:', JSON.stringify({
+          attempt,
+          retries: SNAPSHOT_WRITE_RETRIES,
+          retryDelayMs: SNAPSHOT_WRITE_RETRY_DELAY_MS,
+          leaseMs: SNAPSHOT_WRITE_LEASE_MS
+        }));
+        if (attempt < SNAPSHOT_WRITE_RETRIES) await delay(SNAPSHOT_WRITE_RETRY_DELAY_MS);
       } catch (error) {
         lastError = error;
         const diagnostic = serializeMongoError(error);
@@ -539,7 +550,7 @@ async function withDistributedLock(lockName, fn, options = {}) {
   if (!_initialized || !_db) throw new Error('Mongo store is not initialized');
   const name = String(lockName || '').trim();
   if (!name) throw new Error('lockName is required');
-  const leaseMs = Number.isFinite(Number(options.leaseMs)) && Number(options.leaseMs) > 0 ? Number(options.leaseMs) : 240000;
+  const leaseMs = Number.isFinite(Number(options.leaseMs)) && Number(options.leaseMs) > 0 ? Number(options.leaseMs) : 15000;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + leaseMs);
   const owner = cryptoRandomToken();
@@ -551,14 +562,29 @@ async function withDistributedLock(lockName, fn, options = {}) {
       { upsert: true, returnDocument: 'after' }
     );
     const lockDoc = result && result.value ? result.value : result;
-    if (!lockDoc || lockDoc.owner !== owner) return { acquired: false };
+    if (!lockDoc || lockDoc.owner !== owner) {
+      console.warn('[mongoStore] distributed lock not acquired:', JSON.stringify({
+        lockName: name,
+        owner,
+        lockOwner: lockDoc && lockDoc.owner ? lockDoc.owner : null,
+        expiresAt: lockDoc && lockDoc.expiresAt ? lockDoc.expiresAt : null
+      }));
+      return { acquired: false };
+    }
+    console.log('[mongoStore] distributed lock acquired:', JSON.stringify({ lockName: name, owner, expiresAt }));
     try {
       return { acquired: true, result: await fn() };
     } finally {
-      await locks.deleteOne({ _id: name, owner }).catch(() => {});
+      await locks.deleteOne({ _id: name, owner }).catch((error) => {
+        console.error('[mongoStore] distributed lock release failed:', JSON.stringify(serializeMongoError(error)));
+      });
     }
   } catch (error) {
-    if (error && error.code === 11000) return { acquired: false };
+    if (error && error.code === 11000) {
+      console.warn('[mongoStore] distributed lock contention (duplicate key):', JSON.stringify({ lockName: name }));
+      return { acquired: false };
+    }
+    console.error('[mongoStore] distributed lock operation failed:', JSON.stringify(serializeMongoError(error)));
     throw error;
   }
 }
