@@ -1999,6 +1999,28 @@ class JsonRepository {
     return db.Tokens.find((row) => row.TokenID === tokenId) || null;
   }
 
+  validateWorkflowChain(db, payload = {}, { requireToken = false, requireNegotiation = false } = {}) {
+    const leadId = payload.LeadID || payload.leadId;
+    const requirementId = payload.RequirementID || payload.requirementId;
+    const propertyId = payload.PropertyID || payload.propertyId;
+    const negotiationId = payload.NegotiationID || payload.negotiationId || null;
+    const tokenId = payload.TokenID || payload.tokenId || null;
+    const lead = (db.Leads || []).find((row) => row.LeadID === leadId);
+    const requirement = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    const property = (db.Inventory || []).find((row) => row.PropertyID === propertyId);
+    const negotiation = negotiationId ? (db.Negotiations || []).find((row) => row.NegotiationID === negotiationId) : null;
+    const token = tokenId ? (db.Tokens || []).find((row) => row.TokenID === tokenId) : null;
+    if (!lead) return { ok: false, error: 'Lead relationship is invalid' };
+    if (!requirement || requirement.LeadID !== leadId) return { ok: false, error: 'Requirement does not belong to lead' };
+    if (!property) return { ok: false, error: 'Property relationship is invalid' };
+    if (requireNegotiation && !negotiation) return { ok: false, error: 'Negotiation relationship is required' };
+    if (negotiation && (negotiation.LeadID !== leadId || negotiation.RequirementID !== requirementId || negotiation.PropertyID !== propertyId)) return { ok: false, error: 'Negotiation relationship is invalid' };
+    if (requireToken && !token) return { ok: false, error: 'Token relationship is required' };
+    if (token && (token.LeadID !== leadId || token.RequirementID !== requirementId || token.PropertyID !== propertyId)) return { ok: false, error: 'Token relationship is invalid' };
+    if (token && negotiationId && token.NegotiationID !== negotiationId) return { ok: false, error: 'Token negotiation relationship is invalid' };
+    return { ok: true, lead, requirement, property, negotiation, token };
+  }
+
   createToken(payload = {}) {
     const db = this.read();
     db.Tokens = db.Tokens || [];
@@ -2009,6 +2031,8 @@ class JsonRepository {
     if (!leadId || !requirementId || !propertyId || !negotiationId) {
       return { ok: false, error: 'Missing required token fields' };
     }
+    const chain = this.validateWorkflowChain(db, payload, { requireNegotiation: true });
+    if (!chain.ok) return chain;
 
     if (db.Tokens.some((row) => row.LeadID === leadId && row.RequirementID === requirementId && row.PropertyID === propertyId && ['PENDING', 'PARTIAL', 'PAID'].includes(row.Status))) {
       return { ok: false, error: 'Duplicate active token already exists for this requirement and property' };
@@ -2071,6 +2095,23 @@ class JsonRepository {
 
     if (!leadId || !requirementId || !propertyId || !negotiationId || !tokenId) {
       return { ok: false, error: 'Missing required deal fields' };
+    }
+    const chain = this.validateWorkflowChain(db, payload, { requireNegotiation: true, requireToken: true });
+    if (!chain.ok) return chain;
+
+    if (payload.MatchID || payload.matchId) {
+      const match = this.getMatch(payload.MatchID || payload.matchId);
+      if (!match || match.LeadID !== leadId || match.RequirementID !== requirementId || match.PropertyID !== propertyId) return { ok: false, error: 'Match relationship is invalid' };
+    }
+    const shortlistId = payload.ShortlistID || payload.shortlistId || null;
+    if (shortlistId) {
+      const shortlist = this.getShortlist(shortlistId);
+      if (!shortlist || shortlist.LeadID !== leadId || shortlist.RequirementID !== requirementId || shortlist.PropertyID !== propertyId) return { ok: false, error: 'Shortlist relationship is invalid' };
+    }
+    const siteVisitId = payload.SiteVisitID || payload.siteVisitId || null;
+    if (siteVisitId) {
+      const visit = this.getSiteVisit(siteVisitId);
+      if (!visit?.ok || visit.data.LeadID !== leadId || visit.data.RequirementID !== requirementId || visit.data.PropertyID !== propertyId) return { ok: false, error: 'Site visit relationship is invalid' };
     }
 
     const deal = {
