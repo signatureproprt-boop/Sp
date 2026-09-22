@@ -5022,7 +5022,8 @@ appServer = http.createServer(async (req, res) => {
     '/broker-network':      '/broker-network.html',
     '/calculators':         '/calculators.html',
     '/digital-card':        '/digital-card.html',
-    '/admin':                '/admin.html'
+    '/admin':                '/admin.html',
+    '/dashboard-v2':          '/dashboard-v2.html'
   };
 
   let filePath = url.pathname === '/' ? '/index.html'
