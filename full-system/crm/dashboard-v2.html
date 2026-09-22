@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2c1405">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/signature-mark.svg" type="image/svg+xml">
+<script src="/pwa-register.js" defer></script>
+<title>Signature Properties — Dashboard</title>
+<style>
+:root{--ink:#21140d;--brown:#5c3317;--brown2:#2c1405;--gold:#d4a017;--goldbg:#fdf8ec;--bg:#f7f7f6;--card:#fff;--line:#e7e3df;--muted:#746b64;--ok:#168447;--warn:#b66a00;--danger:#c62828;--blue:#1769aa}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+button,input{font:inherit}.topbar{height:58px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 18px;gap:14px;position:sticky;top:0;z-index:50}.brand{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--brown2);font-size:15px;font-weight:800;white-space:nowrap}.brand img{width:30px;height:30px}.page-name{font-size:14px;color:var(--muted);border-left:1px solid var(--line);padding-left:14px}.top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}.search{width:min(310px,32vw);height:36px;border:1px solid var(--line);border-radius:8px;padding:0 12px;background:#fafafa;outline:none}.search:focus{border-color:var(--gold);background:#fff}.icon{width:36px;height:36px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer}.avatar{width:34px;height:34px;border:0;border-radius:50%;background:var(--brown2);color:#fff;font-weight:800;cursor:pointer}.hamb{display:none}
+.page{max-width:1280px;margin:auto;padding:18px 20px 42px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.head h1{font-size:22px;line-height:1.2}.head p{font-size:12px;color:var(--muted);margin-top:3px}.primary{border:0;background:var(--brown2);color:#fff;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;text-decoration:none;font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:9px;margin-bottom:16px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 12px;min-width:0}.kpi .label{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi .value{font-size:22px;font-weight:800;margin-top:5px;color:var(--brown2)}.kpi .sub{font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid{display:grid;grid-template-columns:1.05fr 1.45fr .9fr;gap:12px;align-items:start}.panel{background:#fff;border:1px solid var(--line);border-radius:9px;margin-bottom:12px;overflow:hidden}.ph{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line)}.ph h2{font-size:13px;color:var(--brown);font-weight:800}.ph a{font-size:11px;color:var(--brown);font-weight:700;text-decoration:none}.body{padding:11px 13px}
+.work-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f0eeeb}.work-row:last-child{border-bottom:0}.work-row a{text-decoration:none;color:inherit;display:flex;justify-content:space-between;align-items:center;width:100%}.work-label{font-size:12px}.work-count{font-weight:800;font-size:14px}.danger{color:var(--danger)}.warn{color:var(--warn)}.ok{color:var(--ok)}.blue{color:var(--blue)}
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:7px}.quick a{border:1px solid var(--line);border-radius:7px;padding:9px 8px;text-decoration:none;color:var(--brown);font-size:11px;font-weight:700;background:#fff}.quick a:hover{border-color:var(--gold);background:var(--goldbg)}
+.visit{display:grid;grid-template-columns:48px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0eeeb}.visit:last-child{border-bottom:0}.time{font-size:11px;font-weight:800;color:var(--brown)}.vname{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.vmeta{font-size:10px;color:var(--muted);margin-top:2px}.badge{font-size:9px;padding:3px 6px;border-radius:10px;background:#eef7f0;color:var(--ok);font-weight:800}.badge.pending{background:#fff4df;color:var(--warn)}
+.activity{display:flex;gap:9px;padding:8px 0;border-bottom:1px solid #f0eeeb}.activity:last-child{border-bottom:0}.dot{width:7px;height:7px;border-radius:50%;background:var(--gold);margin-top:5px;flex:0 0 auto}.atext{font-size:11.5px;line-height:1.35}.atime{font-size:10px;color:var(--muted);margin-top:2px}.client{display:grid;grid-template-columns:32px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f0eeeb}.client:last-child{border-bottom:0}.initial{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--goldbg);color:var(--brown);font-size:10px;font-weight:800}.cname{font-size:12px;font-weight:700}.cmeta{font-size:10px;color:var(--muted);margin-top:2px}.status{font-size:9px;font-weight:800;padding:3px 6px;border-radius:9px;background:#f1f1f1;color:#666}.status.hot{background:#fff0ec;color:#b33}.status.active{background:#eef7f0;color:var(--ok)}.money{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.money div{border:1px solid var(--line);border-radius:7px;padding:9px}.money b{display:block;font-size:14px;color:var(--brown2)}.money span{font-size:9.5px;color:var(--muted)}.inventory{display:flex;gap:7px;flex-wrap:wrap}.invtag{border:1px solid var(--line);border-radius:7px;padding:8px 9px;min-width:80px}.invtag b{display:block;font-size:15px}.invtag span{font-size:9px;color:var(--muted)}
+.empty,.loading{padding:18px 5px;text-align:center;color:var(--muted);font-size:11px}.error{color:var(--danger)}
+@media(max-width:1050px){.kpis{grid-template-columns:repeat(4,1fr)}.grid{grid-template-columns:1fr 1fr}.grid .right{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid .right .panel{margin-bottom:0}}
+@media(max-width:700px){.topbar{height:54px;padding:0 11px;gap:9px}.brand{font-size:13px}.brand img{width:27px;height:27px}.page-name,.search,.top-actions .icon{display:none}.hamb{display:block;border:1px solid var(--line);background:#fff;border-radius:7px;width:34px;height:34px}.top-actions{gap:5px}.page{padding:13px 11px 30px}.head{margin-bottom:12px}.head h1{font-size:19px}.head p{font-size:10.5px}.primary{padding:8px 10px;font-size:11px}.kpis{display:flex;overflow-x:auto;gap:7px;margin:0 -11px 12px;padding:0 11px 2px;scrollbar-width:none}.kpis::-webkit-scrollbar{display:none}.kpi{flex:0 0 118px;padding:9px}.kpi .value{font-size:19px}.grid{display:block}.grid .right{display:block}.panel{margin-bottom:9px}.ph{padding:9px 11px}.body{padding:9px 11px}.quick a{padding:8px 6px}.visit{grid-template-columns:43px 1fr auto}.money div{padding:8px 6px}.money b{font-size:12px}}
+</style>
+</head>
+<body>
+<header class="topbar">
+<a class="brand" href="/"><img src="/assets/signature-mark.svg" alt="">Signature Properties</a>
+<span class="page-name">Dashboard</span>
+<div class="top-actions"><input class="search" id="global-search" placeholder="Search clients or properties…"><button class="icon" title="Notifications">🔔</button><button class="avatar" id="user-avatar" onclick="doLogout()" title="Logout">--</button></div>
+<button class="hamb" onclick="location.href='/clients'" aria-label="Menu">☰</button>
+</header>
+<main class="page">
+<section class="head"><div><h1>Dashboard</h1><p id="welcome">Business overview and today's priorities</p></div><a class="primary" href="/clients">＋ New Client</a></section>
+
+<section class="kpis">
+<div class="kpi"><div class="label">Clients</div><div class="value" id="kClients">—</div><div class="sub">Total</div></div>
+<div class="kpi"><div class="label">Hot Clients</div><div class="value" id="kHot">—</div><div class="sub">Priority</div></div>
+<div class="kpi"><div class="label">Site Visits</div><div class="value" id="kVisits">—</div><div class="sub">Upcoming</div></div>
+<div class="kpi"><div class="label">Follow-ups</div><div class="value" id="kFollow">—</div><div class="sub">Due</div></div>
+<div class="kpi"><div class="label">Negotiations</div><div class="value" id="kNegotiation">—</div><div class="sub">Active</div></div>
+<div class="kpi"><div class="label">Tokens / Deals</div><div class="value" id="kDeals">—</div><div class="sub">Open</div></div>
+<div class="kpi"><div class="label">Brokerage Pending</div><div class="value" id="kBrokerage">—</div><div class="sub">Pending</div></div>
+</section>
+
+<section class="grid">
+<div>
+<div class="panel"><div class="ph"><h2>My Work</h2><a href="/clients">View Clients →</a></div><div class="body" id="work"><div class="loading">Loading…</div></div></div>
+<div class="panel"><div class="ph"><h2>Quick Actions</h2></div><div class="body quick"><a href="/clients">＋ New Client</a><a href="/inventory">＋ Add Inventory</a><a href="/client-workspace">📅 Site Visit</a><a href="/clients">📞 Follow-up</a><a href="/builder-projects">🏗 Builder Project</a><a href="/calculators">▣ Calculator</a></div></div>
+</div>
+
+<div>
+<div class="panel"><div class="ph"><h2>Today's Site Visits</h2><a href="/client-workspace">View All →</a></div><div class="body" id="visits"><div class="loading">Loading…</div></div></div>
+<div class="panel"><div class="ph"><h2>Client Activity</h2><a href="/clients">View Clients →</a></div><div class="body" id="clients"><div class="loading">Loading…</div></div></div>
+<div class="panel"><div class="ph"><h2>Inventory Snapshot</h2><a href="/inventory">Open Inventory →</a></div><div class="body" id="inventory"><div class="loading">Loading…</div></div></div>
+</div>
+
+<div class="right">
+<div class="panel"><div class="ph"><h2>Sales & Brokerage</h2><a href="/admin">Details →</a></div><div class="body"><div class="money"><div><b id="mReceived">—</b><span>Received</span></div><div><b id="mPending">—</b><span>Pending</span></div><div><b id="mTotal">—</b><span>Total</span></div></div></div></div>
+<div class="panel"><div class="ph"><h2>Recent Activity</h2></div><div class="body" id="activity"><div class="loading">Loading…</div></div></div>
+</div>
+</section>
+</main>
+
+<script>
+function getCallbackArtifacts(){const s=new URLSearchParams(location.search),h=new URLSearchParams((location.hash||'').replace(/^#/,''));return{sessionId:String(s.get('session_id')||s.get('sessionId')||h.get('session_id')||h.get('sessionId')||'').trim(),state:String(s.get('auth_state')||s.get('state')||h.get('auth_state')||h.get('state')||'').trim()}}
+function cleanAuthUrl(){const u=new URL(location.href);u.hash='';['session_id','sessionId','auth_state','state'].forEach(k=>u.searchParams.delete(k));history.replaceState(null,'',u.pathname+u.search)}
+async function exchange(){const{sessionId,state}=getCallbackArtifacts();if(!sessionId)return{ok:true};const r=await fetch('/api/auth/session-exchange',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,state})}).then(x=>x.json().catch(()=>({ok:false,error:'Invalid response'})));cleanAuthUrl();return{ok:!!r.ok,error:r.error}}
+async function auth(){const e=await exchange().catch(x=>({ok:false,error:x.message}));if(!e.ok){location.replace('/login.html?next='+encodeURIComponent(location.pathname+location.search)+'&error=auth_failed');return false}for(let i=0;i<8;i++){const r=await fetch('/api/auth/me',{credentials:'include'}).then(x=>x.json().catch(()=>null)).catch(()=>null);if(r?.ok){const n=r.data?.name||'';document.getElementById('user-avatar').textContent=initials(n);document.getElementById('welcome').textContent=n?('Welcome, '+n+' · Business overview and today\'s priorities'):'Business overview and today\'s priorities';return true}await new Promise(r=>setTimeout(r,250))}location.replace('/login.html?next='+encodeURIComponent(location.pathname+location.search)+'&error=session_required');return false}
+async function doLogout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});location.href='/login.html'}
+const esc=x=>String(x??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),initials=n=>{const p=String(n||'?').trim().split(/\s+/);return((p[0]||'?')[0]+(p[1]||'')[0]).toUpperCase()},digits=x=>String(x||'').replace(/\D/g,'');
+const get=async u=>{try{const r=await fetch(u,{cache:'no-store',credentials:'include'});return await r.json()}catch(e){return{ok:false,error:e.message}}};
+let leads=[],inv=[],visits=[];
+function hot(l){return(l.Tags||[]).some(x=>/hot/i.test(x))||/hot/i.test(String(l.ClientStatus||''))}
+function money(v){const n=Number(v||0);if(!n)return '₹0';if(n>=10000000)return '₹'+(n/10000000).toFixed(1)+'Cr';if(n>=100000)return '₹'+(n/100000).toFixed(1)+'L';return '₹'+Math.round(n).toLocaleString('en-IN')}
+function rel(d){if(!d)return '—';const s=(Date.now()-new Date(d))/1000;if(s<60)return'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago'}
+function render(){document.getElementById('kClients').textContent=leads.length;document.getElementById('kHot').textContent=leads.filter(hot).length;document.getElementById('kVisits').textContent=visits.length;
+const today=new Date().toDateString();document.getElementById('work').innerHTML='<div class="work-row"><a href="/clients"><span class="work-label">Overdue / due follow-ups</span><span class="work-count warn" id="wFollow">—</span></a></div><div class="work-row"><a href="/client-workspace"><span class="work-label">Site visits today</span><span class="work-count blue">'+visits.filter(v=>new Date(v.VisitDate||v.date).toDateString()===today).length+'</span></a></div><div class="work-row"><a href="/client-workspace"><span class="work-label">Negotiations</span><span class="work-count">—</span></a></div><div class="work-row"><a href="/admin"><span class="work-label">Token / deal actions</span><span class="work-count">—</span></a></div>';
+const recent=[...leads].filter(x=>x.CreatedAt).sort((a,b)=>new Date(b.CreatedAt)-new Date(a.CreatedAt)).slice(0,5);document.getElementById('clients').innerHTML=recent.length?recent.map(l=>'<div class="client"><div class="initial">'+esc(initials(l.ClientName))+'</div><div><div class="cname">'+esc(l.ClientName||l.LeadID)+'</div><div class="cmeta">'+esc([l.City,l.LeadSource].filter(Boolean).join(' · '))+' · '+esc(rel(l.CreatedAt))+'</div></div><span class="status '+(hot(l)?'hot':'active')+'">'+(hot(l)?'Hot':'Active')+'</span></div>').join(''):'<div class="empty">No recent client activity.</div>';
+document.getElementById('activity').innerHTML=recent.length?recent.map(l=>'<div class="activity"><span class="dot"></span><div class="atext"><b>'+esc(l.ClientName||l.LeadID)+'</b> added<div class="atime">'+esc(rel(l.CreatedAt))+' · <a href="/client-workspace?id='+encodeURIComponent(l.LeadID)+'">Open</a></div></div></div>').join(''):'<div class="empty">No recent activity.</div>';
+const a=inv.filter(x=>!x._deleted);const cats={Residential:0,Commercial:0,Land:0,Industrial:0};a.forEach(x=>{const c=Object.keys(cats).find(k=>new RegExp(k,'i').test(String(x.Category||x.PropertyType||'')));if(c)cats[c]++});document.getElementById('inventory').innerHTML='<div class="inventory"><div class="invtag"><b>'+a.length+'</b><span>Available</span></div>'+Object.entries(cats).map(([k,v])=>'<div class="invtag"><b>'+v+'</b><span>'+k+'</span></div>').join('')+'</div>';
+}
+async function boot(){const [lr,ir,vr,fr,dr]=await Promise.all([get('/api/leads'),get('/api/v2/inventory'),get('/api/v2/site-visit-bookings?leadId=all'),get('/api/v2/followups?preset=today&limit=100'),get('/api/v2/followups?preset=overdue&limit=100')]);leads=Array.isArray(lr.data)?lr.data:[];inv=Array.isArray(ir.data)?ir.data:[];visits=Array.isArray(vr.data)?vr.data:[];const f=[...(Array.isArray(fr.data)?fr.data:[]),...(Array.isArray(dr.data)?dr.data:[])];document.getElementById('kFollow').textContent=f.length;document.getElementById('wFollow').textContent=f.length;document.getElementById('kVisits').textContent=visits.length;render();document.getElementById('kFollow').textContent=f.length;document.getElementById('kVisits').textContent=visits.length}
+auth().then(x=>x&&boot());
+</script>
+</body>
+</html>
