@@ -1547,7 +1547,8 @@ async function handleApi(req, res, url) {
     const slV2Add    = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/add\/?$/i);
     const slV2Remove = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/remove\/([^\/]+)\/?$/i);
     const slV2Notes  = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/notes\/([^\/]+)\/?$/i);
-    if (slV2List || slV2Add || slV2Remove || slV2Notes) {
+    const slV2Manual = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/manual\/?$/i);
+    if (slV2List || slV2Add || slV2Remove || slV2Notes || slV2Manual) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const { ShortlistServiceV2 } = require('./src/services/shortlistServiceV2');
@@ -1561,6 +1562,7 @@ async function handleApi(req, res, url) {
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
         const status = url.searchParams.get('status') || 'Active';
         const rows = svc.list(slV2List[1], { status }).filter((row) => {
+          if (row.IsManual) return true;
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
           return accessSvc.authorizeProperty(actor, property, {
             permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
@@ -1589,18 +1591,35 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (slV2Manual && req.method === 'POST') {
+        const body = bodyForV2 || {};
+        const requirement = runtime.repository.readRequirement(slV2Manual[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        const out = svc.addManual(slV2Manual[1], { ...body, createdBy: actor.userId });
+        sendJson(res, out, out.ok ? 201 : 400);
+        return;
+      }
+
       if (slV2Remove && req.method === 'DELETE') {
         const requirement = runtime.repository.readRequirement(slV2Remove[1]);
         const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
-        const property = runtime.repository.find('Inventory', 'PropertyID', slV2Remove[2]);
-        const propertyAccess = accessSvc.authorizeProperty(actor, property, {
-          permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
-          hideExistence: true
-        });
-        if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        const existingRows = svc.list(slV2Remove[1], { status: 'Active' });
+        const existingRow = existingRows.find((row) => row.PropertyID === slV2Remove[2]);
+        if (!existingRow) { sendJson(res, { ok: false, error: 'Shortlist entry not found' }, 404); return; }
+        if (!existingRow.IsManual) {
+          const property = runtime.repository.find('Inventory', 'PropertyID', slV2Remove[2]);
+          const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          });
+          if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        }
         const out = svc.remove(slV2Remove[1], slV2Remove[2], actor.userId || 'system');
         sendJson(res, out, out.ok ? 200 : 404);
         return;
@@ -1613,12 +1632,17 @@ async function handleApi(req, res, url) {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
-        const property = runtime.repository.find('Inventory', 'PropertyID', slV2Notes[2]);
-        const propertyAccess = accessSvc.authorizeProperty(actor, property, {
-          permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
-          hideExistence: true
-        });
-        if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        const existingRows = svc.list(slV2Notes[1], { status: 'Active' });
+        const existingRow = existingRows.find((row) => row.PropertyID === slV2Notes[2]);
+        if (!existingRow) { sendJson(res, { ok: false, error: 'Shortlist entry not found' }, 404); return; }
+        if (!existingRow.IsManual) {
+          const property = runtime.repository.find('Inventory', 'PropertyID', slV2Notes[2]);
+          const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          });
+          if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        }
         const out = svc.updateEntry(slV2Notes[1], slV2Notes[2], {
           notes: body.notes,
           priority: body.priority
