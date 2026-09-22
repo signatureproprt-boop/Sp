@@ -1173,6 +1173,10 @@ class V2Router {
     visible.sort((a, b) => new Date(b.UpdatedAt || b.CreatedAt || 0).getTime() - new Date(a.UpdatedAt || a.CreatedAt || 0).getTime());
 
     const total = visible.length;
+    const visibleLeadIds = new Set(visible.map(l => l.LeadID));
+    const hotCount = visible.filter(l => Number(typeof l.ClientScore === 'object' ? l.ClientScore?.total : l.ClientScore || 0) >= 70).length;
+    const activeNeeds = reqs.filter(r => visibleLeadIds.has(r.LeadID)).length;
+    const openTransactions = txns.filter(t => visibleLeadIds.has(t.LeadID) && !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length;
     const page = Math.max(1, Number(filters.page || 1) || 1);
     const limit = Math.min(100, Math.max(1, Number(filters.limit || 24) || 24));
     const start = (page - 1) * limit;
@@ -1184,6 +1188,7 @@ class V2Router {
       data: enriched,
       count: enriched.length,
       totalCount: total,
+      summary: { totalClients: total, hotCount, activeNeeds, openTransactions },
       pagination: {
         page,
         limit,
