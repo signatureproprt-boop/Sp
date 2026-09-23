@@ -49,6 +49,27 @@ class V2TransactionService {
     const now   = new Date().toISOString();
     const txnId = this.idEngine.nextTransactionId();
 
+    // Persist every dynamic form answer at creation time as well as on later edits.
+    // This keeps BHK, furnishing, possession, frontage, amenities, etc. from
+    // being lost when a Transaction is created directly from Client Workspace.
+    const reservedPayloadKeys = new Set([
+      'TransactionID','LeadID','CompanyID','companyId','BrokerageID','brokerageId',
+      'TransactionType','transactionType','Type','type','TransactionStatus','transactionStatus',
+      'Status','status','PipelineStage','pipelineStage','Notes','notes','Category','category',
+      'SubCategory','subCategory','Fields','FieldPriorities','BudgetMin','budgetMin','BudgetMax',
+      'budgetMax','Location1','location1','Location2','location2','Location3','location3',
+      'TransactionScore','LegacyID','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy','Version','_v2'
+    ]);
+    const dynamicFields = { ...(payload.Fields && typeof payload.Fields === 'object' ? payload.Fields : {}) };
+    const dynamicFlat = {};
+    for (const [key, value] of Object.entries(payload || {})) {
+      if (reservedPayloadKeys.has(key)) continue;
+      dynamicFlat[key] = value;
+      dynamicFields[key] = value === null || value === ''
+        ? { state: 'UNKNOWN', value: null, priority: payload.FieldPriorities?.[key] || dynamicFields[key]?.priority || null }
+        : { state: 'KNOWN', value, priority: payload.FieldPriorities?.[key] || dynamicFields[key]?.priority || null };
+    }
+
     const transaction = {
       TransactionID:     txnId,
       LeadID:            leadId,
@@ -61,7 +82,8 @@ class V2TransactionService {
       // Transaction is the single business object. Property-need criteria live here.
       Category:          payload.Category || payload.category || null,
       SubCategory:       payload.SubCategory || payload.subCategory || null,
-      Fields:            payload.Fields && typeof payload.Fields === 'object' ? payload.Fields : {},
+      Fields:            dynamicFields,
+      ...dynamicFlat,
       BudgetMin:         payload.BudgetMin ?? payload.budgetMin ?? null,
       BudgetMax:         payload.BudgetMax ?? payload.budgetMax ?? null,
       Location1:         payload.Location1 || payload.location1 || null,
