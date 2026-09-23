@@ -2068,9 +2068,26 @@ async function handleApi(req, res, url) {
         });
         const out = await scraper.startScrape({
           limit: Number(bodyForV2?.limit) || 1000,
-          userId: actor.userId || 'system'
+          userId: actor.userId || 'system',
+          companyId: actor.companyId || null,
+          brokerageId: actor.brokerageId || null
         });
         sendJson(res, out, out.ok ? 202 : (out.statusCode || 400));
+        return;
+      }
+
+      const driveSyncMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/drive-folder\/?$/i);
+      if (driveSyncMatch) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
+        const { BuilderProjectDriveService } = require('./src/services/builderProjectDriveService');
+        const { createGoogleDriveClient } = require('./src/services/googleDriveClient');
+        const driveSvc = new BuilderProjectDriveService(runtime.repository, createGoogleDriveClient());
+        driveSvc.ensureProjectFolder(decodeURIComponent(driveSyncMatch[1]), {
+          companyId: actor.companyId || null,
+          brokerageId: actor.brokerageId || null
+        }).then((out) => sendJson(res, out, out.ok ? 200 : (out.statusCode || 400)))
+          .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
         return;
       }
 

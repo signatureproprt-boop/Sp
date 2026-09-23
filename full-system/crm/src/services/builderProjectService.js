@@ -360,6 +360,8 @@ class BuilderProjectService {
     if (payload.CompanyID !== undefined) out.CompanyID = payload.CompanyID || null;
     if (payload.BrokerageID !== undefined) out.BrokerageID = payload.BrokerageID || null;
     if (payload.BuilderID !== undefined) out.BuilderID = String(payload.BuilderID || '').trim() || null;
+    if (payload.DriveFolderID !== undefined) out.DriveFolderID = String(payload.DriveFolderID || '').trim() || null;
+    if (payload.DriveFolderURL !== undefined) out.DriveFolderURL = String(payload.DriveFolderURL || '').trim() || null;
     if (payload.ProjectName !== undefined) out.ProjectName = String(payload.ProjectName || '').trim() || null;
     if (payload.BuilderName !== undefined) out.BuilderName = String(payload.BuilderName || '').trim() || null;
     if (payload.DeveloperName !== undefined) out.DeveloperName = String(payload.DeveloperName || '').trim() || null;
@@ -482,6 +484,8 @@ class BuilderProjectService {
       ProjectName: clean.ProjectName,
       BuilderID: clean.BuilderID || null,
       BuilderName: clean.BuilderName,
+      DriveFolderID: clean.DriveFolderID || null,
+      DriveFolderURL: clean.DriveFolderURL || null,
       CompanyID: clean.CompanyID || null,
       BrokerageID: clean.BrokerageID || null,
       DeveloperName: clean.DeveloperName || clean.BuilderName || null,
