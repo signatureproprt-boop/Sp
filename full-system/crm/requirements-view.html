@@ -89,6 +89,55 @@
       th:nth-child(n+5) { display:none; }
     }
   </style>
+
+<style id="v2-unified-architect">
+:root{
+  --v2-ink:#21140d;--v2-brown:#5c3317;--v2-brown-dark:#2c1405;--v2-gold:#d4a017;--v2-gold-soft:#fdf8ec;
+  --v2-bg:#f7f7f6;--v2-card:#fff;--v2-line:#e7e3df;--v2-muted:#746b64;--v2-ok:#168447;
+}
+html,body{background:var(--v2-bg)!important;color:var(--v2-ink)!important}
+body{background-image:linear-gradient(rgba(92,51,23,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(92,51,23,.018) 1px,transparent 1px)!important;background-size:28px 28px!important}
+.topnav,.top,.topbar{
+  min-height:58px!important;background:#fff!important;color:var(--v2-ink)!important;border-bottom:1px solid var(--v2-line)!important;
+  box-shadow:none!important;padding:0 18px!important
+}
+.topnav .brand,.top .brand,.topbar .brand,.brand{color:var(--v2-brown-dark)!important}
+.topnav a,.top a,.topbar a,.mobile-nav a,.nav a{color:var(--v2-muted)!important}
+.topnav a:hover,.topnav a.active,.mobile-nav a:hover,.mobile-nav a.active,.nav a:hover,.nav a.active{
+  background:var(--v2-gold-soft)!important;color:var(--v2-brown-dark)!important
+}
+.topnav-avatar,.avatar{background:var(--v2-brown-dark)!important;color:#fff!important}
+.client-header,.hero{
+  background:#fff!important;color:var(--v2-ink)!important;border:1px solid var(--v2-line)!important;
+  border-radius:12px!important;box-shadow:0 8px 24px rgba(44,20,5,.045)!important
+}
+.client-header .client-name,.client-header .client-id,.client-header .client-meta-item,.hero .muted{color:var(--v2-ink)!important}
+.client-header .client-id,.client-header .client-meta-item,.hero .muted{opacity:.68}
+.client-avatar{background:var(--v2-gold-soft)!important;color:var(--v2-brown-dark)!important}
+.action-btn,.btn,.primary,button{border-radius:8px!important}
+.action-btn:not(.green):not(.accent),.back{background:#fff!important;color:var(--v2-brown)!important;border:1px solid var(--v2-line)!important}
+.action-btn.accent,.btn.gold{background:var(--v2-gold)!important;color:var(--v2-brown-dark)!important;border-color:var(--v2-gold)!important}
+.page,.workspace-body,.needs-col,.info-col{background:transparent!important}
+.card,.panel,.kpi,.stat,.summary-card,.requirement-card,.project-card,.hero,.modal-box{
+  background:#fff!important;border-color:var(--v2-line)!important;box-shadow:0 8px 24px rgba(44,20,5,.045)!important
+}
+.kpi,.stat,.card,.panel,.requirement-card,.project-card{border-radius:10px!important}
+.section-title,.ph h2,.card h2,.card h3,.head h1,.page-title,h1,h2,h3{color:var(--v2-brown-dark)!important}
+input,select,textarea,.search,.filter-wrap{
+  background:#fff!important;border-color:var(--v2-line)!important;color:var(--v2-ink)!important
+}
+input:focus,select:focus,textarea:focus,.search:focus{border-color:var(--v2-gold)!important;box-shadow:0 0 0 2px rgba(212,160,23,.12)!important}
+.chip.active,.primary,.btn-primary,button[type="submit"]{background:var(--v2-brown-dark)!important;color:#fff!important;border-color:var(--v2-brown-dark)!important}
+.chip{border-color:var(--v2-line)!important;background:#fff!important;color:var(--v2-brown)!important}
+.badge,.source,.txn-badge{box-shadow:none!important}
+.info-col{border-left:1px solid var(--v2-line)!important}
+table th{color:var(--v2-muted)!important}
+table td,table th{border-color:var(--v2-line)!important}
+@media(max-width:700px){
+  .topnav,.top,.topbar{min-height:54px!important;padding:0 11px!important}
+  .client-header,.hero{border-radius:0!important;border-left:0!important;border-right:0!important}
+}
+</style>
 </head>
 <body>
 <nav class="topnav">
