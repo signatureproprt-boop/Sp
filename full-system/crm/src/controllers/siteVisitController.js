@@ -18,7 +18,7 @@ class SiteVisitController {
     const normalized = {
       ...payload,
       LeadID: payload.LeadID || payload.leadId || null,
-      RequirementID: payload.RequirementID || payload.requirementId || null,
+      TransactionID: payload.TransactionID || payload.transactionId || null,
       PropertyID: payload.PropertyID || payload.propertyId || null,
       MatchID: payload.MatchID || payload.matchId || null,
       ShortlistID: payload.ShortlistID || payload.shortlistId || null,
