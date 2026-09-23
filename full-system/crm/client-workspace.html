@@ -1208,14 +1208,14 @@ table td,table th{border-color:var(--v2-line)!important}
 
   // ── KPI STRIP ─────────────────────────────────────────────────────────────────
   function renderKpiStrip() {
-    const reqs  = workspace.requirements || [];
+    const reqs  = workspace.transactions || [];
     const fus   = asArray(workspace.followUps).map(toCanonicalFollowUp).filter(Boolean);
     const svs   = workspace.siteVisits   || [];
     const negs  = workspace.negotiations || [];
     const deals = workspace.deals        || [];
     const lead  = workspace.lead;
 
-    const activeReqs  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
+    const activeReqs  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus));
     const openFollowups = fus.filter(f => !['COMPLETED','CANCELLED'].includes(f.status));
     const openNegs    = negs.filter(n => !['Closed','Won','Lost'].includes(n.Status||n.NegotiationStatus));
     const score       = typeof lead.ClientScore === 'object' ? lead.ClientScore?.total : lead.ClientScore;
@@ -1232,7 +1232,7 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── TRANSACTIONS — single client operating surface ───────────────────────────
   function renderNeedsFirst() {
     const txns = workspace.transactions || [];
-    const reqs = workspace.requirements || [];
+    const reqs = workspace.transactions || [];
     const container = document.getElementById('needs-list');
 
     if (!reqs.length && !txns.length) {
@@ -1248,8 +1248,8 @@ table td,table th{border-color:var(--v2-line)!important}
     const findTxn = r => txns.find(t => t.TransactionID === r.TransactionID) || { TransactionType: r.TransactionType };
 
     // Split active vs. closed/lost
-    const activeReqs = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
-    const closedReqs = reqs.filter(r =>  ['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
+    const activeReqs = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus));
+    const closedReqs = reqs.filter(r =>  ['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus));
 
     let html = '';
 
@@ -1282,18 +1282,18 @@ table td,table th{border-color:var(--v2-line)!important}
 
     // Load next-questions async for active requirements
     for (const req of activeReqs) {
-      loadNextQuestionsForCard(req.RequirementID);
+      loadNextQuestionsForCard(req.TransactionID);
     }
   }
 
   function lostReqCard(txn, r) {
     const titleParts = [txn.TransactionType||r.TransactionType, r.Category, r.SubCategory].filter(Boolean);
     const budgetStr  = formatBudget(r.BudgetMin, r.BudgetMax);
-    const lostReason = r.LostReason || r.RequirementStatus || '';
+    const lostReason = r.LostReason || r.TransactionStatus || '';
     return `<div style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:11px 15px;margin-bottom:8px;opacity:.82">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:700;color:#991b1b">${titleParts.map(esc).join(' • ')||'Requirement'}</span>
-        <span style="font-size:11px;color:#b0a0a0">${esc(r.RequirementID)}</span>
+        <span style="font-size:11px;color:#b0a0a0">${esc(r.TransactionID)}</span>
         <span style="background:#fee2e2;color:#991b1b;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px">${esc(lostReason)}</span>
         ${budgetStr && budgetStr!=='—' ? `<span style="font-size:12px;color:#9ca3af">${esc(budgetStr)}</span>` : ''}
         ${r.LostNotes ? `<span style="font-size:11px;color:#b0a0a0;font-style:italic">${esc(r.LostNotes)}</span>` : ''}
@@ -1302,8 +1302,8 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function needCard(txn, r) {
-    const reqId  = r.RequirementID;
-    const score  = typeof r.RequirementScore === 'object' ? r.RequirementScore?.total : r.RequirementScore;
+    const reqId  = r.TransactionID;
+    const score  = typeof r.TransactionScore === 'object' ? r.TransactionScore?.total : r.TransactionScore;
     const scoreCls = score == null ? '' : score >= 70 ? 'high' : score >= 40 ? 'mid' : 'low';
     const stage  = txn.PipelineStage || r.PipelineStage || 'New';
 
@@ -1512,7 +1512,7 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Next Questions (read-only, async) ─────────────────────────────────────────
   async function loadNextQuestionsForCard(reqId) {
     try {
-      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}/next-questions?limit=3`).then(r => r.json());
+      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}/next-questions?limit=3`).then(r => r.json());
       const container = document.getElementById(`nq-content-${reqId}`);
       const wrapper   = document.getElementById(`nq-${reqId}`);
       if (!res.ok || !res.questions || !res.questions.length) return;
@@ -1544,7 +1544,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
     let inputHtml = '';
     if (fieldKey === 'budget' || fieldKey === 'BudgetMin' || fieldKey === 'BudgetMax') {
-      const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
+      const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
       const bmin = req?.BudgetMin ?? (req?.Fields?.BudgetMin?.state === 'KNOWN' ? req.Fields.BudgetMin.value : '');
       const bmax = req?.BudgetMax ?? (req?.Fields?.BudgetMax?.state === 'KNOWN' ? req.Fields.BudgetMax.value : '');
       _inlineField = 'budget_range';
@@ -1553,7 +1553,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="form-group"><label>Max (₹)</label><input id="ie-budget-max" type="number" value="${esc(String(bmax||''))}" /></div>
       </div>`;
     } else if (fieldKey === 'Location1') {
-      const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
+      const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
       const loc1 = req?.Location1 || req?.Fields?.Location1?.value || '';
       const loc2 = req?.Location2 || req?.Fields?.Location2?.value || '';
       const loc3 = req?.Location3 || req?.Fields?.Location3?.value || '';
@@ -1631,7 +1631,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
     document.getElementById('inline-edit-error').textContent = '';
     try {
-      const res = await fetch(`/api/requirements/${encodeURIComponent(reqId)}`, {
+      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1660,7 +1660,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function markLostReq(reqId) {
     _markLostReqId = reqId;
-    const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
+    const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
     const txn = (workspace.transactions||[]).find(t => t.TransactionID === req?.TransactionID) || {};
     const label = [txn.TransactionType||req?.TransactionType, req?.Category, req?.SubCategory].filter(Boolean).join(' • ') || reqId;
     document.getElementById('lost-req-label').textContent = label + ' — ' + reqId;
@@ -1696,7 +1696,7 @@ table td,table th{border-color:var(--v2-line)!important}
   let _requirementStatusTarget = null;
 
   function openRequirementStatusModal(reqId, targetStatus) {
-    const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
+    const req = (workspace.transactions || []).find(r => r.TransactionID === reqId);
     if (!req) return;
     _requirementStatusReqId = reqId;
     _requirementStatusTarget = targetStatus;
@@ -1725,7 +1725,7 @@ table td,table th{border-color:var(--v2-line)!important}
       ? { RequirementStatus: target, HoldReason: reason, HoldNotes: notes || null }
       : { RequirementStatus: target, ClosedReason: reason, ClosedNotes: notes || null };
     try {
-      const res = await fetch('/api/requirements/' + encodeURIComponent(reqId), {
+      const res = await fetch('/api/v2/transactions/' + encodeURIComponent(reqId), {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (!res.ok) {
@@ -1740,14 +1740,14 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function openAddFollowupForRequirement(reqId) {
-    const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
+    const req = (workspace.transactions || []).find(r => r.TransactionID === reqId);
     openAddFollowupModal({ requirementId: reqId, transactionId: req?.TransactionID || '' });
   }
 
   // ── Score breakdown ───────────────────────────────────────────────────────────
   async function viewScoreBreakdown(reqId) {
     try {
-      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}/score`).then(r => r.json());
+      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}/score`).then(r => r.json());
       if (!res.ok) { alert('Could not load score breakdown'); return; }
       const pos = (res.positiveContributions||[]).map(f => `✓ ${f.label||f.field}: +${f.contribution}`).join('\n');
       const unk = (res.unknownFactors||[]).map(f => `? ${f.label||f.field}`).join('\n');
@@ -1757,7 +1757,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   // ── Open "Update Transaction" (pre-filled) ────────────────────────────────────
   async function openUpdateNeedModal(reqId) {
-    const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
+    const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
     if (!req) return;
     currentTxnId = req.TransactionID;
     document.getElementById('req-error').textContent = '';
@@ -1786,7 +1786,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('req-location2').value  = req.Location2  || '';
     document.getElementById('req-urgency').value    = req.Urgency    || '';
     document.getElementById('req-possession').value = req.Possession || '';
-    document.getElementById('req-status').value     = req.RequirementStatus || req.Status || 'Active';
+    document.getElementById('req-status').value     = req.TransactionStatus || req.Status || 'Active';
 
     // Modal title / button
     document.querySelector('#req-modal .modal-title').textContent = 'Update Transaction';
@@ -1833,7 +1833,7 @@ table td,table th{border-color:var(--v2-line)!important}
     });
     if (Object.keys(fieldPriorities).length) payload.FieldPriorities = fieldPriorities;
     try {
-      const res = await fetch(`/api/requirements/${encodeURIComponent(reqId)}`, {
+      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (res.ok) {
@@ -1957,44 +1957,28 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('add-need-error').textContent = '';
 
     try {
-      // Step 1: Create Transaction
-      const txnRes = await fetch(`/api/leads/${encodeURIComponent(LEAD_ID)}/transactions`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ TransactionType: txnType })
-      }).then(r => r.json());
-
-      if (!txnRes.ok) {
-        document.getElementById('add-need-error').textContent = txnRes.error || 'Failed to create transaction';
-        return;
-      }
-      const txnId = txnRes.data.TransactionID;
-
-      // Step 2: Build transaction-detail payload with ALL dynamic fields
-      const sub  = document.getElementById('need-subcategory').value || null;
-      const reqPayload = {
-        LeadID:      LEAD_ID,
-        Category:    cat,
-        SubCategory: sub || null,
+      // Create one Transaction with all dynamic property criteria.
+      const sub = document.getElementById('need-subcategory').value || null;
+      const txnPayload = {
         TransactionType: txnType,
-        RequirementStatus: 'Active'
+        TransactionStatus: 'Open',
+        PipelineStage: 'New',
+        Category: cat,
+        SubCategory: sub
       };
       const dynamicValues = collectDynamicValues('need');
       const fieldPriorities = extractFieldPrioritiesFromValues(dynamicValues);
       Object.entries(dynamicValues).forEach(([key, val]) => {
         if (key.startsWith('__priority__')) return;
         if (val === '' || val == null || (Array.isArray(val) && !val.length)) return;
-        reqPayload[key] = val;
+        txnPayload[key] = val;
       });
-      if (Object.keys(fieldPriorities).length) reqPayload.FieldPriorities = fieldPriorities;
-
-      // Step 3: Persist transaction details through the compatibility store
-      const reqRes = await fetch(`/api/transactions/${encodeURIComponent(txnId)}/requirements`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(reqPayload)
+      if (Object.keys(fieldPriorities).length) txnPayload.FieldPriorities = fieldPriorities;
+      const txnRes = await fetch(`/api/leads/${encodeURIComponent(LEAD_ID)}/transactions`, {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(txnPayload)
       }).then(r => r.json());
-
-      if (!reqRes.ok) {
-        document.getElementById('add-need-error').textContent = reqRes.error || 'Failed to create requirement';
+      if (!txnRes.ok) {
+        document.getElementById('add-need-error').textContent = txnRes.error || 'Failed to create transaction';
         return;
       }
 
@@ -2034,7 +2018,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const svs  = ws.siteVisits   || [];
     const negs = ws.negotiations  || [];
     const dels = ws.deals         || [];
-    const activeReqCount  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status)).length;
+    const activeReqCount  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus)).length;
     const openNegCount    = negs.filter(n => !['Closed','Won','Lost'].includes(n.Status||n.NegotiationStatus)).length;
     const openFuCount     = asArray(ws.followUps).map(toCanonicalFollowUp).filter(f => f && !['COMPLETED','CANCELLED'].includes(f.status)).length;
     document.getElementById('sidebar-summary').innerHTML = `
@@ -2085,7 +2069,7 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Transactions (details tab) ────────────────────────────────────────────────
   function renderTransactions() {
     const txns = workspace.transactions || [];
-    const reqs = workspace.requirements || [];
+    const reqs = workspace.transactions || [];
     const html = txns.length ? txns.map(txn => {
       const txnReqs = reqs.filter(r => r.TransactionID === txn.TransactionID);
       const typeCls  = 'type-' + (txn.TransactionType||txn.Type||'').toLowerCase().replace(/[\s]/g,'');
@@ -2120,20 +2104,20 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function reqRow(r) {
-    const status = r.RequirementStatus || r.Status || '—';
+    const status = r.TransactionStatus || r.TransactionStatus || '—';
     const budget = formatBudget(r.BudgetMin, r.BudgetMax);
     const loc    = r.Location1 || '';
-    const score  = typeof r.RequirementScore === 'object' ? r.RequirementScore?.total : r.RequirementScore;
+    const score  = typeof r.TransactionScore === 'object' ? r.TransactionScore?.total : r.TransactionScore;
     return `<div class="req-row">
       <div class="req-row-left">
-        <div class="req-id">${esc(r.RequirementID)}</div>
+        <div class="req-id">${esc(r.TransactionID)}</div>
         <div class="req-summary">${esc(r.Category||'—')} ${r.SubCategory?'· '+esc(r.SubCategory):''}</div>
         <div class="req-meta">${esc(budget)} ${loc?'· '+esc(loc):''}</div>
       </div>
       <div class="req-right">
         <span class="badge badge-${status.toLowerCase()}">${esc(status)}</span>
         ${score != null ? `<span style="font-size:11px;color:#64748b">⭐${score}</span>` : ''}
-        <button class="need-action-btn ghost" style="font-size:11px;padding:3px 8px" onclick="openUpdateNeedModal('${esc(r.RequirementID)}')">Edit</button>
+        <button class="need-action-btn ghost" style="font-size:11px;padding:3px 8px" onclick="openUpdateNeedModal('${esc(r.TransactionID)}')">Edit</button>
       </div>
     </div>`;
   }
@@ -2339,7 +2323,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const txns = asArray(workspace.transactions);
     const reqs = asArray(workspace.requirements);
     document.getElementById('act-txn').innerHTML = `<option value="">None</option>` + txns.map(t => `<option value="${enc(t.TransactionID)}">${esc(t.TransactionType||t.Type)} — ${esc(t.TransactionID)}</option>`).join('');
-    document.getElementById('act-req').innerHTML = `<option value="">None</option>` + reqs.map(r => `<option value="${enc(r.RequirementID)}">${esc(r.RequirementCode||r.RequirementID)} — ${esc(r.Category||'Requirement')}</option>`).join('');
+    document.getElementById('act-req').innerHTML = `<option value="">None</option>` + reqs.map(r => `<option value="${enc(r.TransactionID)}">${esc(r.RequirementCode||r.TransactionID)} — ${esc(r.Category||'Requirement')}</option>`).join('');
     document.getElementById('act-txn').value = selectedTxn || '';
     document.getElementById('act-req').value = selectedReq || '';
   }
@@ -2524,14 +2508,14 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Site Visits tab ───────────────────────────────────────────────────────────
   function renderSiteVisitsTab() {
     const svs  = workspace.siteVisits || [];
-    const reqs = workspace.requirements || [];
+    const reqs = workspace.transactions || [];
     if (!svs.length) {
       document.getElementById('site-visits-list').innerHTML =
         '<div style="color:#64748b;font-size:13px;padding:20px 0">No site visits scheduled yet.</div>';
       return;
     }
     const html = svs.map(sv => {
-      const req = reqs.find(r => r.RequirementID === sv.RequirementID);
+      const req = reqs.find(r => r.TransactionID === sv.RequirementID);
       const reqLabel = req ? `${req.Category||''}${req.SubCategory?' · '+req.SubCategory:''}` : sv.RequirementID || '';
       const statusCls = sv.Status === 'Completed' ? 'background:#dcfce7;color:#166534'
                       : sv.Status === 'Scheduled' ? 'background:#dbeafe;color:#1e40af'
