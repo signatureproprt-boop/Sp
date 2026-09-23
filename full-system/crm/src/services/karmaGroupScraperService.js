@@ -544,7 +544,7 @@ class KarmaGroupScraperService {
     latestStatus = makeIdleStatus();
   }
 
-  async startScrape({ limit = DEFAULT_LIMIT, userId = 'system' } = {}) {
+  async startScrape({ limit = DEFAULT_LIMIT, userId = 'system', companyId = null, brokerageId = null } = {}) {
     if (KarmaGroupScraperService.isRunning()) {
       return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
     }
@@ -560,7 +560,7 @@ class KarmaGroupScraperService {
       selectedProjectName: null
     };
 
-    activeJob = this._runFullScrapeJob({ limit: safeLimit, userId })
+    activeJob = this._runFullScrapeJob({ limit: safeLimit, userId, companyId, brokerageId })
       .catch((error) => {
         latestStatus.status = 'failed';
         latestStatus.error = sanitizeError(error);
@@ -581,7 +581,7 @@ class KarmaGroupScraperService {
     return { ok: true, statusCode: 202, data: { status: 'accepted', startedAt: latestStatus.startedAt, mode: 'full', limit: safeLimit } };
   }
 
-  async startTargetedScrape({ projectId = null, sourceUrl = null, userId = 'system' } = {}) {
+  async startTargetedScrape({ projectId = null, sourceUrl = null, userId = 'system', companyId = null, brokerageId = null } = {}) {
     if (KarmaGroupScraperService.isRunning()) {
       return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
     }
@@ -599,7 +599,7 @@ class KarmaGroupScraperService {
       selectedProjectName: null
     };
 
-    activeJob = this._runTargetedScrapeJob({ projectId, sourceUrl, userId })
+    activeJob = this._runTargetedScrapeJob({ projectId, sourceUrl, userId, companyId, brokerageId })
       .catch((error) => {
         latestStatus.status = 'failed';
         latestStatus.error = sanitizeError(error);
@@ -837,18 +837,36 @@ class KarmaGroupScraperService {
     return { ok: true, parsed };
   }
 
-  _findExistingByIdentity(db, candidate) {
+  _sameTenant(row, tenant = {}) {
+    const companyId = tenant.companyId || null;
+    const brokerageId = tenant.brokerageId || null;
+    if (companyId && row.CompanyID !== companyId) return false;
+    if (brokerageId && row.BrokerageID !== brokerageId) return false;
+    return true;
+  }
+
+  _resolveBuilderIdentity(db, parsed, tenant = {}) {
+    const wanted = normalizeLoose(parsed.builderName || parsed.developer || parsed.promoter || '');
+    if (!wanted) return { BuilderID: null, BuilderName: parsed.builderName || parsed.developer || parsed.promoter || 'Unknown Builder' };
+    const builders = (db.Builders || []).filter((row) => this._sameTenant(row, tenant));
+    const matches = builders.filter((row) => normalizeLoose(row.BuilderName || row.Name) === wanted);
+    if (matches.length !== 1) return { BuilderID: null, BuilderName: parsed.builderName || parsed.developer || parsed.promoter || 'Unknown Builder' };
+    return { BuilderID: matches[0].BuilderID || null, BuilderName: matches[0].BuilderName || matches[0].Name || parsed.builderName };
+  }
+
+  _findExistingByIdentity(db, candidate, tenant = {}) {
     db.BuilderProjects = db.BuilderProjects || [];
+    const projects = db.BuilderProjects.filter((row) => row.Active !== false && this._sameTenant(row, tenant));
     const c = normalizeCandidate(candidate);
     const normalizedSourceUrl = normalizeUrl(c.sourceUrl || '');
 
     const bySourceProject = c.sourceProjectID
-      ? db.BuilderProjects.find((row) => normalizeLoose(row.SourceProjectID) === normalizeLoose(c.sourceProjectID))
+      ? projects.find((row) => normalizeLoose(row.SourceProjectID) === normalizeLoose(c.sourceProjectID))
       : null;
     if (bySourceProject) return bySourceProject;
 
     const bySourceUrl = normalizedSourceUrl
-      ? db.BuilderProjects.find((row) => normalizeUrl(row.SourceUrl || '') === normalizedSourceUrl)
+      ? projects.find((row) => normalizeUrl(row.SourceUrl || '') === normalizedSourceUrl)
       : null;
     if (bySourceUrl) return bySourceUrl;
 
@@ -857,10 +875,10 @@ class KarmaGroupScraperService {
     // same display name and locality; collapsing those records loses source IDs.
     if (c.sourceProjectID || normalizedSourceUrl) return null;
 
-    const byRera = c.RERA ? db.BuilderProjects.find((row) => normalizeLoose(row.RERANumber) === normalizeLoose(c.RERA)) : null;
+    const byRera = c.RERA ? projects.find((row) => normalizeLoose(row.RERANumber) === normalizeLoose(c.RERA)) : null;
     if (byRera) return byRera;
 
-    return db.BuilderProjects.find((row) => (
+    return projects.find((row) => (
       normalizeLoose(row.ProjectName) === normalizeLoose(c.projectName) &&
       normalizeLoose(row.BuilderName) === normalizeLoose(c.builderName) &&
       normalizeLoose(row.Location1) === normalizeLoose(c.location)
@@ -1141,13 +1159,17 @@ class KarmaGroupScraperService {
     return JSON.stringify(existing) !== beforeSignature;
   }
 
-  _createProjectFromParsed(db, parsed, userId = 'system') {
+  _createProjectFromParsed(db, parsed, userId = 'system', tenant = {}) {
     db.BuilderProjects = db.BuilderProjects || [];
     const projectId = this.repo.createId('BLDP');
+    const builderIdentity = this._resolveBuilderIdentity(db, parsed, tenant);
     const row = {
       ProjectID: projectId,
+      CompanyID: tenant.companyId || null,
+      BrokerageID: tenant.brokerageId || null,
       ProjectName: parsed.projectName || 'Unnamed Project',
-      BuilderName: parsed.builderName || parsed.developer || parsed.promoter || 'Unknown Builder',
+      BuilderID: builderIdentity.BuilderID,
+      BuilderName: builderIdentity.BuilderName,
       DeveloperName: parsed.developer || parsed.builderName || 'Unknown Builder',
       PromoterName: parsed.promoter || parsed.builderName || 'Unknown Builder',
       Address: parsed.address || null,
@@ -1183,7 +1205,7 @@ class KarmaGroupScraperService {
     return row;
   }
 
-  async _processCandidate(db, candidate, counters, userId) {
+  async _processCandidate(db, candidate, counters, userId, tenant = {}) {
     counters.scanned += 1;
     latestStatus.selectedProjectName = candidate.projectName || null;
     latestStatus.selectedProjectID = null;
@@ -1197,7 +1219,7 @@ class KarmaGroupScraperService {
     }
 
     const parsed = detailResult.parsed;
-    const existing = this._findExistingByIdentity(db, parsed);
+    const existing = this._findExistingByIdentity(db, parsed, tenant);
     updateStage(latestStatus, 'project-mutation', {
       selectedProjectID: existing?.ProjectID || null,
       selectedProjectName: parsed.projectName || existing?.ProjectName || null
@@ -1219,7 +1241,7 @@ class KarmaGroupScraperService {
       return;
     }
 
-    const created = this._createProjectFromParsed(db, parsed, userId);
+    const created = this._createProjectFromParsed(db, parsed, userId, tenant);
     latestStatus.selectedProjectID = created.ProjectID;
     if (this.ingestMedia) {
       await this._ingestProjectMedia(created, parsed, counters);
@@ -1232,7 +1254,7 @@ class KarmaGroupScraperService {
     counters.created += 1;
   }
 
-  async _runFullScrapeJob({ limit, userId }) {
+  async _runFullScrapeJob({ limit, userId, companyId = null, brokerageId = null }) {
     const db = this.repo.read();
     db.BuilderProjects = db.BuilderProjects || [];
 
@@ -1258,7 +1280,7 @@ class KarmaGroupScraperService {
 
     await runPool(selected, this.concurrency, async (candidate) => {
       try {
-        await this._processCandidate(db, candidate, counters, userId);
+        await this._processCandidate(db, candidate, counters, userId, { companyId, brokerageId });
       } catch (error) {
         counters.failed += 1;
         const classification = classificationFromError(error);
@@ -1280,13 +1302,13 @@ class KarmaGroupScraperService {
     updateStage(latestStatus, 'complete');
   }
 
-  async _runTargetedScrapeJob({ projectId, sourceUrl, userId }) {
+  async _runTargetedScrapeJob({ projectId, sourceUrl, userId, companyId = null, brokerageId = null }) {
     const db = this.repo.read();
     db.BuilderProjects = db.BuilderProjects || [];
 
     const existing = projectId
-      ? db.BuilderProjects.find((row) => row.ProjectID === String(projectId).trim())
-      : db.BuilderProjects.find((row) => normalizeUrl(row.SourceUrl || '') === normalizeUrl(sourceUrl || ''));
+      ? db.BuilderProjects.find((row) => row.ProjectID === String(projectId).trim() && this._sameTenant(row, { companyId, brokerageId }))
+      : db.BuilderProjects.find((row) => normalizeUrl(row.SourceUrl || '') === normalizeUrl(sourceUrl || '') && this._sameTenant(row, { companyId, brokerageId }));
 
     if (projectId && !existing) {
       throw Object.assign(new Error(`Project not found: ${projectId}`), { code: 'NOT_FOUND' });
@@ -1370,9 +1392,9 @@ class KarmaGroupScraperService {
       throw new Error('Unable to resolve canonical project detail from target request');
     }
 
-    let targetProject = selectedProject || this._findExistingByIdentity(db, parsed);
+    let targetProject = selectedProject || this._findExistingByIdentity(db, parsed, { companyId, brokerageId });
     if (!targetProject) {
-      targetProject = this._createProjectFromParsed(db, parsed, userId);
+      targetProject = this._createProjectFromParsed(db, parsed, userId, { companyId, brokerageId });
       latestStatus.selectedProjectID = targetProject.ProjectID;
     } else {
       this._applyParsedProjectData(targetProject, parsed, { allowSourceIdentityUpdate: true, stage: 'targeted-update' });
