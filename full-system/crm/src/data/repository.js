@@ -1172,7 +1172,10 @@ class JsonRepository {
       return { ok: false, error: 'Lead not found' };
     }
 
-    const transaction = this.find('Transactions', 'TransactionID', transactionId);\n    if (!transaction || transaction.LeadID !== leadId) {\n      return { ok: false, error: 'Transaction not found for client' };\n    }
+    const transaction = this.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction || transaction.LeadID !== leadId) {
+      return { ok: false, error: 'Transaction not found for client' };
+    }
 
     const property = this.find('Inventory', 'PropertyID', propertyId);
     if (!property) {
