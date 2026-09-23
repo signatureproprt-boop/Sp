@@ -90,32 +90,44 @@ class V2NextQuestionService {
    */
   getNextQuestionsByTransaction(transactionId, options = {}) {
     const db = this.repository.read();
-    const txn = (db.Transactions || []).find((t) => t.TransactionID === transactionId);
-    if (!txn) return { ok: false, error: `Transaction not found: ${transactionId}` };
-    return this._getNextQuestionsForRecord(txn, options);
+    const transaction = (db.Transactions || []).find((t) => t.TransactionID === transactionId);
+    if (!transaction) return { ok: false, error: `Transaction not found: ${transactionId}` };
+    return this._getNextQuestionsForRecord(transaction, options);
   }
 
-  _getNextQuestionsForRecord(req, options = {}) {
-    const transactionId = req.TransactionID;
+  _getNextQuestionsForRecord(transaction, options = {}) {
     const context = {
-      transactionType: req.TransactionType || req.Type || null,
-      category: req.Category || null,
-      subCategory: req.SubCategory || null,
-      fields: req.Fields || {}
+      transactionType: transaction.TransactionType || transaction.Type || null,
+      category: transaction.Category || null,
+      subCategory: transaction.SubCategory || null,
+      fields: transaction.Fields || {}
     };
-    const limit = Math.max(1, Math.min(Number(options.limit) || 3, 20));
-    // Reuse the established ranking algorithm without persisting a Requirement row.
-    const originalRead = this.repository.read.bind(this.repository);
-    this.repository.read = () => {
-      const snapshot = originalRead();
-      return { ...snapshot, Requirements: [{ ...req, RequirementID: transactionId }] };
+    const limit = this._parseLimit(options.limit);
+    const depResult = this.depSvc.evaluateContext(context);
+    if (!depResult.ok) return { ok: false, error: `Dependency evaluation failed: ${depResult.error}` };
+
+    const fieldConfigMap = this._buildFieldConfigMap(context);
+    const candidates = this._findCandidates(depResult.fields, context.fields, fieldConfigMap);
+    const deduped = this._deduplicate(this._rankCandidates(candidates));
+    const questions = deduped.slice(0, limit).map((candidate) =>
+      this._buildQuestion(candidate, context, transaction)
+    );
+
+    return {
+      ok: true,
+      transactionId: transaction.TransactionID,
+      context: {
+        transactionType: context.transactionType,
+        category: context.category,
+        subCategory: context.subCategory,
+        formVersion: transaction.FormVersion || null
+      },
+      questions,
+      totalCandidates: deduped.length,
+      reason: questions.length === 0
+        ? 'No additional relevant unanswered questions are currently configured.'
+        : null
     };
-    try {
-      const result = this.getNextQuestions(transactionId, { limit });
-      return result.ok ? { ...result, transactionId, requirementId: undefined } : result;
-    } finally {
-      this.repository.read = originalRead;
-    }
   }
 
   getNextQuestions(requirementId, options = {}) {
