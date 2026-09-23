@@ -101,9 +101,9 @@ class SiteVisitBookingService {
     const slotError = this._validateVisitSlot(visitDate, visitTime);
     if (slotError) return { ok: false, error: slotError };
 
-    const requirement = this.repo.find('Transactions', 'TransactionID', transactionId);
-    if (!requirement) return { ok: false, error: 'Transaction not found' };
-    const lead = this.repo.readLead(requirement.LeadID);
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+    const lead = this.repo.readLead(transaction.LeadID);
     if (!lead) return { ok: false, error: 'Lead not found' };
 
     // Validate all properties exist
@@ -162,7 +162,6 @@ class SiteVisitBookingService {
         VisitBookingID: bookingId,
         VisitOrder: idx + 1,
         LeadID: lead.LeadID,
-        TransactionID: requirement.TransactionID || null,
         TransactionID: transactionId,
         PropertyID: item.id,
         MatchID: null,
