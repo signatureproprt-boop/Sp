@@ -274,7 +274,7 @@ class V2Router {
         if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
 
         const actor  = auth.actor;
-        const result = this.txnSvc.updateTransaction(txnId, body || {}, actor);
+        const result = this.txnSvc.updateTransactionDetails(txnId, body || {}, actor);
         return this._json(result.ok ? 200 : 404, result);
       }
     }
@@ -362,6 +362,32 @@ class V2Router {
     }
 
     // ── Phase 12: Score routes ────────────────────────────────────────────────
+
+    // Transaction-native score and conversation guidance.
+    const txnScoreV2Match = pathname.match(/^\/api\/v2\/transactions\/([^/]+)\/score$/);
+    if (txnScoreV2Match && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const transactionId = txnScoreV2Match[1];
+      const current = this.txnSvc.getTransaction(transactionId);
+      const access = this.accessSvc.authorizeTransaction(auth.actor, current.ok ? current.data : null, { permissions: ['LEADS_VIEW','LEADS_READ'] });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+      const result = this.scoringSvc.recalculateTransactionScore(transactionId);
+      return this._json(result.ok ? 200 : 404, result);
+    }
+
+    const txnNextQMatch = pathname.match(/^\/api\/v2\/transactions\/([^/]+)\/next-questions$/);
+    if (txnNextQMatch && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const transactionId = txnNextQMatch[1];
+      const current = this.txnSvc.getTransaction(transactionId);
+      const access = this.accessSvc.authorizeTransaction(auth.actor, current.ok ? current.data : null, { permissions: ['LEADS_VIEW','LEADS_READ'] });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+      const limit = url.searchParams.get('limit');
+      const result = this.nextQSvc.getNextQuestionsByTransaction(transactionId, { limit });
+      return this._json(result.ok ? 200 : 404, result);
+    }
 
     // GET /api/v2/requirements/:id/score  — V2 canonical path
     const reqScoreV2Match = pathname.match(/^\/api\/v2\/requirements\/([^/]+)\/score$/);
@@ -656,7 +682,7 @@ class V2Router {
     if (pathname === '/api/v2/quick-capture' && method === 'POST') {
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
-      for (const requiredPermission of ['LEADS_CREATE', 'REQUIREMENTS_CREATE']) {
+      for (const requiredPermission of ['LEADS_CREATE']) {
         const permission = this.accessSvc.requirePermissions(auth.actor, [requiredPermission]);
         if (!permission.ok) return this._json(permission.statusCode, { ok: false, error: permission.error });
       }
