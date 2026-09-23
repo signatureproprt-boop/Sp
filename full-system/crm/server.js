@@ -2076,7 +2076,7 @@ async function handleApi(req, res, url) {
         return;
       }
 
-      const driveSyncMatch = pathname.match(/^\\/api\\/v2\\/builder-projects\\/([^\\/]+)\\/drive-folder\\/?$/i);
+      const driveSyncMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/drive-folder\/?$/i);
       if (driveSyncMatch) {
         if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
