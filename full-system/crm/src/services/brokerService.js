@@ -1,6 +1,7 @@
-const { dataStore } = require('../data/store');
+const { JsonRepository } = require('../data/repository');
 
 class BrokerService {
+  constructor(repository = null) { this.repository = repository || new JsonRepository(); }
   async listBrokers() {
     return [
       { BrokerID: 'BRO-001', BrokerName: 'Astra Realty Co.', BrokerType: 'Broker', Company: 'Astra Realty', Status: 'Active' },
@@ -8,16 +9,16 @@ class BrokerService {
     ];
   }
 
-  async shareRequirement(requirementId, brokerId) {
-    const requirement = dataStore.requirements.find((item) => item.RequirementID === requirementId);
-    if (!requirement) {
-      throw new Error('Requirement not found');
+  async shareTransaction(transactionId, brokerId) {
+    const transaction = this.repository.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) {
+      throw new Error('Transaction not found');
     }
 
     const submission = {
       BrokerSubmissionID: `SUB-${Date.now()}`,
-      LeadID: requirement.LeadID,
-      RequirementID: requirement.RequirementID,
+      LeadID: transaction.LeadID,
+      TransactionID: transaction.TransactionID,
       BrokerID: brokerId,
       Status: 'Draft',
       RejectReason: null,
@@ -26,6 +27,14 @@ class BrokerService {
     };
 
     return submission;
+  }
+
+  async shareRequirement(requirementId, brokerId) {
+    const db = this.repository.read();
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    const transactionId = legacy?.TransactionID || null;
+    if (!transactionId) throw new Error('Transaction not found for legacy requirement');
+    return this.shareTransaction(transactionId, brokerId);
   }
 
   async approveSubmission(submissionId) {
