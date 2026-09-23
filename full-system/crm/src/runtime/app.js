@@ -673,18 +673,22 @@ class SignatureRealtyRuntime {
     return this.matchingEngine.getMatch(matchId);
   }
 
-  async matching(requirementId = 'REQ-0001') {
-    const requirementMatches = this.repository.listMatches(requirementId);
-    if (requirementMatches.length > 0) {
-      return { ok: true, data: requirementMatches };
+  async matching(transactionId = null) {
+    if (!transactionId) {
+      return this.matchingEngine.listAllMatches();
     }
 
-    const runResult = await this.runMatching(requirementId);
+    const transactionMatches = this.repository.listMatches(transactionId);
+    if (transactionMatches.length > 0) {
+      return { ok: true, data: transactionMatches };
+    }
+
+    const runResult = await this.runMatching(transactionId);
     if (runResult.ok && Array.isArray(runResult.data?.matches)) {
       return { ok: true, data: runResult.data.matches };
     }
 
-    return this.matchingEngine.listAllMatches();
+    return runResult;
   }
 
   buildShortlistView(shortlist) {
