@@ -569,14 +569,16 @@ class AuthService {
       return { authenticated: false, statusCode: 401, error: 'Unauthorized', public: false };
     }
 
-    const role = String(session.role || user.Role || '').trim().toUpperCase() || 'AGENT';
-    const companyId = String(session.companyId || user.CompanyID || user.CompanyId || '').trim();
-    const brokerageId = String(session.brokerageId || user.BrokerageID || user.BrokerageId || '').trim();
-    const permissions = Array.isArray(session.permissions) && session.permissions.length
-      ? session.permissions
-      : Array.isArray(user.Permissions)
-        ? user.Permissions
-        : [];
+    // The persisted user record is authoritative for mutable authorization state.
+    // Do not keep role, tenant, or permissions elevated from the moment the session
+    // was issued: an admin downgrade or tenant reassignment must take effect on the
+    // very next request without waiting for session expiry.
+    const role = String(user.Role || session.role || '').trim().toUpperCase() || 'AGENT';
+    const companyId = String(user.CompanyID || user.CompanyId || session.companyId || '').trim();
+    const brokerageId = String(user.BrokerageID || user.BrokerageId || session.brokerageId || '').trim();
+    const permissions = Array.isArray(user.Permissions)
+      ? user.Permissions
+      : (Array.isArray(session.permissions) ? session.permissions : []);
 
     if (!companyId || !brokerageId) {
       return { authenticated: false, statusCode: 403, error: 'Tenant scope required', public: false };
