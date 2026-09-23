@@ -28,10 +28,10 @@ const LEAD_STATUS_ALIASES = {
 
 function normalizePhone(raw) {
   if (!raw) return null;
-  // Strip all non-digit chars except leading +
-  const cleaned = String(raw).replace(/[\s\-().]/g, '');
-  // Remove country code prefix to get 10-digit form for matching
-  return cleaned.replace(/^\+91/, '').replace(/^0/, '').replace(/^\+/, '');
+  let digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
 }
 
 function normalizeEmail(raw) {
@@ -80,19 +80,19 @@ class V2LeadService {
       const lEmail     = normalizeEmail(lead.Email);
       const lName      = normalizeName(lead.ClientName);
 
-      // Exact match: same primary mobile OR same email
+      // Mobile is the canonical exact identity. Email/name are suggestion signals only.
       const phoneMatch = mobile && lMobile && mobile === lMobile;
       const emailMatch = email && lEmail && email === lEmail;
       const primaryInAlternates = mobile && lAltMobiles.includes(mobile);
       const altMatch   = altMobile && (altMobile === lMobile || altMobile === lAlt || lAltMobiles.includes(altMobile));
       const waMatch    = whatsapp  && (whatsapp === lMobile || whatsapp === lWhatsapp || lAltMobiles.includes(whatsapp));
 
-      if (phoneMatch || primaryInAlternates || emailMatch) {
+      if (phoneMatch || primaryInAlternates) {
         exact.push(this._maskCandidate(lead, 'EXACT_MATCH'));
         continue;
       }
 
-      if (altMatch || waMatch) {
+      if (altMatch || waMatch || emailMatch) {
         possible.push(this._maskCandidate(lead, 'POSSIBLE_MATCH'));
         continue;
       }
@@ -143,9 +143,11 @@ class V2LeadService {
     if (dupCheck.result === 'EXACT_MATCH') {
       return {
         ok: false,
-        error: 'A lead with this mobile or email already exists',
+        error: 'A client with this mobile already exists',
         duplicateResult: 'EXACT_MATCH',
-        candidates: dupCheck.candidates
+        candidates: dupCheck.candidates,
+        existingLeadId: dupCheck.candidates[0]?.LeadID || null,
+        resolveExisting: true
       };
     }
     if (dupCheck.result === 'POSSIBLE_MATCH' && !options.allowPossibleDuplicate) {
@@ -170,7 +172,10 @@ class V2LeadService {
       ClientName:       payload.ClientName || payload.clientName || null,
       PrimaryMobile:    normalizePhone(payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone) || null,
       AlternateMobile:  normalizePhone(payload.AlternateMobile || payload.alternateMobile) || null,
-      AlternateMobiles: [payload.AlternateMobile || payload.alternateMobile].map(normalizePhone).filter(Boolean),
+      AlternateMobiles: [
+        ...(Array.isArray(payload.AlternateMobiles) ? payload.AlternateMobiles : []),
+        payload.AlternateMobile || payload.alternateMobile
+      ].map(normalizePhone).filter(Boolean),
       WhatsApp:         payload.WhatsApp || payload.whatsapp || null,
       Email:            payload.Email || payload.email || null,
       ClientStatus:     clientStatus,
