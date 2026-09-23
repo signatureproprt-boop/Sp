@@ -9,7 +9,7 @@ function phoneLabel(v){return safePhone(v)?String(v).trim():'Phone unavailable';
 async function doLogout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});window.location.href='/login.html';}
 function norm(v){const a={Verified:'Contacted',Active:'Qualified',Inactive:'Lost',Blacklisted:'Lost',Converted:'Won'};return a[String(v||'').trim()]||String(v||'New').trim()||'New'}
 function fmtBudget(r){if(!r)return '—';const f=n=>n==null?'':n>=1e7?'₹'+(n/1e7).toFixed(1)+'Cr':n>=1e5?'₹'+(n/1e5).toFixed(0)+'L':'₹'+Number(n).toLocaleString('en-IN');return [f(r.BudgetMin),f(r.BudgetMax)].filter(Boolean).join(' – ')||'—'}
-function budgetRange(v){return ({under50:[null,4999999],50to100:[5000000,9999999],100to200:[10000000,19999999],over200:[20000000,null]})[v]||[null,null]}
+function budgetRange(v){return ({under50:[null,4999999],"50to100":[5000000,9999999],"100to200":[10000000,19999999],over200:[20000000,null]})[v]||[null,null]}
 function buildQuery(){
  const p=new URLSearchParams();
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
