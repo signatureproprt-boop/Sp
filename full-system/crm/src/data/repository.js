@@ -237,9 +237,11 @@ class JsonRepository {
     const reqToTxn = new Map();
     for (const req of requirements) {
       if (!req?.RequirementID) continue;
-      let txn = req.TransactionID ? txnById.get(req.TransactionID) : null;
+      const transactionId = req.TransactionID || ('TXN-MIG-' + String(req.RequirementID).replace(/^REQ-?/i, ''));
+      // Stable migration ID makes normalizeDbShape idempotent: repeated reads
+      // must never create another transaction for the same legacy requirement.
+      let txn = txnById.get(transactionId);
       if (!txn) {
-        const transactionId = req.TransactionID || ('TXN-MIG-' + String(req.RequirementID).replace(/^REQ-?/i, ''));
         txn = {
           TransactionID: transactionId, LeadID: req.LeadID,
           TransactionType: req.TransactionType || req.Type || 'Purchase',
@@ -265,6 +267,11 @@ class JsonRepository {
       }
       txn.Fields = fields;
       txn.LegacyRequirementID = txn.LegacyRequirementID || req.RequirementID;
+      txn.LegacyRequirementIDs = [...new Set([
+        ...(Array.isArray(txn.LegacyRequirementIDs) ? txn.LegacyRequirementIDs : []),
+        ...(txn.LegacyRequirementID ? [txn.LegacyRequirementID] : []),
+        req.RequirementID
+      ].filter(Boolean))];
     }
     db.Transactions = transactions;
     for (const collection of ['Activities','FollowUps','Matches','Shortlists','SiteVisits','Negotiations','Tokens','Deals','Documents','BrokerShares','BrokerSubmissions','TransactionShares']) {
