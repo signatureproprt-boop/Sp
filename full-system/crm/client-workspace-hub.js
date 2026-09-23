@@ -111,13 +111,13 @@ function render(){
   return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(status)+'</span></div>'+
   '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source" style="background:#f3e8ff;color:#6b21a8">Investor</span>':'')+'</div>'+
   '<div class="phone">📞 '+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</div>'+
-  '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc(needDigest(c,r)||'Requirement not captured')+'</div>'+
+  '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc(needDigest(c,r)||'Transaction details pending')+'</div>'+
   '<div style="font-size:10px;color:var(--muted);margin-bottom:7px">'+
     (c.Priority?('Priority: '+esc(c.Priority)):'')+
     (c.NextActionType?(' · Next: '+esc(c.NextActionType)):'')+
     (c.NextFollowUpAt?(' · '+esc(new Date(c.NextFollowUpAt).toLocaleString('en-IN'))):'')+
   '</div>'+
-  '<div class="meta"><div><span>Requirements</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Transactions</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
+  '<div class="meta"><div><span>Transactions</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
   '<div style="font-size:10px;color:var(--muted);margin-top:9px">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
   '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="tel:'+enc(safePhone(c.PrimaryMobile||c.Phone))+'">☎ Call</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
  }).join('')
@@ -135,25 +135,17 @@ async function createClient(){
  const name=document.getElementById('nc-name').value.trim(), mobile=document.getElementById('nc-mobile').value.trim();
  const txn=document.getElementById('nc-txn').value, cat=document.getElementById('nc-cat').value;
  if(!name||!mobile||!txn||!cat){err.textContent='Name, Mobile, Transaction and Category are required.';return}
+ const bhk=(document.getElementById('nc-bhk')?.value||'').trim();
  const requirement={category:cat,locations:[],
-   BudgetMin:document.getElementById('nc-budget-min').value?Number(document.getElementById('nc-budget-min').value):undefined,
    BudgetMax:document.getElementById('nc-budget').value?Number(document.getElementById('nc-budget').value):undefined};
+ if(bhk) requirement.BHK=bhk;
  const loc=document.getElementById('nc-location').value.trim();if(loc){requirement.Location1=loc;requirement.locations=[loc]}
  try{
   const res=await fetch('/api/v2/quick-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    client:{
-     name,primaryMobile:mobile,email:document.getElementById('nc-email').value.trim()||undefined,
-     city:document.getElementById('nc-city').value.trim()||'Surat',
-     area:document.getElementById('nc-area').value.trim()||undefined,
-     source:document.getElementById('nc-source').value||undefined,
-     sourceDetail:document.getElementById('nc-source-detail').value.trim()||undefined,
-     referralBy:document.getElementById('nc-source').value==='Referral'?(document.getElementById('nc-source-detail').value.trim()||undefined):undefined,
-     clientIntent:document.getElementById('nc-intent').value||undefined,
-     preferredLanguage:document.getElementById('nc-language').value||undefined,
-     preferredContactMode:document.getElementById('nc-contact-mode').value||undefined,
-     priority:document.getElementById('nc-priority').value||'Normal',
-     nextActionType:document.getElementById('nc-next-action').value||undefined,
-     nextFollowUpAt:document.getElementById('nc-next-followup').value||undefined
+     name,primaryMobile:mobile,
+     city:'Surat',
+     source:document.getElementById('nc-source').value||undefined
    },
    transaction:{transactionType:txn},requirement
   })});
