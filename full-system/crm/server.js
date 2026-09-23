@@ -3324,17 +3324,20 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    if (pathname.startsWith('/api/requirements/') && pathname.endsWith('/matches')) {
+    if ((pathname.startsWith('/api/transactions/') || pathname.startsWith('/api/requirements/')) && pathname.endsWith('/matches')) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const parts = pathname.split('/').filter(Boolean);
-      const requirementId = parts[2];
-      const requirement = runtime.repository.readRequirement(requirementId);
-      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-        permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      const legacyRequirementPath = parts[1] === 'requirements';
+      const requestedId = parts[2];
+      const legacy = legacyRequirementPath ? runtime.repository.readRequirement(requestedId) : null;
+      const transactionId = legacyRequirementPath ? legacy?.TransactionID : requestedId;
+      const transaction = transactionId ? runtime.repository.find('Transactions', 'TransactionID', transactionId) : null;
+      const txnAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['MATCHING_VIEW', 'TRANSACTIONS_READ', 'LEADS_VIEW', 'LEADS_READ']
       });
-      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
-      const payload = await runtime.getMatches(requirementId);
+      if (!txnAccess.ok) { sendJson(res, { ok: false, error: txnAccess.error }, txnAccess.statusCode); return; }
+      const payload = await runtime.getMatches(transactionId);
       if (payload.ok && Array.isArray(payload.data)) {
         payload.data = payload.data.filter((row) => {
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
@@ -3348,18 +3351,21 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    if (pathname.startsWith('/api/requirements/') && pathname.endsWith('/shortlist')) {
+    if ((pathname.startsWith('/api/transactions/') || pathname.startsWith('/api/requirements/')) && pathname.endsWith('/shortlist')) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const parts = pathname.split('/').filter(Boolean);
-      const requirementId = parts[2];
-      const requirement = runtime.repository.readRequirement(requirementId);
-      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-        permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      const legacyRequirementPath = parts[1] === 'requirements';
+      const requestedId = parts[2];
+      const legacy = legacyRequirementPath ? runtime.repository.readRequirement(requestedId) : null;
+      const transactionId = legacyRequirementPath ? legacy?.TransactionID : requestedId;
+      const transaction = transactionId ? runtime.repository.find('Transactions', 'TransactionID', transactionId) : null;
+      const txnAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['SHORTLIST_VIEW', 'TRANSACTIONS_READ', 'LEADS_VIEW', 'LEADS_READ']
       });
-      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      if (!txnAccess.ok) { sendJson(res, { ok: false, error: txnAccess.error }, txnAccess.statusCode); return; }
       const status = url.searchParams.get('status') || undefined;
-      const payload = await runtime.listShortlist({ requirementId, status });
+      const payload = await runtime.listShortlist({ transactionId, status });
       if (payload.ok && Array.isArray(payload.data)) {
         payload.data = payload.data.filter((row) => {
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
