@@ -1055,11 +1055,11 @@ class JsonRepository {
     return db.RequirementHistory.filter((row) => row.RequirementID === requirementId);
   }
 
-  listMatches(requirementId = null) {
+  listMatches(transactionId = null) {
     const db = this.read();
     db.Matches = db.Matches || [];
-    if (requirementId) {
-      return db.Matches.filter((m) => m.RequirementID === requirementId).sort((a, b) => b.Score - a.Score);
+    if (transactionId) {
+      return db.Matches.filter((m) => m.TransactionID === transactionId).sort((a, b) => b.Score - a.Score);
     }
     return db.Matches.sort((a, b) => b.Score - a.Score);
   }
@@ -1075,7 +1075,7 @@ class JsonRepository {
     db.Matches = db.Matches || [];
     const match = {
       MatchID: payload.MatchID || this.createId('MATCH'),
-      RequirementID: payload.RequirementID || payload.requirementId,
+      TransactionID: payload.TransactionID || payload.transactionId,
       PropertyID: payload.PropertyID || payload.propertyId,
       LeadID: payload.LeadID || payload.leadId,
       Score: payload.Score || payload.score || 0,
@@ -1311,10 +1311,16 @@ class JsonRepository {
     return true;
   }
 
-  findMatchByRequirementAndProperty(requirementId, propertyId) {
+  findMatchByTransactionAndProperty(transactionId, propertyId) {
     const db = this.read();
     db.Matches = db.Matches || [];
-    return db.Matches.find((m) => m.RequirementID === requirementId && m.PropertyID === propertyId) || null;
+    return db.Matches.find((m) => m.TransactionID === transactionId && m.PropertyID === propertyId) || null;
+  }
+
+  findMatchByRequirementAndProperty(requirementId, propertyId) {
+    const db = this.read();
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    return legacy?.TransactionID ? this.findMatchByTransactionAndProperty(legacy.TransactionID, propertyId) : null;
   }
 
   listShortlists(filters = {}) {
@@ -1322,13 +1328,13 @@ class JsonRepository {
     db.Shortlists = db.Shortlists || [];
 
     const status = filters.status || null;
-    const requirementId = filters.requirementId || null;
+    const transactionId = filters.transactionId || filters.TransactionID || null;
     const leadId = filters.leadId || null;
 
     return db.Shortlists
       .filter((item) => {
         if (status && item.Status !== status) return false;
-        if (requirementId && item.RequirementID !== requirementId) return false;
+        if (transactionId && item.TransactionID !== transactionId) return false;
         if (leadId && item.LeadID !== leadId) return false;
         return true;
       })
@@ -1345,10 +1351,10 @@ class JsonRepository {
     return db.Shortlists.find((item) => item.ShortlistID === shortlistId) || null;
   }
 
-  findActiveShortlist(requirementId, propertyId) {
+  findActiveShortlist(transactionId, propertyId) {
     const db = this.read();
     db.Shortlists = db.Shortlists || [];
-    return db.Shortlists.find((item) => item.RequirementID === requirementId && item.PropertyID === propertyId && item.Status === 'Active') || null;
+    return db.Shortlists.find((item) => item.TransactionID === transactionId && item.PropertyID === propertyId && item.Status === 'Active') || null;
   }
 
   createShortlist(payload) {
@@ -1357,7 +1363,7 @@ class JsonRepository {
 
     const shortlist = {
       ShortlistID: payload.ShortlistID || this.createId('SL'),
-      RequirementID: payload.RequirementID,
+      TransactionID: payload.TransactionID || payload.transactionId,
       LeadID: payload.LeadID,
       PropertyID: payload.PropertyID,
       MatchID: payload.MatchID || null,
