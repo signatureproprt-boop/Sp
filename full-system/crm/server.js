@@ -2556,43 +2556,76 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    // POST /api/v2/duplicates/merge — merge source lead INTO target lead
-    // Body: { sourceLeadId, targetLeadId, fieldOverrides: { <field>: 'source'|'target' } }
-    // Requirements/Transactions of source are reassigned to target; source lead is deleted.
+    // POST /api/v2/duplicates/merge — merge source client INTO target client.
+    // Source is retained as an audit stub; all business records move to target.
     if (/^\/api\/v2\/duplicates\/merge\/?$/i.test(pathname) && req.method === 'POST') {
       if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
       const body = bodyForV2 || {};
       const sourceLeadId = String(body.sourceLeadId || '').trim();
       const targetLeadId = String(body.targetLeadId || '').trim();
-      const overrides    = body.fieldOverrides || {};
+      const overrides = body.fieldOverrides || {};
       if (!sourceLeadId || !targetLeadId) { sendJson(res, { ok: false, error: 'sourceLeadId & targetLeadId required' }, 400); return; }
-      if (sourceLeadId === targetLeadId)  { sendJson(res, { ok: false, error: 'Cannot merge into self' }, 400); return; }
+      if (sourceLeadId === targetLeadId) { sendJson(res, { ok: false, error: 'Cannot merge into self' }, 400); return; }
       const db = runtime.repository.read();
       const source = (db.Leads || []).find(l => l.LeadID === sourceLeadId);
       const target = (db.Leads || []).find(l => l.LeadID === targetLeadId);
       if (!source || !target) { sendJson(res, { ok: false, error: 'Lead(s) not found' }, 404); return; }
+      if (source.MergedIntoClientID) { sendJson(res, { ok: false, error: 'Source client is already merged', mergedIntoClientId: source.MergedIntoClientID }, 409); return; }
 
-      // Apply per-field overrides ('source' means take from source; default keeps target)
-      const mergeableFields = ['ClientName','PrimaryMobile','AlternateMobile','Email','WhatsApp','City','LeadSource','Notes','Tags','ClientStatus','Priority','ClientLifecycle','AssignedAgentID'];
-      for (const f of mergeableFields) {
-        const choice = overrides[f];
-        if (choice === 'source' && source[f] != null && source[f] !== '') target[f] = source[f];
-        else if (target[f] == null || target[f] === '') target[f] = source[f]; // fill blanks
+      const normalizeMobile = (value) => {
+        let digits = String(value || '').replace(/\D/g, '');
+        if (digits.length > 10 && digits.startsWith('91')) digits = digits.slice(-10);
+        return digits.length === 10 ? digits : digits;
+      };
+      const sourceMobiles = [source.PrimaryMobile, source.Phone, source.AlternateMobile, ...(Array.isArray(source.AlternateMobiles) ? source.AlternateMobiles : [])]
+        .map(normalizeMobile).filter(Boolean);
+      const targetPrimary = normalizeMobile(target.PrimaryMobile || target.Phone);
+      const altSet = new Set([...(Array.isArray(target.AlternateMobiles) ? target.AlternateMobiles : []), target.AlternateMobile]
+        .map(normalizeMobile).filter(Boolean));
+      for (const mobile of sourceMobiles) if (mobile !== targetPrimary) altSet.add(mobile);
+
+      const mergeableFields = ['ClientName','Email','WhatsApp','City','LeadSource','Source','Notes','Tags','Priority','ClientLifecycle','AssignedAgentID'];
+      for (const field of mergeableFields) {
+        if (overrides[field] === 'source' && source[field] != null && source[field] !== '') target[field] = source[field];
+        else if (target[field] == null || target[field] === '') target[field] = source[field];
       }
+      if (overrides.PrimaryMobile === 'source' && sourceMobiles[0]) {
+        if (targetPrimary && targetPrimary !== sourceMobiles[0]) altSet.add(targetPrimary);
+        target.PrimaryMobile = sourceMobiles[0];
+        target.Phone = sourceMobiles[0];
+        altSet.delete(sourceMobiles[0]);
+      } else if (targetPrimary) {
+        target.PrimaryMobile = targetPrimary;
+        target.Phone = targetPrimary;
+      }
+      target.AlternateMobiles = [...altSet];
+      target.AlternateMobile = target.AlternateMobiles[0] || null;
       target.UpdatedAt = new Date().toISOString();
-      target._mergedFrom = [...(target._mergedFrom || []), sourceLeadId];
+      target._mergedFrom = [...new Set([...(target._mergedFrom || []), sourceLeadId])];
 
-      // Reassign transactions + requirements
-      (db.Transactions || []).forEach(t => { if (t.LeadID === sourceLeadId) t.LeadID = targetLeadId; });
-      (db.Requirements || []).forEach(r => { if (r.LeadID === sourceLeadId) r.LeadID = targetLeadId; });
-      (db.Activities   || []).forEach(a => { if (a.LeadID === sourceLeadId) a.LeadID = targetLeadId; });
-      (db.FollowUps    || []).forEach(f => { if (f.LeadID === sourceLeadId) f.LeadID = targetLeadId; });
+      const linkedCollections = ['Transactions','Activities','FollowUps','Shortlists','SiteVisits','Negotiations','Tokens','Deals','Documents','Timeline','BrokerShares','BrokerSubmissions'];
+      for (const collection of linkedCollections) {
+        for (const row of db[collection] || []) if (row.LeadID === sourceLeadId) row.LeadID = targetLeadId;
+      }
 
-      // Remove source lead
-      db.Leads = (db.Leads || []).filter(l => l.LeadID !== sourceLeadId);
+      // Keep the old identity for audit/history and old-mobile resolution.
+      source.ClientStatus = 'Merged';
+      source.LeadStatus = 'Merged';
+      source.ClientLifecycle = 'Archived';
+      source.ArchiveFlag = true;
+      source.MergedIntoClientID = targetLeadId;
+      source.MergedAt = new Date().toISOString();
+      source.MergedBy = actor?.userId || 'system';
+      source.UpdatedAt = source.MergedAt;
+      delete source._reviewStatus;
+      delete source._dupCandidates;
+      delete source._reviewNote;
 
       runtime.repository.write(db);
-      sendJson(res, { ok: true, action: 'MERGED', sourceLeadId, targetLeadId });
+      try {
+        runtime.repository.addTimelineEntry(targetLeadId, 'Lead', targetLeadId, 'CLIENT_MERGED', 'Client records merged', { sourceLeadId, targetLeadId, alternateMobiles: target.AlternateMobiles });
+      } catch (_) {}
+      sendJson(res, { ok: true, action: 'MERGED', sourceLeadId, targetLeadId, alternateMobiles: target.AlternateMobiles });
       return;
     }
 
