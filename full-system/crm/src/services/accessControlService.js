@@ -52,11 +52,6 @@ class AccessControlService {
       const tenant = this._resolveRecordTenant(lead, seen);
       if (tenant?.companyId || tenant?.brokerageId) return tenant;
     }
-    if (record.RequirementID) {
-      const requirement = this.repository.readRequirement(record.RequirementID);
-      const tenant = this._resolveRecordTenant(requirement, seen);
-      if (tenant?.companyId || tenant?.brokerageId) return tenant;
-    }
     if (record.TransactionID && typeof this.repository.getTransaction === 'function') {
       const transaction = this.repository.getTransaction(record.TransactionID);
       const tenant = this._resolveRecordTenant(transaction, seen);
@@ -240,12 +235,12 @@ class AccessControlService {
       });
       if (!leadCheck.ok) return leadCheck;
     }
-    if (record.RequirementID) {
-      const requirementCheck = this.authorizeRequirement(actor, this.repository.readRequirement(record.RequirementID), {
+    if (record.TransactionID) {
+      const transactionCheck = this.authorizeTransaction(actor, this.repository.find('Transactions', 'TransactionID', record.TransactionID), {
         skipPermission: true,
         hideExistence: options.hideExistence
       });
-      if (!requirementCheck.ok) return requirementCheck;
+      if (!transactionCheck.ok) return transactionCheck;
     }
     if (record.PropertyID) {
       const propertyCheck = this.authorizeProperty(actor, this.repository.find('Inventory', 'PropertyID', record.PropertyID), {
