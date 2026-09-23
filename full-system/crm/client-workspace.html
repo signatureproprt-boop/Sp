@@ -1208,7 +1208,8 @@ table td,table th{border-color:var(--v2-line)!important}
 
   // ── KPI STRIP ─────────────────────────────────────────────────────────────────
   function renderKpiStrip() {
-    const reqs  = workspace.transactions || [];
+    const txns  = workspace.transactions || [];
+    const reqs  = txns;
     const fus   = asArray(workspace.followUps).map(toCanonicalFollowUp).filter(Boolean);
     const svs   = workspace.siteVisits   || [];
     const negs  = workspace.negotiations || [];
