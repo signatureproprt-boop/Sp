@@ -13,7 +13,7 @@ class SignatureRealtyRuntime {
     this.router = new ApiRouter(this.repository);
     this.formEngine = new DynamicFormEngine(() => this.repository.getFormRegistrySnapshot());
     this.matchingEngine = new MatchingEngine({}, this.repository);
-    this.brokerService = new BrokerService();
+    this.brokerService = new BrokerService(this.repository);
     this.auth = new AuthService(this.repository);
   }
 
@@ -1061,6 +1061,10 @@ class SignatureRealtyRuntime {
 
   async getAdminDashboard(actor = {}) {
     return this.getAdminOverview(actor);
+  }
+
+  async brokerShareTransaction(transactionId, brokerId) {
+    return this.brokerService.shareTransaction(transactionId, brokerId);
   }
 
   async brokerShare(requirementId, brokerId) {
