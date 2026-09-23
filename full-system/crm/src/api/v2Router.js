@@ -1393,13 +1393,7 @@ class V2Router {
     }
 
     const transactions = this.txnSvc.listTransactionsByLead(leadId);
-    const requirements = this.reqSvc.listRequirementsByLead(leadId);
-    const requirementIds = new Set((requirements || []).map((r) => r.RequirementID).filter(Boolean));
-
-    const txnWithReqs = transactions.map((txn) => ({
-      ...txn,
-      requirements: requirements.filter((r) => r.TransactionID === txn.TransactionID)
-    }));
+    const txnWithReqs = transactions;
 
     const db       = this.repo.read();
     const activities = (db.Activities || []).filter((a) => a.LeadID === leadId).sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime());
@@ -1412,18 +1406,10 @@ class V2Router {
       brokerageId: String(actor?.brokerageId || actor?.brokerageID || lead.BrokerageID || '').trim()
     };
     const leadDocsResult = await this.documentSvc.listDocuments({ EntityType: 'Lead', EntityID: leadId }, actor || {}, docContext);
-    const requirementDocResults = await Promise.all(
-      Array.from(requirementIds).map((id) =>
-        this.documentSvc.listDocuments({ EntityType: 'Requirement', EntityID: id }, actor || {}, docContext)
-      )
-    );
     const transactionDocResults = await Promise.all(
       Array.from(transactionIds).map((id) =>
         this.documentSvc.listDocuments({ EntityType: 'Transaction', EntityID: id }, actor || {}, docContext)
       )
-    );
-    const requirementDocs = requirementDocResults.flatMap((result) =>
-      result.ok && Array.isArray(result.data) ? result.data : []
     );
     const transactionDocs = transactionDocResults.flatMap((result) =>
       result.ok && Array.isArray(result.data) ? result.data : []
@@ -1431,7 +1417,7 @@ class V2Router {
     const leadDocs = leadDocsResult.ok && Array.isArray(leadDocsResult.data) ? leadDocsResult.data : [];
     const documents = [];
     const seenDocumentIds = new Set();
-    for (const doc of [...leadDocs, ...requirementDocs, ...transactionDocs]) {
+    for (const doc of [...leadDocs, ...transactionDocs]) {
       const key = doc?.DocumentID || `${doc?.EntityType || 'Unknown'}:${doc?.EntityID || ''}:${documents.length}`;
       if (seenDocumentIds.has(key)) continue;
       seenDocumentIds.add(key);
@@ -1449,15 +1435,15 @@ class V2Router {
       if (row.TransactionID && transactionIds.has(row.TransactionID)) return true;
       return false;
     });
-    const matching = (db.Matches || []).filter((row) => requirementIds.has(row.RequirementID));
-    const shortlist = (db.Shortlists || []).filter((row) => requirementIds.has(row.RequirementID));
+    const matching = (db.Matches || []).filter((row) => transactionIds.has(row.TransactionID || row.RequirementID));
+    const shortlist = (db.Shortlists || []).filter((row) => transactionIds.has(row.TransactionID || row.RequirementID));
 
     return {
       ok:   true,
       data: {
         lead,
         transactions:  txnWithReqs,
-        requirements,
+        requirements: transactions,
         activities,
         followUps,
         timeline,
@@ -1471,8 +1457,8 @@ class V2Router {
         shortlist,
         summary: {
           transactionCount:  transactions.length,
-          requirementCount:  requirements.length,
-          activeRequirements: requirements.filter((r) => (r.RequirementStatus || r.Status) === 'Active').length,
+          requirementCount:  transactions.length,
+          activeRequirements: transactions.filter((r) => !['Closed','Won','Lost','Cancelled'].includes(r.TransactionStatus || r.Status)).length,
           pendingFollowUps:   followUps.filter((f) => !['COMPLETED', 'CANCELLED'].includes(String(f.status || f.Status || '').toUpperCase())).length
         }
       }
