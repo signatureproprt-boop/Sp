@@ -229,6 +229,52 @@ class JsonRepository {
     for (const key of ARRAY_COLLECTION_KEYS) {
       if (!Array.isArray(db[key])) db[key] = [];
     }
+    // Lossless compatibility migration: legacy Requirement data is absorbed
+    // into Transactions and downstream records receive TransactionID.
+    const requirements = db.Requirements || [];
+    const transactions = db.Transactions || [];
+    const txnById = new Map(transactions.map((row) => [row.TransactionID, row]));
+    const reqToTxn = new Map();
+    for (const req of requirements) {
+      if (!req?.RequirementID) continue;
+      let txn = req.TransactionID ? txnById.get(req.TransactionID) : null;
+      if (!txn) {
+        const transactionId = req.TransactionID || ('TXN-MIG-' + String(req.RequirementID).replace(/^REQ-?/i, ''));
+        txn = {
+          TransactionID: transactionId, LeadID: req.LeadID,
+          TransactionType: req.TransactionType || req.Type || 'Purchase',
+          Type: req.TransactionType || req.Type || 'Purchase',
+          TransactionStatus: req.RequirementStatus || req.Status || 'Open',
+          Status: req.RequirementStatus || req.Status || 'Open',
+          PipelineStage: req.PipelineStage || 'New',
+          CreatedAt: req.CreatedAt || new Date().toISOString(),
+          UpdatedAt: req.UpdatedAt || req.CreatedAt || new Date().toISOString(),
+          Version: Number(req.Version || req.VersionNumber || 1), _v2: true
+        };
+        transactions.push(txn); txnById.set(transactionId, txn);
+      }
+      reqToTxn.set(req.RequirementID, txn.TransactionID);
+      const fields = { ...(txn.Fields || {}) };
+      const reserved = new Set(['RequirementID','RequirementCode','LeadID','TransactionID','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy','Version','VersionNumber']);
+      for (const [key, value] of Object.entries(req)) {
+        if (reserved.has(key) || value === undefined) continue;
+        if (txn[key] === undefined || txn[key] === null || txn[key] === '') txn[key] = value;
+        if (!['TransactionType','Type','RequirementStatus','Status','PipelineStage','Category','SubCategory'].includes(key)) {
+          fields[key] = fields[key] || { state: value === null || value === '' ? 'UNKNOWN' : 'KNOWN', value: value === '' ? null : value };
+        }
+      }
+      txn.Fields = fields;
+      txn.LegacyRequirementID = txn.LegacyRequirementID || req.RequirementID;
+    }
+    db.Transactions = transactions;
+    for (const collection of ['Activities','FollowUps','Matches','Shortlists','SiteVisits','Negotiations','Tokens','Deals','Documents','BrokerShares','BrokerSubmissions','TransactionShares']) {
+      for (const row of db[collection] || []) {
+        if (!row || row.TransactionID || !row.RequirementID) continue;
+        const transactionId = reqToTxn.get(row.RequirementID);
+        if (transactionId) row.TransactionID = transactionId;
+      }
+    }
+
     if (!db._V2Counters || typeof db._V2Counters !== 'object' || Array.isArray(db._V2Counters)) {
       db._V2Counters = { Lead: 0, Transaction: 0, Requirement: 0 };
     } else {
