@@ -10,6 +10,12 @@ class BrokerController {
     return { data: brokers, ok: true };
   }
 
+  async shareTransaction(ctx) {
+    const { transactionId, brokerId } = ctx.body;
+    const result = await this.brokerService.shareTransaction(transactionId, brokerId);
+    return { data: result, ok: true };
+  }
+
   async shareRequirement(ctx) {
     const { requirementId, brokerId } = ctx.body;
     const result = await this.brokerService.shareRequirement(requirementId, brokerId);
