@@ -5046,7 +5046,8 @@ appServer = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── V2 page routing — extensionless URLs → .html files ─────────────────────
+  // ── V2 page routing — extensionless URLs are the canonical application ─────
+  // Legacy .html entry points redirect to the V2 canonical routes.
   const V2_ROUTES = {
     '/clients':             '/client-workspace-hub.html',
     '/leads-kanban':        '/leads-kanban.html',
@@ -5061,13 +5062,36 @@ appServer = http.createServer(async (req, res) => {
     '/broker-network':      '/broker-network.html',
     '/calculators':         '/calculators.html',
     '/digital-card':        '/digital-card.html',
-    '/admin':                '/admin.html',
-    '/dashboard-v2':          '/dashboard-v2.html'
+    '/admin':               '/admin.html',
+    '/dashboard-v2':        '/dashboard-v2.html'
   };
 
-  let filePath = url.pathname === '/' ? '/index.html'
-    : /^\/share\/req\/[A-Za-z0-9_-]+\/?$/.test(url.pathname) ? '/share-req.html'
-    : (V2_ROUTES[url.pathname] || url.pathname);
+  const LEGACY_V2_REDIRECTS = {
+    '/client-workspace-hub.html': '/clients',
+    '/client-workspace.html': '/client-workspace',
+    '/dashboard-v2.html': '/',
+    '/requirements-view.html': '/requirements-view',
+    '/duplicates.html': '/duplicates',
+    '/inventory.html': '/inventory',
+    '/property-workspace.html': '/property-workspace',
+    '/builder-projects.html': '/builder-projects',
+    '/broker-network.html': '/broker-network',
+    '/calculators.html': '/calculators',
+    '/digital-card.html': '/digital-card',
+    '/admin.html': '/admin',
+    '/leads-kanban.html': '/leads-kanban',
+    '/property-investment-analyzer.html': '/property-investment-analyzer'
+  };
+
+  const legacyRedirect = LEGACY_V2_REDIRECTS[url.pathname];
+  if (legacyRedirect) {
+    res.writeHead(302, withSecurityHeaders({
+      Location: legacyRedirect + (url.search || ''),
+      'Cache-Control': 'no-store'
+    }));
+    res.end();
+    return;
+  }
 
   const requestPath = url.pathname === '/' ? '/index.html' : url.pathname;
   const publicPages = new Set(['/index.html', '/login.html', '/share-req.html']);
