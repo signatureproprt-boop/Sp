@@ -73,6 +73,10 @@ class AccessControlService {
 
   _sameTenant(record = {}, actor = {}) {
     if (!record || typeof record !== 'object') return true;
+    // Admins already have global tenant visibility. Do not resolve record
+    // tenancy recursively for every lead during list endpoints; that can turn
+    // a paginated client query into hundreds of full snapshot/user lookups.
+    if (this._role(actor) === 'ADMIN') return true;
     const actorCompany = String(actor.companyId || actor.companyID || '').trim();
     const actorBrokerage = String(actor.brokerageId || actor.brokerageID || '').trim();
     const resolvedTenant = this._resolveRecordTenant(record) || {};
