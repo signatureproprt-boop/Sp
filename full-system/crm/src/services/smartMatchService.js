@@ -322,7 +322,7 @@ class SmartMatchService {
     return {
       ok: true,
       data: {
-        requirementId: requirement.RequirementID,
+        transactionId: requirement.TransactionID,
         leadId: requirement.LeadID,
         criteria: { reqTxn, reqCat, reqSub, reqLocs, reqBudgetMin, reqBudgetMax, reqAreas },
         total: filtered.length,
@@ -332,11 +332,15 @@ class SmartMatchService {
     };
   }
 
-  matchByRequirementId(requirementId, options = {}) {
+  matchByRequirementId(transactionId, options = {}) {
+    return this.matchByTransactionId(transactionId, options);
+  }
+
+  matchByTransactionId(transactionId, options = {}) {
     const db = this.repository.read();
-    const requirement = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
-    if (!requirement) return { ok: false, error: 'Requirement not found' };
-    return this.match(requirement, options);
+    const transaction = (db.Transactions || []).find((row) => row.TransactionID === transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+    return this.match(transaction, options);
   }
 }
 
