@@ -465,6 +465,7 @@ class V2Router {
 
     // GET /api/v2/dependencies/evaluate — evaluate field states for a context or requirementId
     if (pathname === '/api/v2/dependencies/evaluate' && method === 'GET') {
+      const transactionId  = url.searchParams.get('transactionId');
       const requirementId  = url.searchParams.get('requirementId');
       const txnType        = url.searchParams.get('transactionType') || url.searchParams.get('txnType');
       const category       = url.searchParams.get('category');
@@ -473,8 +474,18 @@ class V2Router {
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
 
+      if (transactionId) {
+        const current = this.txnSvc.getTransaction(transactionId);
+        const access = this.accessSvc.authorizeTransaction(auth.actor, current.ok ? current.data : null, {
+          permissions: ['LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+        const result = this.depSvc.evaluateTransaction(transactionId);
+        return this._json(result.ok ? 200 : 404, result);
+      }
+
       if (requirementId) {
-        // DB-backed evaluation from stored Requirement
+        // Transitional compatibility for historical Requirement URLs
         const current = this.reqSvc.getRequirement(requirementId);
         const access = this.accessSvc.authorizeRequirement(auth.actor, current.ok ? current.data : null, {
           permissions: ['REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
@@ -486,7 +497,7 @@ class V2Router {
 
       // Direct context evaluation
       if (!txnType && !category) {
-        return this._json(400, { ok: false, error: 'Provide requirementId or at least transactionType / category' });
+        return this._json(400, { ok: false, error: 'Provide transactionId or at least transactionType / category' });
       }
       const ctx = {
         transactionType: txnType    || null,
