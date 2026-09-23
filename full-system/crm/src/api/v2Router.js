@@ -75,7 +75,7 @@ class V2Router {
       this.scoringSvc,
       this.accessSvc
     );
-    this.actSvc       = new V2ActivityService(repository, this.reqSvc);
+    this.actSvc       = new V2ActivityService(repository, this.txnSvc);
     this.fuSvc        = new V2FollowUpService(repository);
     this.documentSvc  = new DocumentService(repository);
     this.repo         = repository;
@@ -206,21 +206,29 @@ class V2Router {
     // ── NEW: Client workspace (always active) ─────────────────────────────────
     const wsMatch = pathname.match(/^\/api\/clients\/([^/]+)\/workspace$/);
     if (wsMatch && method === 'GET') {
-      const leadId = wsMatch[1];
+      const requestedLeadId = wsMatch[1];
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
-      const lead = this.repo.readLead(leadId);
+      let lead = this.repo.readLead(requestedLeadId);
+      if (!lead) return this._json(404, { ok: false, error: 'Client not found' });
+
+      // A historical Client ID remains valid after merge, but always resolves
+      // to the surviving master workspace. Guard against malformed merge loops.
+      const visited = new Set();
+      while (lead?.MergedIntoClientID && !visited.has(lead.LeadID)) {
+        visited.add(lead.LeadID);
+        const master = this.repo.readLead(lead.MergedIntoClientID);
+        if (!master) break;
+        lead = master;
+      }
+      const leadId = lead.LeadID;
       const access = this.accessSvc.authorizeLead(auth.actor, lead, { permissions: ['LEADS_VIEW', 'LEADS_READ'] });
       if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error === 'Not found' ? 'Client not found' : access.error });
       const result = await this._buildClientWorkspace(leadId, auth.actor);
-      // Workspace identity invariant: never return a different client's data.
-      if (result.ok) {
-        const requestedLeadId = String(leadId || '').trim();
-        const returnedLeadId = String(result.data?.lead?.LeadID || '').trim();
-        if (!returnedLeadId || returnedLeadId !== requestedLeadId) {
-          console.error('[workspace] CLIENT_ID_MISMATCH', { requestedLeadId, returnedLeadId });
-          return this._json(409, { ok: false, error: 'Client workspace identity mismatch' });
-        }
+      if (result.ok && requestedLeadId !== leadId) {
+        result.data.requestedLeadId = requestedLeadId;
+        result.data.resolvedLeadId = leadId;
+        result.data.mergedClientRedirect = true;
       }
       return this._json(result.ok ? 200 : 404, result);
     }
