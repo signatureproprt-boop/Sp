@@ -316,7 +316,7 @@ class SignatureRealtyRuntime {
     const db = this.repository.read();
     const candidates = [
       ...(db.Leads || []),
-      ...(db.Requirements || []),
+      ...(db.Transactions || []),
       ...(db.Inventory || []),
       ...(db.Matches || []),
       ...(db.Shortlists || []),
@@ -332,7 +332,7 @@ class SignatureRealtyRuntime {
     const matches = candidates.filter((row) => {
       return JSON.stringify(row).toLowerCase().includes(q);
     }).map((row) => ({
-      entityType: Object.keys(row).includes('LeadID') && row.LeadID ? 'Lead' : Object.keys(row).includes('RequirementID') && row.RequirementID ? 'Requirement' : Object.keys(row).includes('PropertyID') && row.PropertyID ? 'Property' : Object.keys(row).includes('MatchID') && row.MatchID ? 'Match' : Object.keys(row).includes('NegotiationID') && row.NegotiationID ? 'Negotiation' : Object.keys(row).includes('TokenID') && row.TokenID ? 'Token' : Object.keys(row).includes('DealID') && row.DealID ? 'Deal' : 'Record',
+      entityType: Object.keys(row).includes('TransactionID') && row.TransactionID && !row.ShortlistID && !row.SiteVisitID && !row.NegotiationID && !row.TokenID && !row.DealID ? 'Transaction' : Object.keys(row).includes('LeadID') && row.LeadID ? 'Lead' : Object.keys(row).includes('PropertyID') && row.PropertyID ? 'Property' : Object.keys(row).includes('MatchID') && row.MatchID ? 'Match' : Object.keys(row).includes('NegotiationID') && row.NegotiationID ? 'Negotiation' : Object.keys(row).includes('TokenID') && row.TokenID ? 'Token' : Object.keys(row).includes('DealID') && row.DealID ? 'Deal' : 'Record',
       ...row
     }));
 
@@ -342,7 +342,7 @@ class SignatureRealtyRuntime {
   async getReportSummary() {
     const db = this.repository.read();
     const leadCount = (db.Leads || []).length;
-    const requirementCount = (db.Requirements || []).length;
+    const transactionCount = (db.Transactions || []).length;
     const matchCount = (db.Matches || []).length;
     const shortlistCount = (db.Shortlists || []).length;
     const siteVisitCount = (db.SiteVisits || []).length;
@@ -355,7 +355,7 @@ class SignatureRealtyRuntime {
       data: {
         totalLeads: leadCount,
         activeLeads: (db.Leads || []).filter((lead) => ['Active', 'Verified'].includes(lead.LeadStatus || lead.leadStatus)).length,
-        requirements: requirementCount,
+        transactions: transactionCount,
         matches: matchCount,
         shortlists: shortlistCount,
         siteVisits: siteVisitCount,
