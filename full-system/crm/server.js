@@ -5094,6 +5094,7 @@ appServer = http.createServer(async (req, res) => {
   }
 
   const requestPath = url.pathname === '/' ? '/index.html' : url.pathname;
+  let filePath = V2_ROUTES[url.pathname] || requestPath;
   const publicPages = new Set(['/index.html', '/login.html', '/share-req.html']);
   if (url.pathname === '/login') {
     res.writeHead(302, withSecurityHeaders({ Location: '/login.html' }));
