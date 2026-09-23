@@ -3122,7 +3122,7 @@ async function handleApi(req, res, url) {
       const leadId = match[1];
       const subPath = match[2];
       const existingLead = await runtime.readLead(leadId);
-      const leadPermission = req.method === 'PATCH' || (req.method === 'POST' && ['requirements', 'activity'].includes(subPath))
+      const leadPermission = req.method === 'PATCH' || (req.method === 'POST' && ['transactions', 'requirements', 'activity'].includes(subPath))
         ? 'LEADS_UPDATE'
         : 'LEADS_READ';
       const leadAccess = accessSvc.authorizeLead(actor, existingLead?.data, {
@@ -3141,7 +3141,7 @@ async function handleApi(req, res, url) {
           return;
         }
 
-        if (subPath === 'requirements') {
+        if (subPath === 'transactions' || subPath === 'requirements') {
           const payload = await runtime.getLeadRequirements(leadId);
           sendJson(res, payload);
           return;
@@ -3170,10 +3170,15 @@ async function handleApi(req, res, url) {
       }
 
       if (req.method === 'POST') {
-        if (subPath === 'requirements') {
+        if (subPath === 'transactions' || subPath === 'requirements') {
           const body = await readJson(req);
-          const payload = await runtime.createRequirement(leadId, body.transactionId || 'TXN-0001', body);
-          sendJson(res, payload);
+          const transactionId = body.transactionId || body.TransactionID;
+          if (!transactionId) {
+            sendJson(res, { ok: false, error: 'transactionId required; create transactions through the transaction API' }, 400);
+            return;
+          }
+          const payload = await runtime.createRequirement(leadId, transactionId, body);
+          sendJson(res, { ...payload, compatibilityMode: subPath === 'requirements' });
           return;
         }
 
@@ -3290,6 +3295,7 @@ async function handleApi(req, res, url) {
     }
 
     if (pathname === '/api/requirements' && req.method === 'POST') {
+      // Legacy compatibility only: never creates a Requirement row.
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       if (!ensurePermissionOrRespond(req, res, url, 'REQUIREMENTS_CREATE')) return;
@@ -3306,7 +3312,7 @@ async function handleApi(req, res, url) {
       }
       const payload = await runtime.createRequirement(
         leadId,
-        body.transactionId || body.TransactionID || 'TXN-0001',
+        body.transactionId || body.TransactionID,
         {
           ...body,
           CompanyID: actor.companyId || actor.companyID || null,
