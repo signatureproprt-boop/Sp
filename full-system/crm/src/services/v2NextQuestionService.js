@@ -88,6 +88,36 @@ class V2NextQuestionService {
    * @param {{ limit?: number }} options
    * @returns {{ ok, requirementId, questions, totalCandidates, context }}
    */
+  getNextQuestionsByTransaction(transactionId, options = {}) {
+    const db = this.repository.read();
+    const txn = (db.Transactions || []).find((t) => t.TransactionID === transactionId);
+    if (!txn) return { ok: false, error: `Transaction not found: ${transactionId}` };
+    return this._getNextQuestionsForRecord(txn, options);
+  }
+
+  _getNextQuestionsForRecord(req, options = {}) {
+    const transactionId = req.TransactionID;
+    const context = {
+      transactionType: req.TransactionType || req.Type || null,
+      category: req.Category || null,
+      subCategory: req.SubCategory || null,
+      fields: req.Fields || {}
+    };
+    const limit = Math.max(1, Math.min(Number(options.limit) || 3, 20));
+    // Reuse the established ranking algorithm without persisting a Requirement row.
+    const originalRead = this.repository.read.bind(this.repository);
+    this.repository.read = () => {
+      const snapshot = originalRead();
+      return { ...snapshot, Requirements: [{ ...req, RequirementID: transactionId }] };
+    };
+    try {
+      const result = this.getNextQuestions(transactionId, { limit });
+      return result.ok ? { ...result, transactionId, requirementId: undefined } : result;
+    } finally {
+      this.repository.read = originalRead;
+    }
+  }
+
   getNextQuestions(requirementId, options = {}) {
     const limit = this._parseLimit(options.limit);
 
