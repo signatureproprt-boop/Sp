@@ -10,6 +10,7 @@ function repoWith(db) {
   return {
     read: () => JSON.parse(JSON.stringify(db)),
     write: () => {},
+    createId: (prefix) => prefix + '-TEST-1',
     list: (collection) => {
       const rows = db[collection];
       return Array.isArray(rows) ? JSON.parse(JSON.stringify(rows)) : [];
@@ -101,4 +102,44 @@ test('InventoryService rejects an unknown BuilderProject link', () => {
 
   assert.equal(out.ok, false);
   assert.equal(out.error, 'Builder project not found');
+});
+
+
+test('BuilderProjectService rejects duplicate active project identity', () => {
+  const db = {
+    Builders: [{ BuilderID: 'BLD-1', BuilderName: 'Acme Developers' }],
+    BuilderProjects: [{
+      ProjectID: 'BLDP-1', ProjectName: 'Skyline', BuilderID: 'BLD-1',
+      BuilderName: 'Acme Developers', Location1: 'Vesu', Active: true
+    }]
+  };
+  const svc = new BuilderProjectService(repoWith(db));
+  const out = svc.create({ ProjectName: 'Skyline', BuilderName: 'Acme Developers', Location1: 'Vesu' });
+  assert.equal(out.ok, false);
+  assert.equal(out.error, 'Duplicate builder project');
+  assert.equal(out.duplicateProjectId, 'BLDP-1');
+});
+
+test('BuilderProjectService resolves unique BuilderName to canonical BuilderID', () => {
+  const db = {
+    Builders: [{ BuilderID: 'BLD-7', BuilderName: 'Acme Developers' }],
+    BuilderProjects: []
+  };
+  let written;
+  const repo = repoWith(db);
+  repo.write = (next) => { written = next; };
+  const svc = new BuilderProjectService(repo);
+  const out = svc.create({ ProjectName: 'Riverfront', BuilderName: 'Acme Developer Pvt Ltd', Location1: 'Adajan' });
+  assert.equal(out.ok, true);
+  assert.equal(out.data.BuilderID, 'BLD-7');
+  assert.equal(out.data.BuilderName, 'Acme Developers');
+  assert.equal(written.BuilderProjects[0].BuilderID, 'BLD-7');
+});
+
+test('BuilderProjectService rejects invalid explicit BuilderID', () => {
+  const db = { Builders: [], BuilderProjects: [] };
+  const svc = new BuilderProjectService(repoWith(db));
+  const out = svc.create({ ProjectName: 'Riverfront', BuilderID: 'BLD-MISSING', BuilderName: 'Acme', Location1: 'Adajan' });
+  assert.equal(out.ok, false);
+  assert.equal(out.error, 'BuilderID not found');
 });
