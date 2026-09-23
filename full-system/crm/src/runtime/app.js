@@ -456,7 +456,8 @@ class SignatureRealtyRuntime {
       return { ok: false, error: 'Lead not found' };
     }
 
-    const requirements = this.repository.listRequirementsByLead(leadId);
+    const transactions = this.repository.list('Transactions').filter((t) => t.LeadID === leadId);
+    const transactionIds = new Set(transactions.map((t) => t.TransactionID));
     const activities = this.repository.getLeadActivities(leadId);
     const shortlist = await this.listShortlist({ leadId, status: 'Active' });
     const siteVisitsResult = this.repository.listSiteVisits();
@@ -472,11 +473,10 @@ class SignatureRealtyRuntime {
       ok: true,
       data: {
         lead,
-        transactions: this.repository.list('Transactions').filter((t) => t.LeadID === leadId),
-        requirements,
+        transactions,
         activities,
         timeline: this.repository.list('Timeline').filter((t) => t.LeadID === leadId),
-        matching: this.repository.listMatches().filter((item) => requirements.some((req) => req.RequirementID === item.RequirementID)),
+        matching: this.repository.listMatches().filter((item) => item.TransactionID && transactionIds.has(item.TransactionID)),
         shortlist: shortlist.ok ? shortlist.data : [],
         siteVisits: siteVisitsResult.ok ? siteVisitsResult.data.filter((visit) => visit.LeadID === leadId) : [],
         negotiations,
