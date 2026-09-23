@@ -75,6 +75,7 @@ class V2LeadService {
     for (const lead of leads) {
       const lMobile    = normalizePhone(lead.PrimaryMobile || lead.Phone);
       const lAlt       = normalizePhone(lead.AlternateMobile);
+      const lAltMobiles = (Array.isArray(lead.AlternateMobiles) ? lead.AlternateMobiles : []).map(normalizePhone).filter(Boolean);
       const lWhatsapp  = normalizePhone(lead.WhatsApp);
       const lEmail     = normalizeEmail(lead.Email);
       const lName      = normalizeName(lead.ClientName);
@@ -82,10 +83,11 @@ class V2LeadService {
       // Exact match: same primary mobile OR same email
       const phoneMatch = mobile && lMobile && mobile === lMobile;
       const emailMatch = email && lEmail && email === lEmail;
-      const altMatch   = altMobile && (altMobile === lMobile || altMobile === lAlt);
-      const waMatch    = whatsapp  && (whatsapp  === lMobile || whatsapp  === lWhatsapp);
+      const primaryInAlternates = mobile && lAltMobiles.includes(mobile);
+      const altMatch   = altMobile && (altMobile === lMobile || altMobile === lAlt || lAltMobiles.includes(altMobile));
+      const waMatch    = whatsapp  && (whatsapp === lMobile || whatsapp === lWhatsapp || lAltMobiles.includes(whatsapp));
 
-      if (phoneMatch || emailMatch) {
+      if (phoneMatch || primaryInAlternates || emailMatch) {
         exact.push(this._maskCandidate(lead, 'EXACT_MATCH'));
         continue;
       }
@@ -166,8 +168,9 @@ class V2LeadService {
     const lead = {
       LeadID:           leadId,
       ClientName:       payload.ClientName || payload.clientName || null,
-      PrimaryMobile:    payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone || null,
-      AlternateMobile:  payload.AlternateMobile || payload.alternateMobile || null,
+      PrimaryMobile:    normalizePhone(payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone) || null,
+      AlternateMobile:  normalizePhone(payload.AlternateMobile || payload.alternateMobile) || null,
+      AlternateMobiles: [payload.AlternateMobile || payload.alternateMobile].map(normalizePhone).filter(Boolean),
       WhatsApp:         payload.WhatsApp || payload.whatsapp || null,
       Email:            payload.Email || payload.email || null,
       ClientStatus:     clientStatus,
