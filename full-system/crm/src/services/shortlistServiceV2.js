@@ -70,7 +70,7 @@ class ShortlistServiceV2 {
   }
 
   buildView(row) {
-    const req = this.repo.readRequirement(row.TransactionID);
+    const transaction = this.repo.find('Transactions', 'TransactionID', row.TransactionID);
     const prop = row.IsManual ? null : this.repo.find('Inventory', 'PropertyID', row.PropertyID);
     return {
       ShortlistID: row.ShortlistID,
@@ -84,7 +84,7 @@ class ShortlistServiceV2 {
       MatchLevel: row.MatchLevel || null,
       CreatedAt: row.CreatedAt,
       UpdatedAt: row.UpdatedAt,
-      TransactionCode: req?.TransactionCode || row.TransactionID,
+      TransactionCode: transaction?.TransactionCode || row.TransactionID,
       IsManual: !!row.IsManual,
       Property: row.IsManual ? (row.ManualProperty || {}) : this._propertySnapshot(prop)
     };
@@ -104,8 +104,8 @@ class ShortlistServiceV2 {
     if (!transactionId) return { ok: false, error: 'transactionId required' };
     if (!propertyId) return { ok: false, error: 'propertyId required' };
 
-    const req = this.repo.find('Transactions', 'TransactionID', transactionId);
-    if (!req) return { ok: false, error: 'Transaction not found' };
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
 
     const prop = this.repo.find('Inventory', 'PropertyID', propertyId);
     if (!prop) return { ok: false, error: 'Property not found' };
@@ -130,7 +130,7 @@ class ShortlistServiceV2 {
     const row = {
       ShortlistID: this.repo.createId('SL'),
       TransactionID: transactionId,
-      LeadID: req.LeadID,
+      LeadID: transaction.LeadID,
       PropertyID: propertyId,
       MatchID: null,
       Status: 'Active',
@@ -155,8 +155,8 @@ class ShortlistServiceV2 {
 
   addManual(transactionId, payload = {}) {
     if (!transactionId) return { ok: false, error: 'transactionId required' };
-    const req = this.repo.find('Transactions', 'TransactionID', transactionId);
-    if (!req) return { ok: false, error: 'Transaction not found' };
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
 
     const db = this.repo.read();
     db.Shortlists = db.Shortlists || [];
@@ -167,12 +167,12 @@ class ShortlistServiceV2 {
     const row = {
       ShortlistID: this.repo.createId('SL'),
       TransactionID: transactionId,
-      LeadID: req.LeadID,
+      LeadID: transaction.LeadID,
       PropertyID: propertyId,
       IsManual: true,
       ManualProperty: {
         Title: title,
-        Category: payload.category || req.Category || null,
+        Category: payload.category || transaction.Category || null,
         SubCategory: payload.subCategory || null,
         Location1: payload.location || null,
         SocietyName: payload.societyName || null,
@@ -182,7 +182,7 @@ class ShortlistServiceV2 {
         BHK: payload.bhk || null,
         FurnishingType: payload.furnishing || null,
         InventorySource: payload.source || 'Manual',
-        ListingFor: payload.listingFor || req.TransactionType || null,
+        ListingFor: payload.listingFor || transaction.TransactionType || null,
         Status: payload.status || 'Manual Entry',
         PhotoUrl: payload.photoUrl || null,
         MediaLinks: { photos: [], videos: [], brochures: [] },
