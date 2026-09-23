@@ -80,6 +80,20 @@ class V2FollowUpService {
     delete updates.CreatedBy;
     delete updates.CreatedAt;
 
+    // Transaction may be changed only to another transaction owned by the
+    // same client. This keeps FollowUp = ClientID + optional TransactionID.
+    if (Object.prototype.hasOwnProperty.call(updates, 'TransactionID')) {
+      if (updates.TransactionID) {
+        const txn = (db.Transactions || []).find(t => t.TransactionID === updates.TransactionID);
+        if (!txn) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
+        if (txn.LeadID !== fu.LeadID) {
+          return { ok: false, error: 'Transaction does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
+        }
+      } else {
+        updates.TransactionID = null;
+      }
+    }
+
     const dueAt = this._resolveDueAt(updates);
     if (dueAt) updates.DueAt = dueAt;
     delete updates.DueDate;
