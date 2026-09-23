@@ -297,26 +297,28 @@ class V2ScoringService {
   /**
    * Recalculate RequirementScore and persist it on the Requirement record.
    */
-  recalculateRequirementScore(requirementId) {
-    const db  = this.repository.read();
-    const idx = (db.Requirements || []).findIndex((r) => r.RequirementID === requirementId);
-    if (idx === -1) return { ok: false, error: `Requirement not found: ${requirementId}` };
+  recalculateRequirementScore(transactionId) {
+    return this.recalculateTransactionScore(transactionId);
+  }
 
-    const req    = db.Requirements[idx];
-    const result = this.calculateRequirementScore(req);
+  recalculateTransactionScore(transactionId) {
+    const db = this.repository.read();
+    const idx = (db.Transactions || []).findIndex((t) => t.TransactionID === transactionId);
+    if (idx === -1) return { ok: false, error: `Transaction not found: ${transactionId}` };
+
+    const txn = db.Transactions[idx];
+    const result = this.calculateRequirementScore(txn);
     if (!result.ok) return result;
-
-    db.Requirements[idx] = {
-      ...req,
-      RequirementScore:          result.score,
-      ScoreBreakdown:            result,
-      ScoreCalculationVersion:   result.calculationVersion,
-      ScoreCalculatedAt:         result.calculatedAt,
-      UpdatedAt:                 result.calculatedAt
+    db.Transactions[idx] = {
+      ...txn,
+      TransactionScore: result.score,
+      ScoreBreakdown: result,
+      ScoreCalculationVersion: result.calculationVersion,
+      ScoreCalculatedAt: result.calculatedAt,
+      UpdatedAt: result.calculatedAt
     };
     this.repository.write(db);
-
-    return { ok: true, requirementId, ...result };
+    return { ok: true, transactionId, ...result };
   }
 
   /**
@@ -329,7 +331,7 @@ class V2ScoringService {
 
     const lead     = db.Leads[idx];
     const txnCount = (db.Transactions || []).filter((t) => t.LeadID === leadId).length;
-    const reqCount = (db.Requirements || []).filter((r) => r.LeadID === leadId).length;
+    const reqCount = txnCount;
 
     const result = this.calculateClientScore(lead, txnCount, reqCount);
     if (!result.ok) return result;
