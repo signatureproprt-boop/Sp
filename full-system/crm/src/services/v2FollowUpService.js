@@ -26,10 +26,10 @@ class V2FollowUpService {
     const lead = (db.Leads || []).find(l => l.LeadID === payload.LeadID);
     if (!lead) return { ok: false, error: 'Lead not found', code: 'LEAD_NOT_FOUND' };
 
-    if (payload.RequirementID) {
-      const req = (db.Requirements || []).find(r => r.RequirementID === payload.RequirementID);
-      if (!req) return { ok: false, error: 'Requirement not found', code: 'NOT_FOUND' };
-      if (req.LeadID !== payload.LeadID) return { ok: false, error: 'Requirement does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
+    if (payload.TransactionID) {
+      const txn = (db.Transactions || []).find(t => t.TransactionID === payload.TransactionID);
+      if (!txn) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
+      if (txn.LeadID !== payload.LeadID) return { ok: false, error: 'Transaction does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
     }
 
     const dueAt = this._resolveDueAt(payload);
@@ -42,7 +42,6 @@ class V2FollowUpService {
       FollowUpID: this.repo.createId('FU'),
       LeadID: payload.LeadID,
       TransactionID: payload.TransactionID || null,
-      RequirementID: payload.RequirementID || null,
       ActivityID: payload.ActivityID || null,
       DueAt: dueAt,
       ActivityType: activityType,
@@ -154,7 +153,6 @@ class V2FollowUpService {
     let fus = db.FollowUps || [];
     if (filters.LeadID) fus = fus.filter(f => f.LeadID === filters.LeadID);
     if (filters.TransactionID) fus = fus.filter(f => f.TransactionID === filters.TransactionID);
-    if (filters.RequirementID) fus = fus.filter(f => f.RequirementID === filters.RequirementID);
     if (filters.AssignedUser || filters.AssignedTo) {
       const assigned = filters.AssignedUser || filters.AssignedTo;
       fus = fus.filter(f => (f.AssignedUser || f.AssignedTo) === assigned);
@@ -224,7 +222,7 @@ class V2FollowUpService {
     const hasActivity = db.Activities.some((row) =>
       row &&
       row.LeadID === followUp.LeadID &&
-      row.RequirementID === followUp.RequirementID &&
+      row.TransactionID === followUp.TransactionID &&
       row._transitionKey === key
     );
     if (!hasActivity) {
@@ -232,7 +230,6 @@ class V2FollowUpService {
         ActivityID: this.repo.createId('ACT'),
         LeadID: followUp.LeadID,
         TransactionID: followUp.TransactionID,
-        RequirementID: followUp.RequirementID,
         ActivityType: followUp.ActivityType,
         Notes: details.note,
         CreatedAt: occurredAt,
@@ -350,7 +347,6 @@ class V2FollowUpService {
       id: row.FollowUpID,
       leadId: row.LeadID || null,
       transactionId: row.TransactionID || null,
-      requirementId: row.RequirementID || null,
       activityId: row.ActivityID || null,
       dueAt: dueAtIso,
       activityType,
@@ -371,7 +367,6 @@ class V2FollowUpService {
       FollowUpID: normalized.id,
       LeadID: normalized.leadId,
       TransactionID: normalized.transactionId,
-      RequirementID: normalized.requirementId,
       ActivityID: normalized.activityId,
       DueAt: normalized.dueAt,
       ActivityType: normalized.activityType,
