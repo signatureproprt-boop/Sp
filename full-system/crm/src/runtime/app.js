@@ -536,71 +536,62 @@ class SignatureRealtyRuntime {
     return { ok: true, data: created };
   }
 
+  // Legacy Requirement runtime methods intentionally remain behind this
+  // compatibility boundary for historical routes/data migration only.
   async createRequirement(leadId, transactionId = 'TXN-0001', payload = {}) {
-    const normalized = {
-      leadId,
-      transactionId,
-      ...payload,
-      LeadID: payload.LeadID || payload.leadId || leadId,
-      TransactionID: payload.TransactionID || payload.transactionId || transactionId,
-      validated: false
-    };
-
-    const formTypeSource = payload.formType || payload.FormType || payload.category || payload.Category || 'residential';
-    const normalizedFormType = this.formEngine.normalizeFormType(formTypeSource);
-
-    const validation = await this.validateRequirementPayload(normalized, normalizedFormType);
-    if (!validation.ok) {
-      return { ok: false, errors: validation.errors };
+    const transaction = this.repository.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction || transaction.LeadID !== leadId) {
+      return { ok: false, error: 'Transaction not found for client' };
     }
-
-    const req = this.repository.createRequirement(normalized);
-    return { ok: true, data: req };
+    const patch = { ...payload };
+    delete patch.RequirementID;
+    delete patch.requirementId;
+    delete patch.LeadID;
+    delete patch.leadId;
+    delete patch.TransactionID;
+    delete patch.transactionId;
+    const updated = this.repository.update('Transactions', 'TransactionID', transactionId, {
+      ...patch,
+      UpdatedAt: new Date().toISOString()
+    });
+    return { ok: true, data: updated, compatibilityMode: true };
   }
 
   async readRequirement(requirementId) {
-    const req = this.repository.readRequirement(requirementId);
-    if (!req) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-    const history = this.repository.requirementHistory(requirementId);
-    return { ok: true, data: { ...req, history } };
+    const db = this.repository.read();
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    const transactionId = legacy?.TransactionID || null;
+    const transaction = transactionId
+      ? (db.Transactions || []).find((row) => row.TransactionID === transactionId)
+      : null;
+    if (!transaction) return { ok: false, error: 'Transaction not found for legacy requirement' };
+    return { ok: true, data: transaction, compatibilityMode: true };
   }
 
-  async updateRequirement(requirementId, payload) {
-    const result = this.repository.updateRequirement(requirementId, payload);
-    if (!result) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-
-    return { ok: true, data: { requirement: result.requirement, history: [result.history] } };
+  async updateRequirement(requirementId, payload = {}) {
+    const current = await this.readRequirement(requirementId);
+    if (!current.ok) return current;
+    return this.createRequirement(current.data.LeadID, current.data.TransactionID, payload);
   }
 
   async archiveRequirement(requirementId) {
-    const req = this.repository.archiveRequirement(requirementId);
-    if (!req) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-
-    return { ok: true, data: req };
+    return this.updateRequirement(requirementId, { Status: 'Cancelled', ArchivedAt: new Date().toISOString() });
   }
 
   async deleteRequirement(requirementId) {
-    const deleted = this.repository.delete('Requirements', 'RequirementID', requirementId);
-    return { ok: true, deleted };
+    return this.archiveRequirement(requirementId);
   }
 
-  async duplicateRequirement(requirementId) {
-    const dup = this.repository.duplicateRequirement(requirementId);
-    if (!dup) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-    return { ok: true, data: dup };
+  async duplicateRequirement() {
+    return { ok: false, error: 'Legacy requirement duplication is disabled; create a new Transaction instead' };
   }
 
   async getLeadRequirements(leadId) {
-    const requirements = this.repository.listRequirementsByLead(leadId);
-    return { ok: true, data: requirements };
+    return {
+      ok: true,
+      data: this.repository.list('Transactions').filter((row) => row.LeadID === leadId),
+      compatibilityMode: true
+    };
   }
 
   async addActivity(leadId, payload) {
