@@ -443,12 +443,15 @@ class MatchingEngine {
     return !['inactive', 'withdrawn', 'expired', 'sold'].includes(status);
   }
 
-  persistMatch(requirement, property, evaluation) {
-    const existing = this.repository.findMatchByRequirementAndProperty(requirement.RequirementID, property.PropertyID);
+  persistMatch(transaction, property, evaluation) {
+    const db = this.repository.read();
+    const existing = (db.Matches || []).find(
+      (row) => row.TransactionID === transaction.TransactionID && row.PropertyID === property.PropertyID
+    );
     const payload = {
-      RequirementID: requirement.RequirementID,
+      TransactionID: transaction.TransactionID,
       PropertyID: property.PropertyID,
-      LeadID: requirement.LeadID,
+      LeadID: transaction.LeadID,
       Score: evaluation.score,
       MatchLevel: evaluation.matchLevel,
       MatchedCriteria: evaluation.matchedCriteria,
@@ -459,43 +462,28 @@ class MatchingEngine {
       Status: 'Active',
       AlgorithmVersion: this.algorithmVersion
     };
-
-    if (existing) {
-      return this.repository.updateMatch(existing.MatchID, payload);
-    }
-
+    if (existing) return this.repository.updateMatch(existing.MatchID, payload);
     return this.repository.createMatch(payload);
   }
 
-  async runMatching(requirementId) {
-    const requirement = this.repository.readRequirement(requirementId);
-    if (!requirement) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-
+  async runMatching(transactionId) {
+    const transaction = this.repository.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
     const inventory = this.repository.list('Inventory').filter((property) => this.isActiveInventoryProperty(property));
     if (inventory.length === 0) {
-      return {
-        ok: true,
-        data: { requirementId, leadId: requirement.LeadID, total: 0, matches: [], reason: 'No inventory available' }
-      };
+      return { ok: true, data: { transactionId, leadId: transaction.LeadID, total: 0, matches: [], reason: 'No inventory available' } };
     }
-
     const matches = [];
     for (const property of inventory) {
-      const evaluation = this.calculateMatch(requirement, property);
-      if (evaluation.score >= this.minMatchScore) {
-        matches.push(this.persistMatch(requirement, property, evaluation));
-      }
+      const evaluation = this.calculateMatch(transaction, property);
+      if (evaluation.score >= this.minMatchScore) matches.push(this.persistMatch(transaction, property, evaluation));
     }
-
     matches.sort((a, b) => b.Score - a.Score);
-
     return {
       ok: true,
       data: {
-        requirementId,
-        leadId: requirement.LeadID,
+        transactionId,
+        leadId: transaction.LeadID,
         total: matches.length,
         reason: matches.length === 0 ? 'No compatible properties' : 'Matches found',
         matches
@@ -503,22 +491,19 @@ class MatchingEngine {
     };
   }
 
-  async getMatchesForRequirement(requirementId) {
-    const requirement = this.repository.readRequirement(requirementId);
-    if (!requirement) {
-      return { ok: false, error: 'Requirement not found' };
-    }
+  async getMatchesForTransaction(transactionId) {
+    const transaction = this.repository.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+    const db = this.repository.read();
+    const matches = (db.Matches || []).filter((row) => row.TransactionID === transactionId);
+    return { ok: true, data: { transactionId, leadId: transaction.LeadID, total: matches.length, matches } };
+  }
 
-    const matches = this.repository.listMatches(requirementId);
-    return {
-      ok: true,
-      data: {
-        requirementId,
-        leadId: requirement.LeadID,
-        total: matches.length,
-        matches
-      }
-    };
+  async getMatchesForRequirement(requirementId) {
+    const db = this.repository.read();
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    if (!legacy?.TransactionID) return { ok: false, error: 'Transaction not found for legacy requirement' };
+    return this.getMatchesForTransaction(legacy.TransactionID);
   }
 
   async getMatch(matchId) {

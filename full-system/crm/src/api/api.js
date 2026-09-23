@@ -7,9 +7,9 @@ const ApiService = {
         totalLeads: dataStore.leads.length,
         newLeads: dataStore.leads.filter((lead) => lead.LeadStatus === 'New').length,
         followUpsDue: 24,
-        activeRequirements: dataStore.requirements.length,
+        activeTransactions: dataStore.transactions.length,
         pipelinePulse: 76,
-        modules: ['Dashboard', 'Leads', 'Lead Workspace', 'Requirements', 'Inventory', 'Matching Engine']
+        modules: ['Dashboard', 'Clients', 'Client Workspace', 'Transactions', 'Inventory', 'Matching Engine']
       };
     }
   },
@@ -26,11 +26,6 @@ const ApiService = {
       return dataStore.transactions;
     }
   },
-  requirements: {
-    async list() {
-      return dataStore.requirements;
-    }
-  },
   inventory: {
     async list() {
       return dataStore.inventory;
@@ -40,7 +35,7 @@ const ApiService = {
     async list() {
       return {
         matchResults: [
-          { RequirementID: 'REQ-0001', PropertyID: 'PROP-0001', MatchScore: 91, MatchLevel: 'Excellent', Explanation: 'Budget, location and lifestyle fit align' }
+          { TransactionID: 'TXN-0001', PropertyID: 'PROP-0001', MatchScore: 91, MatchLevel: 'Excellent', Explanation: 'Budget, location and lifestyle fit align' }
         ]
       };
     }

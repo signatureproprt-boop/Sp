@@ -3,11 +3,11 @@
  * Phase 16 — V2 Activity Service
  *
  * Canonical wrapper around the repository's activity primitives,
- * adding the full V2 activity model (RequirementID, ActivityDirection,
+ * adding the full V2 activity model (TransactionID, ActivityDirection,
  * Outcome, NextAction, FollowUpDate, Version) and audit fields.
  *
  * Reading activities NEVER mutates data.
- * Creating an activity NEVER creates a new Lead or Requirement.
+ * Creating an activity NEVER creates a new Client or Transaction.
  */
 
 const VALID_TYPES = new Set([
@@ -18,11 +18,11 @@ const VALID_DIRECTIONS = new Set(['INBOUND', 'OUTBOUND', '']);
 class V2ActivityService {
   /**
    * @param {import('../data/repository').JsonRepository} repo
-   * @param {import('./v2RequirementService').V2RequirementService} [reqSvc]  optional — used to PATCH requirement fields during conversation capture
+   * @param {import('./v2TransactionService').V2TransactionService} [txnSvc] optional — used to PATCH transaction fields during conversation capture
    */
-  constructor(repo, reqSvc = null) {
-    this.repo   = repo;
-    this.reqSvc = reqSvc;
+  constructor(repo, txnSvc = null) {
+    this.repo = repo;
+    this.txnSvc = txnSvc;
   }
 
   // ── Create ──────────────────────────────────────────────────────────────────
@@ -33,7 +33,6 @@ class V2ActivityService {
    * payload:
    *   LeadID *          string
    *   TransactionID?    string
-   *   RequirementID?    string
    *   ActivityType      CALL|WHATSAPP|SMS|MEETING|SITE_VISIT|NOTE|EMAIL|OTHER
    *   ActivityDirection INBOUND|OUTBOUND
    *   Summary?          string  — one-line description
@@ -60,15 +59,6 @@ class V2ActivityService {
       if (!txn) return { ok: false, error: 'Transaction not found', code: 'TXN_NOT_FOUND' };
       if (txn.LeadID !== payload.LeadID) {
         return { ok: false, error: 'Transaction does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
-      }
-    }
-
-    // Validate RequirementID belongs to Lead (if provided)
-    if (payload.RequirementID) {
-      const req = (db.Requirements || []).find(r => r.RequirementID === payload.RequirementID);
-      if (!req) return { ok: false, error: 'Requirement not found', code: 'REQ_NOT_FOUND' };
-      if (req.LeadID !== payload.LeadID) {
-        return { ok: false, error: 'Requirement does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
       }
     }
 
@@ -102,7 +92,6 @@ class V2ActivityService {
       ActivityID:        this.repo.createId('ACT'),
       LeadID:            payload.LeadID,
       TransactionID:     payload.TransactionID     || null,
-      RequirementID:     payload.RequirementID     || null,
       ActivityType:      actType,
       ActivityDirection: dir || null,
       Summary:           payload.Summary           || payload.summary  || '',
@@ -144,23 +133,13 @@ class V2ActivityService {
 
     this.repo.write(db);
 
-    // Optional: PATCH Requirement fields captured during conversation
-    let reqPatchResult = null;
-    if (payload.RequirementID && payload.FieldUpdates && Object.keys(payload.FieldUpdates).length > 0) {
-      if (this.reqSvc) {
-        reqPatchResult = this.reqSvc.updateRequirement(
-          payload.RequirementID,
-          payload.FieldUpdates,
-          actor
-        );
-      }
+    // Conversation-captured fields update the Transaction directly.
+    let transactionPatch = null;
+    if (payload.TransactionID && payload.FieldUpdates && Object.keys(payload.FieldUpdates).length > 0 && this.txnSvc?.updateTransactionDetails) {
+      transactionPatch = this.reqSvc.updateTransactionDetails(payload.TransactionID, payload.FieldUpdates, actor);
     }
 
-    return {
-      ok:   true,
-      data: activity,
-      requirementPatch: reqPatchResult
-    };
+    return { ok: true, data: activity, transactionPatch };
   }
 
   updateActivity(activityId, patch = {}, actor = {}) {
@@ -183,20 +162,10 @@ class V2ActivityService {
       }
     }
 
-    const nextRequirementId = patch.RequirementID !== undefined ? patch.RequirementID : existing.RequirementID;
-    if (nextRequirementId) {
-      const requirement = (db.Requirements || []).find((row) => row.RequirementID === nextRequirementId);
-      if (!requirement) return { ok: false, error: 'Requirement not found', code: 'REQ_NOT_FOUND' };
-      if (requirement.LeadID !== existing.LeadID) return { ok: false, error: 'Requirement does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
-      if ((lead.CompanyID && requirement.CompanyID && requirement.CompanyID !== lead.CompanyID) || (lead.BrokerageID && requirement.BrokerageID && requirement.BrokerageID !== lead.BrokerageID)) {
-        return { ok: false, error: 'Requirement tenant mismatch', code: 'RELATIONSHIP_VIOLATION' };
-      }
-    }
 
     const updated = {
       ...existing,
       TransactionID: nextTransactionId || null,
-      RequirementID: nextRequirementId || null,
       Summary: patch.Summary !== undefined ? patch.Summary : (patch.summary !== undefined ? patch.summary : existing.Summary),
       Details: patch.Details !== undefined ? patch.Details : (patch.details !== undefined ? patch.details : (patch.Notes !== undefined ? patch.Notes : (patch.notes !== undefined ? patch.notes : existing.Details))),
       Notes: patch.Notes !== undefined ? patch.Notes : (patch.notes !== undefined ? patch.notes : (patch.Details !== undefined ? patch.Details : (patch.details !== undefined ? patch.details : existing.Notes))),
@@ -232,9 +201,6 @@ class V2ActivityService {
     if (opts.ActivityType) {
       acts = acts.filter(a => a.ActivityType === opts.ActivityType.toUpperCase());
     }
-    if (opts.RequirementID) {
-      acts = acts.filter(a => a.RequirementID === opts.RequirementID);
-    }
     if (opts.TransactionID) {
       acts = acts.filter(a => a.TransactionID === opts.TransactionID);
     }
@@ -245,17 +211,6 @@ class V2ActivityService {
     return { ok: true, data: acts.slice(0, limit), total: acts.length };
   }
 
-  listActivitiesByRequirement(requirementId) {
-    const db  = this.repo.read();
-    const req = (db.Requirements || []).find(r => r.RequirementID === requirementId);
-    if (!req) return { ok: false, error: 'Requirement not found', code: 'NOT_FOUND' };
-
-    const acts = (db.Activities || [])
-      .filter(a => a.RequirementID === requirementId)
-      .sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime());
-
-    return { ok: true, data: acts };
-  }
 
   listActivitiesByTransaction(transactionId) {
     const db  = this.repo.read();

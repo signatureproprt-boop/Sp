@@ -88,6 +88,48 @@ class V2NextQuestionService {
    * @param {{ limit?: number }} options
    * @returns {{ ok, requirementId, questions, totalCandidates, context }}
    */
+  getNextQuestionsByTransaction(transactionId, options = {}) {
+    const db = this.repository.read();
+    const transaction = (db.Transactions || []).find((t) => t.TransactionID === transactionId);
+    if (!transaction) return { ok: false, error: `Transaction not found: ${transactionId}` };
+    return this._getNextQuestionsForRecord(transaction, options);
+  }
+
+  _getNextQuestionsForRecord(transaction, options = {}) {
+    const context = {
+      transactionType: transaction.TransactionType || transaction.Type || null,
+      category: transaction.Category || null,
+      subCategory: transaction.SubCategory || null,
+      fields: transaction.Fields || {}
+    };
+    const limit = this._parseLimit(options.limit);
+    const depResult = this.depSvc.evaluateContext(context);
+    if (!depResult.ok) return { ok: false, error: `Dependency evaluation failed: ${depResult.error}` };
+
+    const fieldConfigMap = this._buildFieldConfigMap(context);
+    const candidates = this._findCandidates(depResult.fields, context.fields, fieldConfigMap);
+    const deduped = this._deduplicate(this._rankCandidates(candidates));
+    const questions = deduped.slice(0, limit).map((candidate) =>
+      this._buildQuestion(candidate, context, transaction)
+    );
+
+    return {
+      ok: true,
+      transactionId: transaction.TransactionID,
+      context: {
+        transactionType: context.transactionType,
+        category: context.category,
+        subCategory: context.subCategory,
+        formVersion: transaction.FormVersion || null
+      },
+      questions,
+      totalCandidates: deduped.length,
+      reason: questions.length === 0
+        ? 'No additional relevant unanswered questions are currently configured.'
+        : null
+    };
+  }
+
   getNextQuestions(requirementId, options = {}) {
     const limit = this._parseLimit(options.limit);
 

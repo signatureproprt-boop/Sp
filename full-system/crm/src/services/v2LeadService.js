@@ -28,10 +28,10 @@ const LEAD_STATUS_ALIASES = {
 
 function normalizePhone(raw) {
   if (!raw) return null;
-  // Strip all non-digit chars except leading +
-  const cleaned = String(raw).replace(/[\s\-().]/g, '');
-  // Remove country code prefix to get 10-digit form for matching
-  return cleaned.replace(/^\+91/, '').replace(/^0/, '').replace(/^\+/, '');
+  let digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
 }
 
 function normalizeEmail(raw) {
@@ -75,22 +75,24 @@ class V2LeadService {
     for (const lead of leads) {
       const lMobile    = normalizePhone(lead.PrimaryMobile || lead.Phone);
       const lAlt       = normalizePhone(lead.AlternateMobile);
+      const lAltMobiles = (Array.isArray(lead.AlternateMobiles) ? lead.AlternateMobiles : []).map(normalizePhone).filter(Boolean);
       const lWhatsapp  = normalizePhone(lead.WhatsApp);
       const lEmail     = normalizeEmail(lead.Email);
       const lName      = normalizeName(lead.ClientName);
 
-      // Exact match: same primary mobile OR same email
+      // Mobile is the canonical exact identity. Email/name are suggestion signals only.
       const phoneMatch = mobile && lMobile && mobile === lMobile;
       const emailMatch = email && lEmail && email === lEmail;
-      const altMatch   = altMobile && (altMobile === lMobile || altMobile === lAlt);
-      const waMatch    = whatsapp  && (whatsapp  === lMobile || whatsapp  === lWhatsapp);
+      const primaryInAlternates = mobile && lAltMobiles.includes(mobile);
+      const altMatch   = altMobile && (altMobile === lMobile || altMobile === lAlt || lAltMobiles.includes(altMobile));
+      const waMatch    = whatsapp  && (whatsapp === lMobile || whatsapp === lWhatsapp || lAltMobiles.includes(whatsapp));
 
-      if (phoneMatch || emailMatch) {
+      if (phoneMatch || primaryInAlternates) {
         exact.push(this._maskCandidate(lead, 'EXACT_MATCH'));
         continue;
       }
 
-      if (altMatch || waMatch) {
+      if (altMatch || waMatch || emailMatch) {
         possible.push(this._maskCandidate(lead, 'POSSIBLE_MATCH'));
         continue;
       }
@@ -141,9 +143,11 @@ class V2LeadService {
     if (dupCheck.result === 'EXACT_MATCH') {
       return {
         ok: false,
-        error: 'A lead with this mobile or email already exists',
+        error: 'A client with this mobile already exists',
         duplicateResult: 'EXACT_MATCH',
-        candidates: dupCheck.candidates
+        candidates: dupCheck.candidates,
+        existingLeadId: dupCheck.candidates[0]?.LeadID || null,
+        resolveExisting: true
       };
     }
     if (dupCheck.result === 'POSSIBLE_MATCH' && !options.allowPossibleDuplicate) {
@@ -166,8 +170,12 @@ class V2LeadService {
     const lead = {
       LeadID:           leadId,
       ClientName:       payload.ClientName || payload.clientName || null,
-      PrimaryMobile:    payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone || null,
-      AlternateMobile:  payload.AlternateMobile || payload.alternateMobile || null,
+      PrimaryMobile:    normalizePhone(payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone) || null,
+      AlternateMobile:  normalizePhone(payload.AlternateMobile || payload.alternateMobile) || null,
+      AlternateMobiles: [
+        ...(Array.isArray(payload.AlternateMobiles) ? payload.AlternateMobiles : []),
+        payload.AlternateMobile || payload.alternateMobile
+      ].map(normalizePhone).filter(Boolean),
       WhatsApp:         payload.WhatsApp || payload.whatsapp || null,
       Email:            payload.Email || payload.email || null,
       ClientStatus:     clientStatus,
@@ -428,6 +436,12 @@ class V2LeadService {
     const db    = this.repository.read();
     let rows    = db.Leads || [];
 
+    // Merged records are audit stubs, not active client identities.
+    // They remain directly resolvable by ID/mobile but stay out of normal lists.
+    if (!filters.includeMerged) {
+      rows = rows.filter((r) => !r.MergedIntoClientID && r.ClientStatus !== 'Merged');
+    }
+
     if (filters.ClientStatus)   rows = rows.filter((r) => r.ClientStatus === filters.ClientStatus || r.LeadStatus === filters.ClientStatus);
     if (filters.ClientLifecycle) rows = rows.filter((r) => r.ClientLifecycle === filters.ClientLifecycle);
     if (filters.AssignedAgentID) rows = rows.filter((r) => r.AssignedAgentID === filters.AssignedAgentID);
@@ -450,9 +464,21 @@ class V2LeadService {
     const norm  = normalizePhone(mobile);
     if (!norm) return null;
     const leads = this.repository.read().Leads || [];
-    return leads.find((l) => normalizePhone(l.PrimaryMobile || l.Phone) === norm
+    const matched = leads.find((l) => normalizePhone(l.PrimaryMobile || l.Phone) === norm
                           || normalizePhone(l.AlternateMobile) === norm
+                          || (Array.isArray(l.AlternateMobiles) && l.AlternateMobiles.some((m) => normalizePhone(m) === norm))
                           || normalizePhone(l.WhatsApp) === norm) || null;
+    if (!matched) return null;
+
+    let current = matched;
+    const visited = new Set();
+    while (current?.MergedIntoClientID && !visited.has(current.LeadID)) {
+      visited.add(current.LeadID);
+      const master = leads.find((l) => l.LeadID === current.MergedIntoClientID);
+      if (!master) break;
+      current = master;
+    }
+    return current;
   }
 
   // ── Validators ─────────────────────────────────────────────────────────────

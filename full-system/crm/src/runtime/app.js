@@ -13,7 +13,7 @@ class SignatureRealtyRuntime {
     this.router = new ApiRouter(this.repository);
     this.formEngine = new DynamicFormEngine(() => this.repository.getFormRegistrySnapshot());
     this.matchingEngine = new MatchingEngine({}, this.repository);
-    this.brokerService = new BrokerService();
+    this.brokerService = new BrokerService(this.repository);
     this.auth = new AuthService(this.repository);
   }
 
@@ -316,7 +316,7 @@ class SignatureRealtyRuntime {
     const db = this.repository.read();
     const candidates = [
       ...(db.Leads || []),
-      ...(db.Requirements || []),
+      ...(db.Transactions || []),
       ...(db.Inventory || []),
       ...(db.Matches || []),
       ...(db.Shortlists || []),
@@ -332,7 +332,7 @@ class SignatureRealtyRuntime {
     const matches = candidates.filter((row) => {
       return JSON.stringify(row).toLowerCase().includes(q);
     }).map((row) => ({
-      entityType: Object.keys(row).includes('LeadID') && row.LeadID ? 'Lead' : Object.keys(row).includes('RequirementID') && row.RequirementID ? 'Requirement' : Object.keys(row).includes('PropertyID') && row.PropertyID ? 'Property' : Object.keys(row).includes('MatchID') && row.MatchID ? 'Match' : Object.keys(row).includes('NegotiationID') && row.NegotiationID ? 'Negotiation' : Object.keys(row).includes('TokenID') && row.TokenID ? 'Token' : Object.keys(row).includes('DealID') && row.DealID ? 'Deal' : 'Record',
+      entityType: Object.keys(row).includes('TransactionID') && row.TransactionID && !row.ShortlistID && !row.SiteVisitID && !row.NegotiationID && !row.TokenID && !row.DealID ? 'Transaction' : Object.keys(row).includes('LeadID') && row.LeadID ? 'Lead' : Object.keys(row).includes('PropertyID') && row.PropertyID ? 'Property' : Object.keys(row).includes('MatchID') && row.MatchID ? 'Match' : Object.keys(row).includes('NegotiationID') && row.NegotiationID ? 'Negotiation' : Object.keys(row).includes('TokenID') && row.TokenID ? 'Token' : Object.keys(row).includes('DealID') && row.DealID ? 'Deal' : 'Record',
       ...row
     }));
 
@@ -342,7 +342,7 @@ class SignatureRealtyRuntime {
   async getReportSummary() {
     const db = this.repository.read();
     const leadCount = (db.Leads || []).length;
-    const requirementCount = (db.Requirements || []).length;
+    const transactionCount = (db.Transactions || []).length;
     const matchCount = (db.Matches || []).length;
     const shortlistCount = (db.Shortlists || []).length;
     const siteVisitCount = (db.SiteVisits || []).length;
@@ -355,7 +355,7 @@ class SignatureRealtyRuntime {
       data: {
         totalLeads: leadCount,
         activeLeads: (db.Leads || []).filter((lead) => ['Active', 'Verified'].includes(lead.LeadStatus || lead.leadStatus)).length,
-        requirements: requirementCount,
+        transactions: transactionCount,
         matches: matchCount,
         shortlists: shortlistCount,
         siteVisits: siteVisitCount,
@@ -456,7 +456,8 @@ class SignatureRealtyRuntime {
       return { ok: false, error: 'Lead not found' };
     }
 
-    const requirements = this.repository.listRequirementsByLead(leadId);
+    const transactions = this.repository.list('Transactions').filter((t) => t.LeadID === leadId);
+    const transactionIds = new Set(transactions.map((t) => t.TransactionID));
     const activities = this.repository.getLeadActivities(leadId);
     const shortlist = await this.listShortlist({ leadId, status: 'Active' });
     const siteVisitsResult = this.repository.listSiteVisits();
@@ -472,11 +473,10 @@ class SignatureRealtyRuntime {
       ok: true,
       data: {
         lead,
-        transactions: this.repository.list('Transactions').filter((t) => t.LeadID === leadId),
-        requirements,
+        transactions,
         activities,
         timeline: this.repository.list('Timeline').filter((t) => t.LeadID === leadId),
-        matching: this.repository.listMatches().filter((item) => requirements.some((req) => req.RequirementID === item.RequirementID)),
+        matching: this.repository.listMatches().filter((item) => item.TransactionID && transactionIds.has(item.TransactionID)),
         shortlist: shortlist.ok ? shortlist.data : [],
         siteVisits: siteVisitsResult.ok ? siteVisitsResult.data.filter((visit) => visit.LeadID === leadId) : [],
         negotiations,
@@ -536,71 +536,62 @@ class SignatureRealtyRuntime {
     return { ok: true, data: created };
   }
 
+  // Legacy Requirement runtime methods intentionally remain behind this
+  // compatibility boundary for historical routes/data migration only.
   async createRequirement(leadId, transactionId = 'TXN-0001', payload = {}) {
-    const normalized = {
-      leadId,
-      transactionId,
-      ...payload,
-      LeadID: payload.LeadID || payload.leadId || leadId,
-      TransactionID: payload.TransactionID || payload.transactionId || transactionId,
-      validated: false
-    };
-
-    const formTypeSource = payload.formType || payload.FormType || payload.category || payload.Category || 'residential';
-    const normalizedFormType = this.formEngine.normalizeFormType(formTypeSource);
-
-    const validation = await this.validateRequirementPayload(normalized, normalizedFormType);
-    if (!validation.ok) {
-      return { ok: false, errors: validation.errors };
+    const transaction = this.repository.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction || transaction.LeadID !== leadId) {
+      return { ok: false, error: 'Transaction not found for client' };
     }
-
-    const req = this.repository.createRequirement(normalized);
-    return { ok: true, data: req };
+    const patch = { ...payload };
+    delete patch.RequirementID;
+    delete patch.requirementId;
+    delete patch.LeadID;
+    delete patch.leadId;
+    delete patch.TransactionID;
+    delete patch.transactionId;
+    const updated = this.repository.update('Transactions', 'TransactionID', transactionId, {
+      ...patch,
+      UpdatedAt: new Date().toISOString()
+    });
+    return { ok: true, data: updated, compatibilityMode: true };
   }
 
   async readRequirement(requirementId) {
-    const req = this.repository.readRequirement(requirementId);
-    if (!req) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-    const history = this.repository.requirementHistory(requirementId);
-    return { ok: true, data: { ...req, history } };
+    const db = this.repository.read();
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    const transactionId = legacy?.TransactionID || null;
+    const transaction = transactionId
+      ? (db.Transactions || []).find((row) => row.TransactionID === transactionId)
+      : null;
+    if (!transaction) return { ok: false, error: 'Transaction not found for legacy requirement' };
+    return { ok: true, data: transaction, compatibilityMode: true };
   }
 
-  async updateRequirement(requirementId, payload) {
-    const result = this.repository.updateRequirement(requirementId, payload);
-    if (!result) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-
-    return { ok: true, data: { requirement: result.requirement, history: [result.history] } };
+  async updateRequirement(requirementId, payload = {}) {
+    const current = await this.readRequirement(requirementId);
+    if (!current.ok) return current;
+    return this.createRequirement(current.data.LeadID, current.data.TransactionID, payload);
   }
 
   async archiveRequirement(requirementId) {
-    const req = this.repository.archiveRequirement(requirementId);
-    if (!req) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-
-    return { ok: true, data: req };
+    return this.updateRequirement(requirementId, { Status: 'Cancelled', ArchivedAt: new Date().toISOString() });
   }
 
   async deleteRequirement(requirementId) {
-    const deleted = this.repository.delete('Requirements', 'RequirementID', requirementId);
-    return { ok: true, deleted };
+    return this.archiveRequirement(requirementId);
   }
 
-  async duplicateRequirement(requirementId) {
-    const dup = this.repository.duplicateRequirement(requirementId);
-    if (!dup) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-    return { ok: true, data: dup };
+  async duplicateRequirement() {
+    return { ok: false, error: 'Legacy requirement duplication is disabled; create a new Transaction instead' };
   }
 
   async getLeadRequirements(leadId) {
-    const requirements = this.repository.listRequirementsByLead(leadId);
-    return { ok: true, data: requirements };
+    return {
+      ok: true,
+      data: this.repository.list('Transactions').filter((row) => row.LeadID === leadId),
+      compatibilityMode: true
+    };
   }
 
   async addActivity(leadId, payload) {
@@ -670,42 +661,46 @@ class SignatureRealtyRuntime {
     return { ok: true, data: cfg };
   }
 
-  async runMatching(requirementId) {
-    return this.matchingEngine.runMatching(requirementId);
+  async runMatching(transactionId) {
+    return this.matchingEngine.runMatching(transactionId);
   }
 
-  async getMatches(requirementId) {
-    return this.matchingEngine.getMatchesForRequirement(requirementId);
+  async getMatches(transactionId) {
+    return this.matchingEngine.getMatchesForTransaction(transactionId);
   }
 
   async getMatch(matchId) {
     return this.matchingEngine.getMatch(matchId);
   }
 
-  async matching(requirementId = 'REQ-0001') {
-    const requirementMatches = this.repository.listMatches(requirementId);
-    if (requirementMatches.length > 0) {
-      return { ok: true, data: requirementMatches };
+  async matching(transactionId = null) {
+    if (!transactionId) {
+      return this.matchingEngine.listAllMatches();
     }
 
-    const runResult = await this.runMatching(requirementId);
+    const transactionMatches = this.repository.listMatches(transactionId);
+    if (transactionMatches.length > 0) {
+      return { ok: true, data: transactionMatches };
+    }
+
+    const runResult = await this.runMatching(transactionId);
     if (runResult.ok && Array.isArray(runResult.data?.matches)) {
       return { ok: true, data: runResult.data.matches };
     }
 
-    return this.matchingEngine.listAllMatches();
+    return runResult;
   }
 
   buildShortlistView(shortlist) {
-    const requirement = this.repository.readRequirement(shortlist.RequirementID);
+    const transaction = this.repository.find('Transactions', 'TransactionID', shortlist.TransactionID);
     const property = this.repository.find('Inventory', 'PropertyID', shortlist.PropertyID);
     const match = shortlist.MatchID
       ? this.repository.getMatch(shortlist.MatchID)
-      : this.repository.findMatchByRequirementAndProperty(shortlist.RequirementID, shortlist.PropertyID);
+      : (this.repository.read().Matches || []).find((row) => row.TransactionID === shortlist.TransactionID && row.PropertyID === shortlist.PropertyID);
 
     return {
       ...shortlist,
-      RequirementCode: requirement?.RequirementCode || shortlist.RequirementID,
+      TransactionCode: transaction?.TransactionCode || shortlist.TransactionID,
       PropertyName: property?.Project || property?.PropertyType || shortlist.PropertyID,
       Location: property?.Location || property?.City || null,
       Price: property?.Price ?? null,
@@ -772,54 +767,31 @@ class SignatureRealtyRuntime {
   }
 
   async addToShortlist(payload = {}) {
-    const requirementId = payload.requirementId || payload.RequirementID;
+    const transactionId = payload.transactionId || payload.TransactionID;
     const propertyId = payload.propertyId || payload.PropertyID;
     const matchId = payload.matchId || payload.MatchID || null;
     const notes = payload.notes || payload.Notes || '';
     const priority = this.validateShortlistPriority(payload.priority || payload.Priority || 'Medium');
-
-    if (!requirementId) {
-      return { ok: false, error: 'requirementId required' };
-    }
-
-    if (!propertyId) {
-      return { ok: false, error: 'propertyId required' };
-    }
-
-    if (!priority) {
-      return { ok: false, error: 'Invalid priority' };
-    }
-
-    const requirement = this.repository.readRequirement(requirementId);
-    if (!requirement) {
-      return { ok: false, error: 'Requirement not found' };
-    }
-
+    if (!transactionId) return { ok: false, error: 'transactionId required' };
+    if (!propertyId) return { ok: false, error: 'propertyId required' };
+    if (!priority) return { ok: false, error: 'Invalid priority' };
+    const transaction = this.repository.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
     const property = this.repository.find('Inventory', 'PropertyID', propertyId);
-    if (!property) {
-      return { ok: false, error: 'Property not found' };
-    }
-
+    if (!property) return { ok: false, error: 'Property not found' };
     const match = matchId
       ? this.repository.getMatch(matchId)
-      : this.repository.findMatchByRequirementAndProperty(requirementId, propertyId);
-
-    if (!match) {
-      return { ok: false, error: 'No matching property found for this requirement' };
+      : (this.repository.read().Matches || []).find((row) => row.TransactionID === transactionId && row.PropertyID === propertyId);
+    if (!match) return { ok: false, error: 'No matching property found for this transaction' };
+    if (match.TransactionID !== transactionId || match.PropertyID !== propertyId) {
+      return { ok: false, error: 'Match does not belong to the given transaction/property' };
     }
-
-    if (match.RequirementID !== requirementId || match.PropertyID !== propertyId) {
-      return { ok: false, error: 'Match does not belong to the given requirement/property' };
-    }
-
-    const existing = this.repository.findActiveShortlist(requirementId, propertyId);
-    if (existing) {
-      return { ok: true, data: this.buildShortlistView(existing), alreadyShortlisted: true };
-    }
-
+    const db = this.repository.read();
+    const existing = (db.Shortlists || []).find((row) => row.TransactionID === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
+    if (existing) return { ok: true, data: this.buildShortlistView(existing), alreadyShortlisted: true };
     const created = this.repository.createShortlist({
-      RequirementID: requirementId,
-      LeadID: requirement.LeadID,
+      TransactionID: transactionId,
+      LeadID: transaction.LeadID,
       PropertyID: propertyId,
       MatchID: match.MatchID,
       Status: 'Active',
@@ -827,7 +799,6 @@ class SignatureRealtyRuntime {
       Notes: notes,
       CreatedBy: payload.createdBy || payload.CreatedBy || 'system'
     });
-
     return { ok: true, data: this.buildShortlistView(created), alreadyShortlisted: false };
   }
 
@@ -1061,6 +1032,10 @@ class SignatureRealtyRuntime {
 
   async getAdminDashboard(actor = {}) {
     return this.getAdminOverview(actor);
+  }
+
+  async brokerShareTransaction(transactionId, brokerId) {
+    return this.brokerService.shareTransaction(transactionId, brokerId);
   }
 
   async brokerShare(requirementId, brokerId) {

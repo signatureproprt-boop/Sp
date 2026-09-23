@@ -49,6 +49,27 @@ class V2TransactionService {
     const now   = new Date().toISOString();
     const txnId = this.idEngine.nextTransactionId();
 
+    // Persist every dynamic form answer at creation time as well as on later edits.
+    // This keeps BHK, furnishing, possession, frontage, amenities, etc. from
+    // being lost when a Transaction is created directly from Client Workspace.
+    const reservedPayloadKeys = new Set([
+      'TransactionID','LeadID','CompanyID','companyId','BrokerageID','brokerageId',
+      'TransactionType','transactionType','Type','type','TransactionStatus','transactionStatus',
+      'Status','status','PipelineStage','pipelineStage','Notes','notes','Category','category',
+      'SubCategory','subCategory','Fields','FieldPriorities','BudgetMin','budgetMin','BudgetMax',
+      'budgetMax','Location1','location1','Location2','location2','Location3','location3',
+      'TransactionScore','LegacyID','CreatedAt','CreatedBy','UpdatedAt','UpdatedBy','Version','_v2'
+    ]);
+    const dynamicFields = { ...(payload.Fields && typeof payload.Fields === 'object' ? payload.Fields : {}) };
+    const dynamicFlat = {};
+    for (const [key, value] of Object.entries(payload || {})) {
+      if (reservedPayloadKeys.has(key)) continue;
+      dynamicFlat[key] = value;
+      dynamicFields[key] = value === null || value === ''
+        ? { state: 'UNKNOWN', value: null, priority: payload.FieldPriorities?.[key] || dynamicFields[key]?.priority || null }
+        : { state: 'KNOWN', value, priority: payload.FieldPriorities?.[key] || dynamicFields[key]?.priority || null };
+    }
+
     const transaction = {
       TransactionID:     txnId,
       LeadID:            leadId,
@@ -58,6 +79,17 @@ class V2TransactionService {
       Status:            status,  // backward compat
       PipelineStage:     stage,
       Notes:             payload.Notes || payload.notes || '',
+      // Transaction is the single business object. Property-need criteria live here.
+      Category:          payload.Category || payload.category || null,
+      SubCategory:       payload.SubCategory || payload.subCategory || null,
+      Fields:            dynamicFields,
+      ...dynamicFlat,
+      BudgetMin:         payload.BudgetMin ?? payload.budgetMin ?? null,
+      BudgetMax:         payload.BudgetMax ?? payload.budgetMax ?? null,
+      Location1:         payload.Location1 || payload.location1 || null,
+      Location2:         payload.Location2 || payload.location2 || null,
+      Location3:         payload.Location3 || payload.location3 || null,
+      TransactionScore:  payload.TransactionScore ?? null,
       CompanyID:         lead.CompanyID || payload.CompanyID || payload.companyId || actor.companyId || actor.companyID || null,
       BrokerageID:       lead.BrokerageID || payload.BrokerageID || payload.brokerageId || actor.brokerageId || actor.brokerageID || null,
       CreatedBy:         actor.userId || 'system',
@@ -127,6 +159,15 @@ class V2TransactionService {
       PipelineStage:     stage,
       Notes:             payload.Notes !== undefined ? payload.Notes : (payload.notes !== undefined ? payload.notes : existing.Notes),
       AssignedAgentID:   payload.AssignedAgentID || payload.assignedAgentId || existing.AssignedAgentID,
+      Category:          payload.Category !== undefined ? payload.Category : existing.Category,
+      SubCategory:       payload.SubCategory !== undefined ? payload.SubCategory : existing.SubCategory,
+      Fields:            payload.Fields !== undefined ? payload.Fields : existing.Fields,
+      BudgetMin:         payload.BudgetMin !== undefined ? payload.BudgetMin : existing.BudgetMin,
+      BudgetMax:         payload.BudgetMax !== undefined ? payload.BudgetMax : existing.BudgetMax,
+      Location1:         payload.Location1 !== undefined ? payload.Location1 : existing.Location1,
+      Location2:         payload.Location2 !== undefined ? payload.Location2 : existing.Location2,
+      Location3:         payload.Location3 !== undefined ? payload.Location3 : existing.Location3,
+      TransactionScore:  payload.TransactionScore !== undefined ? payload.TransactionScore : existing.TransactionScore,
       UpdatedBy:         actor.userId || 'system',
       UpdatedAt:         now,
       Version:           (existing.Version || 1) + 1
@@ -138,6 +179,36 @@ class V2TransactionService {
     this.repository.addTimelineEntry(existing.LeadID, 'Transaction', transactionId, 'TRANSACTION_UPDATED', 'Transaction updated', { TransactionStatus: status, PipelineStage: stage });
 
     return { ok: true, data: updated };
+  }
+
+  // Store dynamic transaction/property criteria directly on Transaction.
+  updateTransactionDetails(transactionId, payload = {}, actor = {}) {
+    const db = this.repository.read();
+    const idx = (db.Transactions || []).findIndex((t) => t.TransactionID === transactionId);
+    if (idx === -1) return { ok: false, error: 'Transaction not found' };
+    const existing = db.Transactions[idx];
+    const reserved = new Set(['TransactionID','LeadID','CompanyID','BrokerageID','CreatedAt','CreatedBy','Version','_v2']);
+    const next = { ...existing };
+    const fields = { ...(existing.Fields || {}) };
+    for (const [key, value] of Object.entries(payload || {})) {
+      if (reserved.has(key)) continue;
+      if (key === 'FieldPriorities') continue;
+      if (['TransactionType','transactionType','Type','type'].includes(key)) continue;
+      next[key] = value;
+      if (!['Category','SubCategory','TransactionStatus','Status','PipelineStage','Notes','RequirementStatus'].includes(key)) {
+        fields[key] = value === null || value === ''
+          ? { state: 'UNKNOWN', value: null, priority: payload.FieldPriorities?.[key] || fields[key]?.priority || null }
+          : { state: 'KNOWN', value, priority: payload.FieldPriorities?.[key] || fields[key]?.priority || null };
+      }
+    }
+    next.Fields = fields;
+    next.UpdatedBy = actor.userId || 'system';
+    next.UpdatedAt = new Date().toISOString();
+    next.Version = Number(existing.Version || 1) + 1;
+    db.Transactions[idx] = next;
+    this.repository.write(db);
+    this.repository.addTimelineEntry(existing.LeadID, 'Transaction', transactionId, 'TRANSACTION_DETAILS_UPDATED', 'Transaction details updated', { Category: next.Category, SubCategory: next.SubCategory });
+    return { ok: true, data: next };
   }
 
   // ── Read Helpers ───────────────────────────────────────────────────────────

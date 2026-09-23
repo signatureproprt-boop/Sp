@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * ShortlistServiceV2 — property-level shortlist per requirement.
+ * ShortlistServiceV2 — property-level shortlist per transaction.
  *
  * Backed by the existing `Shortlists` collection in the JSON repository, but
  * does NOT require a pre-existing Match record (SmartMatch V2 scores live and
@@ -23,12 +23,12 @@ class ShortlistServiceV2 {
     return ['High', 'Medium', 'Low'].includes(v) ? v : 'Medium';
   }
 
-  _findActive(requirementId, propertyId) {
+  _findActive(transactionId, propertyId) {
     const db = this.repo.read();
     db.Shortlists = db.Shortlists || [];
     return db.Shortlists.find(
       (s) =>
-        s.RequirementID === requirementId &&
+        s.TransactionID === transactionId &&
         s.PropertyID === propertyId &&
         s.Status === 'Active'
     ) || null;
@@ -70,11 +70,11 @@ class ShortlistServiceV2 {
   }
 
   buildView(row) {
-    const req = this.repo.readRequirement(row.RequirementID);
+    const transaction = this.repo.find('Transactions', 'TransactionID', row.TransactionID);
     const prop = row.IsManual ? null : this.repo.find('Inventory', 'PropertyID', row.PropertyID);
     return {
       ShortlistID: row.ShortlistID,
-      RequirementID: row.RequirementID,
+      TransactionID: row.TransactionID,
       PropertyID: row.PropertyID,
       LeadID: row.LeadID,
       Status: row.Status,
@@ -84,28 +84,28 @@ class ShortlistServiceV2 {
       MatchLevel: row.MatchLevel || null,
       CreatedAt: row.CreatedAt,
       UpdatedAt: row.UpdatedAt,
-      RequirementCode: req?.RequirementCode || row.RequirementID,
+      TransactionCode: transaction?.TransactionCode || row.TransactionID,
       IsManual: !!row.IsManual,
       Property: row.IsManual ? (row.ManualProperty || {}) : this._propertySnapshot(prop)
     };
   }
 
-  list(requirementId, { status = 'Active' } = {}) {
+  list(transactionId, { status = 'Active' } = {}) {
     const db = this.repo.read();
     db.Shortlists = db.Shortlists || [];
     const rows = db.Shortlists
-      .filter((s) => s.RequirementID === requirementId && (!status || s.Status === status))
+      .filter((s) => s.TransactionID === transactionId && (!status || s.Status === status))
       .sort((a, b) => new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0));
     return rows.map((r) => this.buildView(r));
   }
 
-  add(requirementId, payload = {}) {
+  add(transactionId, payload = {}) {
     const propertyId = payload.propertyId || payload.PropertyID;
-    if (!requirementId) return { ok: false, error: 'requirementId required' };
+    if (!transactionId) return { ok: false, error: 'transactionId required' };
     if (!propertyId) return { ok: false, error: 'propertyId required' };
 
-    const req = this.repo.readRequirement(requirementId);
-    if (!req) return { ok: false, error: 'Requirement not found' };
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
 
     const prop = this.repo.find('Inventory', 'PropertyID', propertyId);
     if (!prop) return { ok: false, error: 'Property not found' };
@@ -113,7 +113,7 @@ class ShortlistServiceV2 {
     // Reactivate an existing Removed row if the same combo comes back
     const db = this.repo.read();
     db.Shortlists = db.Shortlists || [];
-    const existingActive = this._findActive(requirementId, propertyId);
+    const existingActive = this._findActive(transactionId, propertyId);
     if (existingActive) {
       // Merge notes / priority / score if provided
       const changes = { UpdatedAt: this._now() };
@@ -129,8 +129,8 @@ class ShortlistServiceV2 {
 
     const row = {
       ShortlistID: this.repo.createId('SL'),
-      RequirementID: requirementId,
-      LeadID: req.LeadID,
+      TransactionID: transactionId,
+      LeadID: transaction.LeadID,
       PropertyID: propertyId,
       MatchID: null,
       Status: 'Active',
@@ -153,10 +153,10 @@ class ShortlistServiceV2 {
     return { ok: true, alreadyShortlisted: false, data: this.buildView(row) };
   }
 
-  addManual(requirementId, payload = {}) {
-    if (!requirementId) return { ok: false, error: 'requirementId required' };
-    const req = this.repo.readRequirement(requirementId);
-    if (!req) return { ok: false, error: 'Requirement not found' };
+  addManual(transactionId, payload = {}) {
+    if (!transactionId) return { ok: false, error: 'transactionId required' };
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
 
     const db = this.repo.read();
     db.Shortlists = db.Shortlists || [];
@@ -166,13 +166,13 @@ class ShortlistServiceV2 {
     const propertyId = 'MANUAL-' + this.repo.createId('SL');
     const row = {
       ShortlistID: this.repo.createId('SL'),
-      RequirementID: requirementId,
-      LeadID: req.LeadID,
+      TransactionID: transactionId,
+      LeadID: transaction.LeadID,
       PropertyID: propertyId,
       IsManual: true,
       ManualProperty: {
         Title: title,
-        Category: payload.category || req.Category || null,
+        Category: payload.category || transaction.Category || null,
         SubCategory: payload.subCategory || null,
         Location1: payload.location || null,
         SocietyName: payload.societyName || null,
@@ -182,7 +182,7 @@ class ShortlistServiceV2 {
         BHK: payload.bhk || null,
         FurnishingType: payload.furnishing || null,
         InventorySource: payload.source || 'Manual',
-        ListingFor: payload.listingFor || req.TransactionType || null,
+        ListingFor: payload.listingFor || transaction.TransactionType || null,
         Status: payload.status || 'Manual Entry',
         PhotoUrl: payload.photoUrl || null,
         MediaLinks: { photos: [], videos: [], brochures: [] },
@@ -207,8 +207,8 @@ class ShortlistServiceV2 {
     return { ok: true, data: this.buildView(row) };
   }
 
-  remove(requirementId, propertyId, removedBy = 'system') {
-    const existing = this._findActive(requirementId, propertyId);
+  remove(transactionId, propertyId, removedBy = 'system') {
+    const existing = this._findActive(transactionId, propertyId);
     if (!existing) return { ok: false, error: 'Shortlist entry not found' };
     const updated = this.repo.updateShortlist(existing.ShortlistID, {
       Status: 'Removed',
@@ -218,8 +218,8 @@ class ShortlistServiceV2 {
     return { ok: true, data: this.buildView(updated) };
   }
 
-  updateNotes(requirementId, propertyId, notes) {
-    const existing = this._findActive(requirementId, propertyId);
+  updateNotes(transactionId, propertyId, notes) {
+    const existing = this._findActive(transactionId, propertyId);
     if (!existing) return { ok: false, error: 'Shortlist entry not found' };
     const updated = this.repo.updateShortlist(existing.ShortlistID, {
       Notes: String(notes || '')
@@ -227,8 +227,8 @@ class ShortlistServiceV2 {
     return { ok: true, data: this.buildView(updated) };
   }
 
-  updateEntry(requirementId, propertyId, changes = {}) {
-    const existing = this._findActive(requirementId, propertyId);
+  updateEntry(transactionId, propertyId, changes = {}) {
+    const existing = this._findActive(transactionId, propertyId);
     if (!existing) return { ok: false, error: 'Shortlist entry not found' };
     const patch = {};
     if (changes.notes !== undefined) patch.Notes = String(changes.notes || '');

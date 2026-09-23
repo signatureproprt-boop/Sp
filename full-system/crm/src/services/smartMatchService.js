@@ -95,13 +95,13 @@ class SmartMatchService {
     return norm;
   }
 
-  _areaRequirement(requirement) {
+  _areaTransaction(transaction) {
     const pairs = [
-      { key: 'required', min: this._number(this._val(requirement, 'RequiredAreaMin')), max: this._number(this._val(requirement, 'RequiredAreaMax')), label: 'Required area' },
-      { key: 'carpet', min: this._number(this._val(requirement, 'CarpetAreaMin'), this._val(requirement, 'AreaMin')), max: this._number(this._val(requirement, 'CarpetAreaMax'), this._val(requirement, 'AreaMax')), label: 'Carpet area' },
-      { key: 'builtUp', min: this._number(this._val(requirement, 'BuiltUpAreaMin')), max: this._number(this._val(requirement, 'BuiltUpAreaMax')), label: 'Built-up area' },
-      { key: 'plot', min: this._number(this._val(requirement, 'PlotAreaMin')), max: this._number(this._val(requirement, 'PlotAreaMax')), label: 'Plot area' },
-      { key: 'open', min: this._number(this._val(requirement, 'OpenAreaMin')), max: this._number(this._val(requirement, 'OpenAreaMax')), label: 'Open area' }
+      { key: 'required', min: this._number(this._val(transaction, 'RequiredAreaMin')), max: this._number(this._val(transaction, 'RequiredAreaMax')), label: 'Required area' },
+      { key: 'carpet', min: this._number(this._val(transaction, 'CarpetAreaMin'), this._val(transaction, 'AreaMin')), max: this._number(this._val(transaction, 'CarpetAreaMax'), this._val(transaction, 'AreaMax')), label: 'Carpet area' },
+      { key: 'builtUp', min: this._number(this._val(transaction, 'BuiltUpAreaMin')), max: this._number(this._val(transaction, 'BuiltUpAreaMax')), label: 'Built-up area' },
+      { key: 'plot', min: this._number(this._val(transaction, 'PlotAreaMin')), max: this._number(this._val(transaction, 'PlotAreaMax')), label: 'Plot area' },
+      { key: 'open', min: this._number(this._val(transaction, 'OpenAreaMin')), max: this._number(this._val(transaction, 'OpenAreaMax')), label: 'Open area' }
     ];
     return pairs.filter((pair) => pair.min != null || pair.max != null);
   }
@@ -133,8 +133,8 @@ class SmartMatchService {
     return { ratio: 1, note: `${actual} acceptable` };
   }
 
-  _compareField(requirement, prop, key) {
-    const reqValue = this._val(requirement, key);
+  _compareField(transaction, prop, key) {
+    const reqValue = this._val(transaction, key);
     if (reqValue == null || reqValue === '') return null;
     const propValue = this._val(prop, key);
     if (propValue == null || propValue === '') return { matched: false, ratio: 0, note: `${key} missing in inventory` };
@@ -158,15 +158,15 @@ class SmartMatchService {
     return { matched, ratio: matched ? 1 : 0, note: matched ? `${key} matches` : `${key} mismatch` };
   }
 
-  _scorePriorityFields(requirement, prop) {
+  _scorePriorityFields(transaction, prop) {
     const breakdown = [];
     let weighted = 0;
     let totalWeight = 0;
     let mustMismatch = false;
 
-    Object.entries(requirement.Fields || {}).forEach(([key, entry]) => {
+    Object.entries(transaction.Fields || {}).forEach(([key, entry]) => {
       if (!entry || entry.state !== 'KNOWN' || !entry.priority || CORE_PRIORITY_FIELDS.has(key)) return;
-      const compare = this._compareField(requirement, prop, key);
+      const compare = this._compareField(transaction, prop, key);
       if (!compare) return;
       const weight = PRIORITY_WEIGHT[entry.priority] || 0;
       totalWeight += weight;
@@ -184,8 +184,8 @@ class SmartMatchService {
     return { score: totalWeight ? (weighted / totalWeight) * (WEIGHTS.must + WEIGHTS.preferred + WEIGHTS.flexible) : 0, breakdown, mustMismatch };
   }
 
-  _scoreSpecific(requirement, prop) {
-    const sub = this._normalizeSubCategory(this._val(requirement, 'SubCategory') || this._val(requirement, 'PropertyType'));
+  _scoreSpecific(transaction, prop) {
+    const sub = this._normalizeSubCategory(this._val(transaction, 'SubCategory') || this._val(transaction, 'PropertyType'));
     const keysByType = {
       office: ['SeatingCapacity', 'CabinCount', 'ConferenceRoomCount', 'MeetingRoomCount', 'ParkingCarCount', 'ParkingBikeCount', 'Furnishing', 'PowerBackupRequired', 'InternetFiberRequired', 'Lift', 'WashroomCount'],
       shop: ['FrontageFeet', 'DepthFeet', 'GroundFloorRequired', 'MainRoadRequired', 'CornerUnitRequired', 'DisplayWindowRequired', 'FootfallPreference', 'LoadingUnloadingRequired', 'CeilingHeightFeet', 'WashroomCount'],
@@ -200,7 +200,7 @@ class SmartMatchService {
     };
 
     const keys = keysByType[sub] || [];
-    const checks = keys.map((key) => this._compareField(requirement, prop, key)).filter(Boolean);
+    const checks = keys.map((key) => this._compareField(transaction, prop, key)).filter(Boolean);
     if (!checks.length) return { score: 0, breakdown: [] };
 
     const ratio = checks.reduce((sum, check) => sum + check.ratio, 0) / checks.length;
@@ -210,19 +210,19 @@ class SmartMatchService {
     };
   }
 
-  match(requirement, options = {}) {
-    if (!requirement) return { ok: false, error: 'Requirement not found' };
+  match(transaction, options = {}) {
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
     const db = this.repository.read();
     const inventory = (db.Inventory || []).filter((row) => !row._deleted && !['Sold', 'Rented'].includes(row.ListingStatus));
 
-    const reqTxn = this._val(requirement, 'TransactionType');
-    const reqCat = this._val(requirement, 'Category');
-    const reqSub = this._normalizeSubCategory(this._val(requirement, 'SubCategory') || this._val(requirement, 'PropertyType'));
+    const reqTxn = this._val(transaction, 'TransactionType');
+    const reqCat = this._val(transaction, 'Category');
+    const reqSub = this._normalizeSubCategory(this._val(transaction, 'SubCategory') || this._val(transaction, 'PropertyType'));
     const allowedListings = new Set(TRANSACTION_ALIAS[reqTxn] || [reqTxn]);
-    const reqBudgetMin = this._number(this._val(requirement, 'BudgetMin'));
-    const reqBudgetMax = this._number(this._val(requirement, 'BudgetMax'));
-    const reqLocs = [this._val(requirement, 'Location1'), this._val(requirement, 'Location2'), this._val(requirement, 'Location3')].filter(Boolean).map((value) => this._normText(value));
-    const reqAreas = this._areaRequirement(requirement);
+    const reqBudgetMin = this._number(this._val(transaction, 'BudgetMin'));
+    const reqBudgetMax = this._number(this._val(transaction, 'BudgetMax'));
+    const reqLocs = [this._val(transaction, 'Location1'), this._val(transaction, 'Location2'), this._val(transaction, 'Location3')].filter(Boolean).map((value) => this._normText(value));
+    const reqAreas = this._areaTransaction(transaction);
 
     const results = [];
     for (const prop of inventory) {
@@ -243,7 +243,7 @@ class SmartMatchService {
       }
       if (reqSub && propSub === reqSub) {
         score += WEIGHTS.propertyType;
-        breakdown.push({ k: 'propertyType', v: WEIGHTS.propertyType, note: `${this._val(requirement, 'SubCategory') || this._val(requirement, 'PropertyType')} ✓` });
+        breakdown.push({ k: 'propertyType', v: WEIGHTS.propertyType, note: `${this._val(transaction, 'SubCategory') || this._val(transaction, 'PropertyType')} ✓` });
       }
 
       const propLocs = this._propertyLocations(prop);
@@ -282,12 +282,12 @@ class SmartMatchService {
         breakdown.push({ k: 'area', v: bestArea * WEIGHTS.area, note: bestNote });
       }
 
-      const priority = this._scorePriorityFields(requirement, prop);
+      const priority = this._scorePriorityFields(transaction, prop);
       score += priority.score;
       breakdown.push(...priority.breakdown);
       if (priority.mustMismatch) score *= 0.7;
 
-      const specifics = this._scoreSpecific(requirement, prop);
+      const specifics = this._scoreSpecific(transaction, prop);
       score += specifics.score;
       breakdown.push(...specifics.breakdown);
 
@@ -322,8 +322,8 @@ class SmartMatchService {
     return {
       ok: true,
       data: {
-        requirementId: requirement.RequirementID,
-        leadId: requirement.LeadID,
+        transactionId: transaction.TransactionID,
+        leadId: transaction.LeadID,
         criteria: { reqTxn, reqCat, reqSub, reqLocs, reqBudgetMin, reqBudgetMax, reqAreas },
         total: filtered.length,
         scanned: inventory.length,
@@ -334,9 +334,16 @@ class SmartMatchService {
 
   matchByRequirementId(requirementId, options = {}) {
     const db = this.repository.read();
-    const requirement = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
-    if (!requirement) return { ok: false, error: 'Requirement not found' };
-    return this.match(requirement, options);
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    if (!legacy?.TransactionID) return { ok: false, error: 'Transaction not found for legacy requirement' };
+    return this.matchByTransactionId(legacy.TransactionID, options);
+  }
+
+  matchByTransactionId(transactionId, options = {}) {
+    const db = this.repository.read();
+    const transaction = (db.Transactions || []).find((row) => row.TransactionID === transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+    return this.match(transaction, options);
   }
 }
 

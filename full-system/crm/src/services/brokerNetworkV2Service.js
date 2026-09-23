@@ -5,7 +5,7 @@
  * flow. Client PII is NEVER exposed on the broker-facing side. Property
  * responses land as regular Inventory rows with InventorySource=
  * 'NetworkSubmission' + attribution to the submitting broker, and are
- * auto-shortlisted against the requirement.
+ * auto-shortlisted against the transaction.
  */
 
 const crypto = require('crypto');
@@ -76,15 +76,15 @@ class BrokerNetworkV2Service {
     return { ok: true };
   }
 
-  // ── Anonymized requirement view (whitelist ONLY safe fields) ────────────
-  _anonymize(req) {
-    const f = req.Fields || {};
+  // ── Anonymized transaction view (whitelist ONLY safe fields) ────────────
+  _anonymize(transaction) {
+    const f = transaction.Fields || {};
     const g = (k) => (f[k] && (f[k].value ?? f[k])) || req[k] || null;
     return {
-      RequirementCode: req.RequirementCode || req.RequirementID,
-      Category: req.Category || null,
-      SubCategory: req.SubCategory || null,
-      TransactionType: req.TransactionType || g('TransactionType') || null,
+      TransactionCode: transaction.TransactionCode || transaction.TransactionID,
+      Category: transaction.Category || null,
+      SubCategory: transaction.SubCategory || null,
+      TransactionType: transaction.TransactionType || g('TransactionType') || null,
       Location1: g('Location1') || g('Location'),
       Location2: g('Location2') || null,
       BHK: g('BHK') || g('Configuration'),
@@ -100,25 +100,25 @@ class BrokerNetworkV2Service {
     };
   }
 
-  share(requirementId, { brokerIds = [], message = '', expiresInDays = 30, userId = 'system' } = {}) {
-    const req = this.repo.readRequirement(requirementId);
-    if (!req) return { ok: false, error: 'Requirement not found' };
+  share(transactionId, { brokerIds = [], message = '', expiresInDays = 30, userId = 'system' } = {}) {
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
     const db = this.repo.read();
     const brokers = (db.BrokerNetworkContacts || []).filter((b) => brokerIds.includes(b.NetworkBrokerID) && b.Active !== false);
     if (!brokers.length) return { ok: false, error: 'No valid active brokers selected' };
     const expiresAt = new Date(Date.now() + expiresInDays * 86400000).toISOString();
-    db.RequirementShares = db.RequirementShares || [];
+    db.TransactionShares = db.TransactionShares || [];
     const shares = brokers.map((b) => {
       const token = this._token();
       const share = {
         ShareID: this.repo.createId('SHR'),
-        RequirementID: requirementId, LeadID: req.LeadID,
+        TransactionID: transactionId, LeadID: transaction.LeadID,
         NetworkBrokerID: b.NetworkBrokerID, BrokerName: b.Name, BrokerPhone: b.Phone,
         Token: token, Message: String(message || '').trim() || null,
         Status: 'Open', SharedBy: userId, SharedAt: this._now(), ExpiresAt: expiresAt,
         FirstViewedAt: null, LastViewedAt: null, ViewCount: 0, ResponseCount: 0
       };
-      db.RequirementShares.push(share);
+      db.TransactionShares.push(share);
       return share;
     });
     this.repo.write(db);
@@ -127,23 +127,23 @@ class BrokerNetworkV2Service {
 
   getPublicShareByToken(token) {
     const db = this.repo.read();
-    const share = (db.RequirementShares || []).find((s) => s.Token === token);
+    const share = (db.TransactionShares || []).find((s) => s.Token === token);
     if (!share) return { ok: false, error: 'Share not found', code: 'NOT_FOUND' };
     if (share.Status === 'Revoked') return { ok: false, error: 'Share revoked', code: 'REVOKED' };
     if (new Date(share.ExpiresAt) < new Date()) return { ok: false, error: 'Share expired', code: 'EXPIRED' };
-    const req = (db.V2Requirements || db.Requirements || []).find((r) => r.RequirementID === share.RequirementID);
-    if (!req) return { ok: false, error: 'Requirement not found', code: 'NOT_FOUND' };
-    const idx = db.RequirementShares.findIndex((s) => s.ShareID === share.ShareID);
+    const transaction = (db.Transactions || []).find((r) => r.TransactionID === share.TransactionID);
+    if (!transaction) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
+    const idx = db.TransactionShares.findIndex((s) => s.ShareID === share.ShareID);
     if (idx >= 0) {
       const patched = { ...share, LastViewedAt: this._now(), ViewCount: (share.ViewCount || 0) + 1 };
       if (!patched.FirstViewedAt) patched.FirstViewedAt = patched.LastViewedAt;
-      db.RequirementShares[idx] = patched;
+      db.TransactionShares[idx] = patched;
       this.repo.write(db);
     }
     return {
       ok: true,
       data: {
-        Requirement: this._anonymize(req),
+        Transaction: this._anonymize(transaction),
         BrokerName: share.BrokerName,
         Message: share.Message,
         SharedAt: share.SharedAt,
@@ -154,13 +154,13 @@ class BrokerNetworkV2Service {
 
   submitResponse(token, payload = {}) {
     const db = this.repo.read();
-    const share = (db.RequirementShares || []).find((s) => s.Token === token);
+    const share = (db.TransactionShares || []).find((s) => s.Token === token);
     if (!share) return { ok: false, error: 'Share not found', code: 'NOT_FOUND' };
     if (share.Status === 'Revoked' || new Date(share.ExpiresAt) < new Date()) {
       return { ok: false, error: 'Share no longer accepting responses', code: 'CLOSED' };
     }
-    const req = (db.V2Requirements || db.Requirements || []).find((r) => r.RequirementID === share.RequirementID);
-    if (!req) return { ok: false, error: 'Requirement not found', code: 'NOT_FOUND' };
+    const transaction = (db.Transactions || []).find((r) => r.TransactionID === share.TransactionID);
+    if (!transaction) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
     const title = String(payload.Title || payload.ProjectName || '').trim();
     if (!title) return { ok: false, error: 'Title / Project Name required' };
     const now = this._now();
@@ -168,8 +168,8 @@ class BrokerNetworkV2Service {
     const cfg = String(payload.BHK || '').trim();
     const propertyRow = {
       PropertyID: propertyId, Title: title,
-      Category: req.Category || 'Residential',
-      SubCategory: payload.SubCategory || req.SubCategory || 'Flat',
+      Category: transaction.Category || 'Residential',
+      SubCategory: payload.SubCategory || transaction.SubCategory || 'Flat',
       BHK: cfg || null, Configurations: cfg ? [cfg] : [],
       Location1: String(payload.Location1 || '').trim() || null,
       SocietyName: String(payload.SocietyName || payload.ProjectName || '').trim() || null,
@@ -179,7 +179,7 @@ class BrokerNetworkV2Service {
       Amenities: Array.isArray(payload.Amenities) ? payload.Amenities : [],
       AskingPrice: Number(payload.AskingPrice) || Number(payload.Price) || null,
       AskingRatePerSqFt: Number(payload.AskingRatePerSqFt) || null,
-      ListingFor: req.TransactionType || 'Sale',
+      ListingFor: transaction.TransactionType || 'Sale',
       ListingStatus: 'Available',
       InventorySource: SUBMISSION_SOURCE,
       SubmittedByBrokerID: share.NetworkBrokerID,
@@ -200,7 +200,7 @@ class BrokerNetworkV2Service {
     db.Shortlists = db.Shortlists || [];
     db.Shortlists.push({
       ShortlistID: this.repo.createId('SL'),
-      RequirementID: share.RequirementID, LeadID: share.LeadID,
+      TransactionID: share.TransactionID, LeadID: share.LeadID,
       PropertyID: propertyId, MatchID: null,
       Status: 'Active', Priority: 'Medium',
       Notes: payload.Notes ? `[Network] ${payload.Notes}` : `[Network] Submitted by ${share.BrokerName}`,
@@ -213,8 +213,8 @@ class BrokerNetworkV2Service {
       RemovedAt: null, RemovedBy: null,
       CreatedAt: now, UpdatedAt: now
     });
-    const idx = db.RequirementShares.findIndex((s) => s.ShareID === share.ShareID);
-    db.RequirementShares[idx] = { ...share, ResponseCount: (share.ResponseCount || 0) + 1, LastResponseAt: now };
+    const idx = db.TransactionShares.findIndex((s) => s.ShareID === share.ShareID);
+    db.TransactionShares[idx] = { ...share, ResponseCount: (share.ResponseCount || 0) + 1, LastResponseAt: now };
     try {
       this.repo.addTimelineEntry(share.LeadID, 'NetworkResponse', propertyRow.NetworkResponseID, 'NETWORK_PROPERTY_SUBMITTED',
         `Broker ${share.BrokerName} submitted property "${title}"`,
@@ -224,21 +224,21 @@ class BrokerNetworkV2Service {
     return { ok: true, data: { NetworkResponseID: propertyRow.NetworkResponseID, Received: true, Message: 'Thank you! Your property has been submitted.' } };
   }
 
-  listSharesByRequirement(requirementId) {
+  listSharesByTransaction(transactionId) {
     const db = this.repo.read();
-    return (db.RequirementShares || [])
-      .filter((s) => s.RequirementID === requirementId)
+    return (db.TransactionShares || [])
+      .filter((s) => s.TransactionID === transactionId)
       .sort((a, b) => new Date(b.SharedAt) - new Date(a.SharedAt));
   }
 
   // ── Admin-facing views (internal, PII visible) ──────────────────────────
   listAllShares({ brokerId } = {}) {
     const db = this.repo.read();
-    let shares = (db.RequirementShares || []).slice();
+    let shares = (db.TransactionShares || []).slice();
     if (brokerId) shares = shares.filter((s) => s.NetworkBrokerID === brokerId);
     shares = shares.map((s) => {
       const lead = this.repo.readLead(s.LeadID);
-      const req = this.repo.readRequirement(s.RequirementID);
+      const transaction = this.repo.find('Transactions', 'TransactionID', s.TransactionID);
       const now = new Date();
       let status = s.Status;
       if (status === 'Open' && new Date(s.ExpiresAt) < now) status = 'Expired';
@@ -246,7 +246,7 @@ class BrokerNetworkV2Service {
         ...s,
         Status: status,
         LeadName: lead?.ClientName || null,
-        RequirementCode: req?.RequirementCode || s.RequirementID
+        TransactionCode: req?.TransactionCode || s.TransactionID
       };
     });
     return { ok: true, data: shares.sort((a, b) => new Date(b.SharedAt) - new Date(a.SharedAt)), count: shares.length };
@@ -287,12 +287,12 @@ class BrokerNetworkV2Service {
 
   revokeShare(shareId) {
     const db = this.repo.read();
-    const idx = (db.RequirementShares || []).findIndex((s) => s.ShareID === shareId);
+    const idx = (db.TransactionShares || []).findIndex((s) => s.ShareID === shareId);
     if (idx < 0) return { ok: false, error: 'Share not found' };
-    db.RequirementShares[idx].Status = 'Revoked';
-    db.RequirementShares[idx].UpdatedAt = this._now();
+    db.TransactionShares[idx].Status = 'Revoked';
+    db.TransactionShares[idx].UpdatedAt = this._now();
     this.repo.write(db);
-    return { ok: true, data: db.RequirementShares[idx] };
+    return { ok: true, data: db.TransactionShares[idx] };
   }
 }
 

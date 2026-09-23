@@ -75,7 +75,7 @@ class V2Router {
       this.scoringSvc,
       this.accessSvc
     );
-    this.actSvc       = new V2ActivityService(repository, this.reqSvc);
+    this.actSvc       = new V2ActivityService(repository, this.txnSvc);
     this.fuSvc        = new V2FollowUpService(repository);
     this.documentSvc  = new DocumentService(repository);
     this.repo         = repository;
@@ -206,21 +206,29 @@ class V2Router {
     // ── NEW: Client workspace (always active) ─────────────────────────────────
     const wsMatch = pathname.match(/^\/api\/clients\/([^/]+)\/workspace$/);
     if (wsMatch && method === 'GET') {
-      const leadId = wsMatch[1];
+      const requestedLeadId = wsMatch[1];
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
-      const lead = this.repo.readLead(leadId);
+      let lead = this.repo.readLead(requestedLeadId);
+      if (!lead) return this._json(404, { ok: false, error: 'Client not found' });
+
+      // A historical Client ID remains valid after merge, but always resolves
+      // to the surviving master workspace. Guard against malformed merge loops.
+      const visited = new Set();
+      while (lead?.MergedIntoClientID && !visited.has(lead.LeadID)) {
+        visited.add(lead.LeadID);
+        const master = this.repo.readLead(lead.MergedIntoClientID);
+        if (!master) break;
+        lead = master;
+      }
+      const leadId = lead.LeadID;
       const access = this.accessSvc.authorizeLead(auth.actor, lead, { permissions: ['LEADS_VIEW', 'LEADS_READ'] });
       if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error === 'Not found' ? 'Client not found' : access.error });
       const result = await this._buildClientWorkspace(leadId, auth.actor);
-      // Workspace identity invariant: never return a different client's data.
-      if (result.ok) {
-        const requestedLeadId = String(leadId || '').trim();
-        const returnedLeadId = String(result.data?.lead?.LeadID || '').trim();
-        if (!returnedLeadId || returnedLeadId !== requestedLeadId) {
-          console.error('[workspace] CLIENT_ID_MISMATCH', { requestedLeadId, returnedLeadId });
-          return this._json(409, { ok: false, error: 'Client workspace identity mismatch' });
-        }
+      if (result.ok && requestedLeadId !== leadId) {
+        result.data.requestedLeadId = requestedLeadId;
+        result.data.resolvedLeadId = leadId;
+        result.data.mergedClientRedirect = true;
       }
       return this._json(result.ok ? 200 : 404, result);
     }
@@ -274,7 +282,7 @@ class V2Router {
         if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
 
         const actor  = auth.actor;
-        const result = this.txnSvc.updateTransaction(txnId, body || {}, actor);
+        const result = this.txnSvc.updateTransactionDetails(txnId, body || {}, actor);
         return this._json(result.ok ? 200 : 404, result);
       }
     }
@@ -363,6 +371,32 @@ class V2Router {
 
     // ── Phase 12: Score routes ────────────────────────────────────────────────
 
+    // Transaction-native score and conversation guidance.
+    const txnScoreV2Match = pathname.match(/^\/api\/v2\/transactions\/([^/]+)\/score$/);
+    if (txnScoreV2Match && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const transactionId = txnScoreV2Match[1];
+      const current = this.txnSvc.getTransaction(transactionId);
+      const access = this.accessSvc.authorizeTransaction(auth.actor, current.ok ? current.data : null, { permissions: ['LEADS_VIEW','LEADS_READ'] });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+      const result = this.scoringSvc.recalculateTransactionScore(transactionId);
+      return this._json(result.ok ? 200 : 404, result);
+    }
+
+    const txnNextQMatch = pathname.match(/^\/api\/v2\/transactions\/([^/]+)\/next-questions$/);
+    if (txnNextQMatch && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const transactionId = txnNextQMatch[1];
+      const current = this.txnSvc.getTransaction(transactionId);
+      const access = this.accessSvc.authorizeTransaction(auth.actor, current.ok ? current.data : null, { permissions: ['LEADS_VIEW','LEADS_READ'] });
+      if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+      const limit = url.searchParams.get('limit');
+      const result = this.nextQSvc.getNextQuestionsByTransaction(transactionId, { limit });
+      return this._json(result.ok ? 200 : 404, result);
+    }
+
     // GET /api/v2/requirements/:id/score  — V2 canonical path
     const reqScoreV2Match = pathname.match(/^\/api\/v2\/requirements\/([^/]+)\/score$/);
     if (reqScoreV2Match && method === 'GET') {
@@ -431,6 +465,7 @@ class V2Router {
 
     // GET /api/v2/dependencies/evaluate — evaluate field states for a context or requirementId
     if (pathname === '/api/v2/dependencies/evaluate' && method === 'GET') {
+      const transactionId  = url.searchParams.get('transactionId');
       const requirementId  = url.searchParams.get('requirementId');
       const txnType        = url.searchParams.get('transactionType') || url.searchParams.get('txnType');
       const category       = url.searchParams.get('category');
@@ -439,8 +474,18 @@ class V2Router {
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
 
+      if (transactionId) {
+        const current = this.txnSvc.getTransaction(transactionId);
+        const access = this.accessSvc.authorizeTransaction(auth.actor, current.ok ? current.data : null, {
+          permissions: ['LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+        const result = this.depSvc.evaluateTransaction(transactionId);
+        return this._json(result.ok ? 200 : 404, result);
+      }
+
       if (requirementId) {
-        // DB-backed evaluation from stored Requirement
+        // Transitional compatibility for historical Requirement URLs
         const current = this.reqSvc.getRequirement(requirementId);
         const access = this.accessSvc.authorizeRequirement(auth.actor, current.ok ? current.data : null, {
           permissions: ['REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
@@ -452,7 +497,7 @@ class V2Router {
 
       // Direct context evaluation
       if (!txnType && !category) {
-        return this._json(400, { ok: false, error: 'Provide requirementId or at least transactionType / category' });
+        return this._json(400, { ok: false, error: 'Provide transactionId or at least transactionType / category' });
       }
       const ctx = {
         transactionType: txnType    || null,
@@ -656,7 +701,7 @@ class V2Router {
     if (pathname === '/api/v2/quick-capture' && method === 'POST') {
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
-      for (const requiredPermission of ['LEADS_CREATE', 'REQUIREMENTS_CREATE']) {
+      for (const requiredPermission of ['LEADS_CREATE']) {
         const permission = this.accessSvc.requirePermissions(auth.actor, [requiredPermission]);
         if (!permission.ok) return this._json(permission.statusCode, { ok: false, error: permission.error });
       }
@@ -1168,12 +1213,37 @@ class V2Router {
       const q = String(filters.q).toLowerCase();
       const qDigits = q.replace(/\\D/g, '');
       result = result.filter(l => {
-        const name  = String(l.ClientName || l.Name || '').toLowerCase();
-        const mobile = String(l.PrimaryMobile || l.Phone || '').replace(/\\D/g, '');
+        const name = String(l.ClientName || l.Name || '').toLowerCase();
+        const mobile = String(l.PrimaryMobile || l.Phone || '').replace(/\\D/g, '').slice(-10);
+        const alternateMobiles = [
+          l.AlternateMobile,
+          ...(Array.isArray(l.AlternateMobiles) ? l.AlternateMobiles : [])
+        ].map(v => String(v || '').replace(/\\D/g, '').slice(-10)).filter(Boolean);
         const email = String(l.Email || '').toLowerCase();
-        const lid   = String(l.LeadID || '').toLowerCase();
-        return name.includes(q) || (qDigits && mobile.includes(qDigits)) || email.includes(q) || lid.includes(q);
+        const lid = String(l.LeadID || '').toLowerCase();
+        const mergedInto = String(l.MergedIntoClientID || '').toLowerCase();
+        const phoneHit = qDigits && ([mobile, ...alternateMobiles].some(v => v && v.includes(qDigits.slice(-10))));
+        return name.includes(q) || phoneHit || email.includes(q) || lid.includes(q) || mergedInto.includes(q);
       });
+      // Old IDs/mobiles remain searchable, but operational navigation resolves
+      // to the surviving master Client instead of reopening an archived stub.
+      const byId = new Map(leads.map(l => [l.LeadID, l]));
+      const resolved = [];
+      const seen = new Set();
+      for (const row of result) {
+        let master = row;
+        const visited = new Set();
+        while (master?.MergedIntoClientID && !visited.has(master.LeadID)) {
+          visited.add(master.LeadID);
+          master = byId.get(master.MergedIntoClientID) || master;
+          if (!master?.MergedIntoClientID) break;
+        }
+        if (master && !seen.has(master.LeadID)) {
+          seen.add(master.LeadID);
+          resolved.push(master);
+        }
+      }
+      result = resolved;
     }
 
     const visible = actor ? this.accessSvc.filterReadableLeads(result, actor) : result;
@@ -1367,13 +1437,7 @@ class V2Router {
     }
 
     const transactions = this.txnSvc.listTransactionsByLead(leadId);
-    const requirements = this.reqSvc.listRequirementsByLead(leadId);
-    const requirementIds = new Set((requirements || []).map((r) => r.RequirementID).filter(Boolean));
-
-    const txnWithReqs = transactions.map((txn) => ({
-      ...txn,
-      requirements: requirements.filter((r) => r.TransactionID === txn.TransactionID)
-    }));
+    const txnWithReqs = transactions;
 
     const db       = this.repo.read();
     const activities = (db.Activities || []).filter((a) => a.LeadID === leadId).sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime());
@@ -1386,18 +1450,10 @@ class V2Router {
       brokerageId: String(actor?.brokerageId || actor?.brokerageID || lead.BrokerageID || '').trim()
     };
     const leadDocsResult = await this.documentSvc.listDocuments({ EntityType: 'Lead', EntityID: leadId }, actor || {}, docContext);
-    const requirementDocResults = await Promise.all(
-      Array.from(requirementIds).map((id) =>
-        this.documentSvc.listDocuments({ EntityType: 'Requirement', EntityID: id }, actor || {}, docContext)
-      )
-    );
     const transactionDocResults = await Promise.all(
       Array.from(transactionIds).map((id) =>
         this.documentSvc.listDocuments({ EntityType: 'Transaction', EntityID: id }, actor || {}, docContext)
       )
-    );
-    const requirementDocs = requirementDocResults.flatMap((result) =>
-      result.ok && Array.isArray(result.data) ? result.data : []
     );
     const transactionDocs = transactionDocResults.flatMap((result) =>
       result.ok && Array.isArray(result.data) ? result.data : []
@@ -1405,7 +1461,7 @@ class V2Router {
     const leadDocs = leadDocsResult.ok && Array.isArray(leadDocsResult.data) ? leadDocsResult.data : [];
     const documents = [];
     const seenDocumentIds = new Set();
-    for (const doc of [...leadDocs, ...requirementDocs, ...transactionDocs]) {
+    for (const doc of [...leadDocs, ...transactionDocs]) {
       const key = doc?.DocumentID || `${doc?.EntityType || 'Unknown'}:${doc?.EntityID || ''}:${documents.length}`;
       if (seenDocumentIds.has(key)) continue;
       seenDocumentIds.add(key);
@@ -1423,15 +1479,15 @@ class V2Router {
       if (row.TransactionID && transactionIds.has(row.TransactionID)) return true;
       return false;
     });
-    const matching = (db.Matches || []).filter((row) => requirementIds.has(row.RequirementID));
-    const shortlist = (db.Shortlists || []).filter((row) => requirementIds.has(row.RequirementID));
+    const matching = (db.Matches || []).filter((row) => transactionIds.has(row.TransactionID || row.RequirementID));
+    const shortlist = (db.Shortlists || []).filter((row) => transactionIds.has(row.TransactionID || row.RequirementID));
 
     return {
       ok:   true,
       data: {
         lead,
         transactions:  txnWithReqs,
-        requirements,
+        requirements: transactions,
         activities,
         followUps,
         timeline,
@@ -1445,8 +1501,8 @@ class V2Router {
         shortlist,
         summary: {
           transactionCount:  transactions.length,
-          requirementCount:  requirements.length,
-          activeRequirements: requirements.filter((r) => (r.RequirementStatus || r.Status) === 'Active').length,
+          requirementCount:  transactions.length,
+          activeRequirements: transactions.filter((r) => !['Closed','Won','Lost','Cancelled'].includes(r.TransactionStatus || r.Status)).length,
           pendingFollowUps:   followUps.filter((f) => !['COMPLETED', 'CANCELLED'].includes(String(f.status || f.Status || '').toUpperCase())).length
         }
       }

@@ -2556,43 +2556,76 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    // POST /api/v2/duplicates/merge — merge source lead INTO target lead
-    // Body: { sourceLeadId, targetLeadId, fieldOverrides: { <field>: 'source'|'target' } }
-    // Requirements/Transactions of source are reassigned to target; source lead is deleted.
+    // POST /api/v2/duplicates/merge — merge source client INTO target client.
+    // Source is retained as an audit stub; all business records move to target.
     if (/^\/api\/v2\/duplicates\/merge\/?$/i.test(pathname) && req.method === 'POST') {
       if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
       const body = bodyForV2 || {};
       const sourceLeadId = String(body.sourceLeadId || '').trim();
       const targetLeadId = String(body.targetLeadId || '').trim();
-      const overrides    = body.fieldOverrides || {};
+      const overrides = body.fieldOverrides || {};
       if (!sourceLeadId || !targetLeadId) { sendJson(res, { ok: false, error: 'sourceLeadId & targetLeadId required' }, 400); return; }
-      if (sourceLeadId === targetLeadId)  { sendJson(res, { ok: false, error: 'Cannot merge into self' }, 400); return; }
+      if (sourceLeadId === targetLeadId) { sendJson(res, { ok: false, error: 'Cannot merge into self' }, 400); return; }
       const db = runtime.repository.read();
       const source = (db.Leads || []).find(l => l.LeadID === sourceLeadId);
       const target = (db.Leads || []).find(l => l.LeadID === targetLeadId);
       if (!source || !target) { sendJson(res, { ok: false, error: 'Lead(s) not found' }, 404); return; }
+      if (source.MergedIntoClientID) { sendJson(res, { ok: false, error: 'Source client is already merged', mergedIntoClientId: source.MergedIntoClientID }, 409); return; }
 
-      // Apply per-field overrides ('source' means take from source; default keeps target)
-      const mergeableFields = ['ClientName','PrimaryMobile','AlternateMobile','Email','WhatsApp','City','LeadSource','Notes','Tags','ClientStatus','Priority','ClientLifecycle','AssignedAgentID'];
-      for (const f of mergeableFields) {
-        const choice = overrides[f];
-        if (choice === 'source' && source[f] != null && source[f] !== '') target[f] = source[f];
-        else if (target[f] == null || target[f] === '') target[f] = source[f]; // fill blanks
+      const normalizeMobile = (value) => {
+        let digits = String(value || '').replace(/\D/g, '');
+        if (digits.length > 10 && digits.startsWith('91')) digits = digits.slice(-10);
+        return digits.length === 10 ? digits : digits;
+      };
+      const sourceMobiles = [source.PrimaryMobile, source.Phone, source.AlternateMobile, ...(Array.isArray(source.AlternateMobiles) ? source.AlternateMobiles : [])]
+        .map(normalizeMobile).filter(Boolean);
+      const targetPrimary = normalizeMobile(target.PrimaryMobile || target.Phone);
+      const altSet = new Set([...(Array.isArray(target.AlternateMobiles) ? target.AlternateMobiles : []), target.AlternateMobile]
+        .map(normalizeMobile).filter(Boolean));
+      for (const mobile of sourceMobiles) if (mobile !== targetPrimary) altSet.add(mobile);
+
+      const mergeableFields = ['ClientName','Email','WhatsApp','City','LeadSource','Source','Notes','Tags','Priority','ClientLifecycle','AssignedAgentID'];
+      for (const field of mergeableFields) {
+        if (overrides[field] === 'source' && source[field] != null && source[field] !== '') target[field] = source[field];
+        else if (target[field] == null || target[field] === '') target[field] = source[field];
       }
+      if (overrides.PrimaryMobile === 'source' && sourceMobiles[0]) {
+        if (targetPrimary && targetPrimary !== sourceMobiles[0]) altSet.add(targetPrimary);
+        target.PrimaryMobile = sourceMobiles[0];
+        target.Phone = sourceMobiles[0];
+        altSet.delete(sourceMobiles[0]);
+      } else if (targetPrimary) {
+        target.PrimaryMobile = targetPrimary;
+        target.Phone = targetPrimary;
+      }
+      target.AlternateMobiles = [...altSet];
+      target.AlternateMobile = target.AlternateMobiles[0] || null;
       target.UpdatedAt = new Date().toISOString();
-      target._mergedFrom = [...(target._mergedFrom || []), sourceLeadId];
+      target._mergedFrom = [...new Set([...(target._mergedFrom || []), sourceLeadId])];
 
-      // Reassign transactions + requirements
-      (db.Transactions || []).forEach(t => { if (t.LeadID === sourceLeadId) t.LeadID = targetLeadId; });
-      (db.Requirements || []).forEach(r => { if (r.LeadID === sourceLeadId) r.LeadID = targetLeadId; });
-      (db.Activities   || []).forEach(a => { if (a.LeadID === sourceLeadId) a.LeadID = targetLeadId; });
-      (db.FollowUps    || []).forEach(f => { if (f.LeadID === sourceLeadId) f.LeadID = targetLeadId; });
+      const linkedCollections = ['Transactions','Activities','FollowUps','Shortlists','SiteVisits','Negotiations','Tokens','Deals','Documents','Timeline','BrokerShares','BrokerSubmissions'];
+      for (const collection of linkedCollections) {
+        for (const row of db[collection] || []) if (row.LeadID === sourceLeadId) row.LeadID = targetLeadId;
+      }
 
-      // Remove source lead
-      db.Leads = (db.Leads || []).filter(l => l.LeadID !== sourceLeadId);
+      // Keep the old identity for audit/history and old-mobile resolution.
+      source.ClientStatus = 'Merged';
+      source.LeadStatus = 'Merged';
+      source.ClientLifecycle = 'Archived';
+      source.ArchiveFlag = true;
+      source.MergedIntoClientID = targetLeadId;
+      source.MergedAt = new Date().toISOString();
+      source.MergedBy = actor?.userId || 'system';
+      source.UpdatedAt = source.MergedAt;
+      delete source._reviewStatus;
+      delete source._dupCandidates;
+      delete source._reviewNote;
 
       runtime.repository.write(db);
-      sendJson(res, { ok: true, action: 'MERGED', sourceLeadId, targetLeadId });
+      try {
+        runtime.repository.addTimelineEntry(targetLeadId, 'Lead', targetLeadId, 'CLIENT_MERGED', 'Client records merged', { sourceLeadId, targetLeadId, alternateMobiles: target.AlternateMobiles });
+      } catch (_) {}
+      sendJson(res, { ok: true, action: 'MERGED', sourceLeadId, targetLeadId, alternateMobiles: target.AlternateMobiles });
       return;
     }
 
@@ -3089,7 +3122,7 @@ async function handleApi(req, res, url) {
       const leadId = match[1];
       const subPath = match[2];
       const existingLead = await runtime.readLead(leadId);
-      const leadPermission = req.method === 'PATCH' || (req.method === 'POST' && ['requirements', 'activity'].includes(subPath))
+      const leadPermission = req.method === 'PATCH' || (req.method === 'POST' && ['transactions', 'requirements', 'activity'].includes(subPath))
         ? 'LEADS_UPDATE'
         : 'LEADS_READ';
       const leadAccess = accessSvc.authorizeLead(actor, existingLead?.data, {
@@ -3108,7 +3141,7 @@ async function handleApi(req, res, url) {
           return;
         }
 
-        if (subPath === 'requirements') {
+        if (subPath === 'transactions' || subPath === 'requirements') {
           const payload = await runtime.getLeadRequirements(leadId);
           sendJson(res, payload);
           return;
@@ -3137,10 +3170,15 @@ async function handleApi(req, res, url) {
       }
 
       if (req.method === 'POST') {
-        if (subPath === 'requirements') {
+        if (subPath === 'transactions' || subPath === 'requirements') {
           const body = await readJson(req);
-          const payload = await runtime.createRequirement(leadId, body.transactionId || 'TXN-0001', body);
-          sendJson(res, payload);
+          const transactionId = body.transactionId || body.TransactionID;
+          if (!transactionId) {
+            sendJson(res, { ok: false, error: 'transactionId required; create transactions through the transaction API' }, 400);
+            return;
+          }
+          const payload = await runtime.createRequirement(leadId, transactionId, body);
+          sendJson(res, { ...payload, compatibilityMode: subPath === 'requirements' });
           return;
         }
 
@@ -3257,6 +3295,7 @@ async function handleApi(req, res, url) {
     }
 
     if (pathname === '/api/requirements' && req.method === 'POST') {
+      // Legacy compatibility only: never creates a Requirement row.
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       if (!ensurePermissionOrRespond(req, res, url, 'REQUIREMENTS_CREATE')) return;
@@ -3273,7 +3312,7 @@ async function handleApi(req, res, url) {
       }
       const payload = await runtime.createRequirement(
         leadId,
-        body.transactionId || body.TransactionID || 'TXN-0001',
+        body.transactionId || body.TransactionID,
         {
           ...body,
           CompanyID: actor.companyId || actor.companyID || null,
@@ -3285,17 +3324,20 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    if (pathname.startsWith('/api/requirements/') && pathname.endsWith('/matches')) {
+    if ((pathname.startsWith('/api/transactions/') || pathname.startsWith('/api/requirements/')) && pathname.endsWith('/matches')) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const parts = pathname.split('/').filter(Boolean);
-      const requirementId = parts[2];
-      const requirement = runtime.repository.readRequirement(requirementId);
-      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-        permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      const legacyRequirementPath = parts[1] === 'requirements';
+      const requestedId = parts[2];
+      const legacy = legacyRequirementPath ? runtime.repository.readRequirement(requestedId) : null;
+      const transactionId = legacyRequirementPath ? legacy?.TransactionID : requestedId;
+      const transaction = transactionId ? runtime.repository.find('Transactions', 'TransactionID', transactionId) : null;
+      const txnAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['MATCHING_VIEW', 'TRANSACTIONS_READ', 'LEADS_VIEW', 'LEADS_READ']
       });
-      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
-      const payload = await runtime.getMatches(requirementId);
+      if (!txnAccess.ok) { sendJson(res, { ok: false, error: txnAccess.error }, txnAccess.statusCode); return; }
+      const payload = await runtime.getMatches(transactionId);
       if (payload.ok && Array.isArray(payload.data)) {
         payload.data = payload.data.filter((row) => {
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
@@ -3309,18 +3351,21 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    if (pathname.startsWith('/api/requirements/') && pathname.endsWith('/shortlist')) {
+    if ((pathname.startsWith('/api/transactions/') || pathname.startsWith('/api/requirements/')) && pathname.endsWith('/shortlist')) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const parts = pathname.split('/').filter(Boolean);
-      const requirementId = parts[2];
-      const requirement = runtime.repository.readRequirement(requirementId);
-      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-        permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      const legacyRequirementPath = parts[1] === 'requirements';
+      const requestedId = parts[2];
+      const legacy = legacyRequirementPath ? runtime.repository.readRequirement(requestedId) : null;
+      const transactionId = legacyRequirementPath ? legacy?.TransactionID : requestedId;
+      const transaction = transactionId ? runtime.repository.find('Transactions', 'TransactionID', transactionId) : null;
+      const txnAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['SHORTLIST_VIEW', 'TRANSACTIONS_READ', 'LEADS_VIEW', 'LEADS_READ']
       });
-      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      if (!txnAccess.ok) { sendJson(res, { ok: false, error: txnAccess.error }, txnAccess.statusCode); return; }
       const status = url.searchParams.get('status') || undefined;
-      const payload = await runtime.listShortlist({ requirementId, status });
+      const payload = await runtime.listShortlist({ transactionId, status });
       if (payload.ok && Array.isArray(payload.data)) {
         payload.data = payload.data.filter((row) => {
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
@@ -3414,17 +3459,25 @@ async function handleApi(req, res, url) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const body = await readJson(req);
-      const requirementId = body.requirementId || body.requirementID;
-      if (!requirementId) {
-        sendJson(res, { ok: false, error: 'requirementId required' }, 400);
+
+      let transactionId = body.transactionId || body.TransactionID || null;
+      const legacyRequirementId = body.requirementId || body.requirementID || body.RequirementID || null;
+      if (!transactionId && legacyRequirementId) {
+        const legacyRequirement = runtime.repository.readRequirement(legacyRequirementId);
+        transactionId = legacyRequirement?.TransactionID || null;
+      }
+      if (!transactionId) {
+        sendJson(res, { ok: false, error: 'transactionId required' }, 400);
         return;
       }
-      const requirement = runtime.repository.readRequirement(requirementId);
-      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-        permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+
+      const transaction = runtime.repository.find('Transactions', 'TransactionID', transactionId);
+      const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ']
       });
-      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
-      const payload = await runtime.runMatching(requirementId);
+      if (!transactionAccess.ok) { sendJson(res, { ok: false, error: transactionAccess.error }, transactionAccess.statusCode); return; }
+
+      const payload = await runtime.runMatching(transactionId);
       if (payload.ok && Array.isArray(payload.data?.matches)) {
         payload.data.matches = payload.data.matches.filter((row) => {
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
@@ -3441,15 +3494,16 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/matching') {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
-      const payload = await runtime.matching();
+      const requestedTransactionId = url.searchParams.get('transactionId') || url.searchParams.get('TransactionID') || null;
+      const payload = await runtime.matching(requestedTransactionId);
       if (payload.ok && Array.isArray(payload.data)) {
         payload.data = payload.data.filter((row) => {
-          const requirement = runtime.repository.readRequirement(row.RequirementID);
-          const requirementAccess = accessSvc.authorizeRequirement(actor, requirement, {
-            permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ'],
+          const transaction = runtime.repository.find('Transactions', 'TransactionID', row.TransactionID);
+          const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+            permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
             hideExistence: true
           });
-          if (!requirementAccess.ok) return false;
+          if (!transactionAccess.ok) return false;
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
           return accessSvc.authorizeProperty(actor, property, {
             permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
@@ -3467,11 +3521,11 @@ async function handleApi(req, res, url) {
       const matchId = pathname.split('/').pop();
       const payload = await runtime.getMatch(matchId);
       if (payload?.ok && payload.data) {
-        const requirement = runtime.repository.readRequirement(payload.data.RequirementID);
-        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-          permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+        const transaction = runtime.repository.find('Transactions', 'TransactionID', payload.data.TransactionID);
+        const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+          permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ']
         });
-        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        if (!transactionAccess.ok) { sendJson(res, { ok: false, error: transactionAccess.error }, transactionAccess.statusCode); return; }
         const property = runtime.repository.find('Inventory', 'PropertyID', payload.data.PropertyID);
         const propertyAccess = accessSvc.authorizeProperty(actor, property, {
           permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],

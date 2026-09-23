@@ -4,7 +4,7 @@
  * Phase 13 — Quick Capture
  *
  * Creates the minimum useful client workflow atomically:
- * Lead → Transaction → Requirement.
+ * Lead → Transaction. Transaction owns all property criteria.
  * The JSON repository has no database transaction, so the original snapshot
  * is restored if any step fails.
  */
@@ -89,32 +89,25 @@ class V2QuickCaptureService {
         createdLead = true;
       }
 
-      const txnResult = this.txnSvc.createTransaction(lead.LeadID, {
-        TransactionType: transactionType,
-        TransactionStatus: transaction.transactionStatus || 'Open',
-        PipelineStage: transaction.pipelineStage || 'New',
-        Notes: transaction.notes || transaction.Notes || ''
-      }, actor);
-      if (!txnResult.ok) throw this._stepError('Transaction', txnResult.error);
-
       const locations = Array.isArray(requirement.locations)
         ? requirement.locations.map((value) => String(value || '').trim()).filter(Boolean)
         : [];
-      const requirementPayload = this._buildRequirementPayload(requirement, {
-        LeadID: lead.LeadID,
-        TransactionID: txnResult.data.TransactionID,
+      const transactionPayload = this._buildTransactionPayload(requirement, {
         TransactionType: transactionType,
+        TransactionStatus: transaction.transactionStatus || 'Open',
+        PipelineStage: transaction.pipelineStage || 'New',
+        Notes: transaction.notes || transaction.Notes || '',
         Category: category,
         locations
       });
-      const reqResult = this.reqSvc.createRequirement(txnResult.data.TransactionID, requirementPayload, actor);
-      if (!reqResult.ok) throw this._stepError('Requirement', reqResult.error);
+      const txnResult = this.txnSvc.createTransaction(lead.LeadID, transactionPayload, actor);
+      if (!txnResult.ok) throw this._stepError('Transaction', txnResult.error);
 
       const scoreResult = this.scoringSvc?.recalculateClientScore(lead.LeadID);
       if (scoreResult && !scoreResult.ok) throw this._stepError('Client score', scoreResult.error);
       const currentLead = this.repository.readLead(lead.LeadID) || lead;
-      const currentRequirement = this.repository.readRequirement(reqResult.data.RequirementID) || reqResult.data;
-      const next = this.nextQSvc?.getNextQuestions(currentRequirement.RequirementID, { limit: 3 });
+      const currentTransaction = this.txnSvc.getTransaction(txnResult.data.TransactionID).data || txnResult.data;
+      const next = this.nextQSvc?.getNextQuestionsByTransaction?.(currentTransaction.TransactionID, { limit: 3 });
 
       return {
         ok: true,
@@ -128,17 +121,16 @@ class V2QuickCaptureService {
           transactionId: txnResult.data.TransactionID,
           transactionType: txnResult.data.TransactionType
         },
-        requirement: {
-          requirementId: currentRequirement.RequirementID,
-          category: currentRequirement.Category,
-          subCategory: currentRequirement.SubCategory || null,
-          locations: [currentRequirement.Location1, currentRequirement.Location2, currentRequirement.Location3].filter(Boolean),
-          budgetMin: currentRequirement.BudgetMin ?? null,
-          budgetMax: currentRequirement.BudgetMax ?? null
+        transactionDetails: {
+          category: currentTransaction.Category,
+          subCategory: currentTransaction.SubCategory || null,
+          locations: [currentTransaction.Location1, currentTransaction.Location2, currentTransaction.Location3].filter(Boolean),
+          budgetMin: currentTransaction.BudgetMin ?? null,
+          budgetMax: currentTransaction.BudgetMax ?? null
         },
         scores: {
           clientScore: scoreResult?.score ?? currentLead.ClientScore ?? 0,
-          requirementScore: currentRequirement.RequirementScore ?? 0
+          transactionScore: currentTransaction.TransactionScore ?? 0
         },
         nextQuestions: next?.ok ? next.questions : []
       };
@@ -153,7 +145,7 @@ class V2QuickCaptureService {
     }
   }
 
-  _buildRequirementPayload(input, base) {
+  _buildTransactionPayload(input, base) {
     const payload = { ...input, ...base };
     delete payload.category;
     delete payload.locations;

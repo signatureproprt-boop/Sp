@@ -72,7 +72,7 @@ class SiteVisitBookingService {
     return {
       VisitBookingID: bookingId,
       LeadID: first.LeadID,
-      RequirementID: first.RequirementID,
+      TransactionID: first.TransactionID,
       ClientName: first.ClientName || null,
       ClientPhone: first.ClientPhone || null,
       VisitDate: first.VisitDate,
@@ -89,21 +89,21 @@ class SiteVisitBookingService {
   }
 
   create(payload = {}, actor = {}) {
-    const requirementId = payload.requirementId || payload.RequirementID;
+    const transactionId = payload.transactionId || payload.TransactionID;
     const propertyIds = Array.isArray(payload.propertyIds) ? payload.propertyIds : (Array.isArray(payload.PropertyIDs) ? payload.PropertyIDs : []);
     const visitDate = payload.visitDate || payload.VisitDate;
     const visitTime = payload.visitTime || payload.VisitTime;
 
-    if (!requirementId) return { ok: false, error: 'requirementId required' };
+    if (!transactionId) return { ok: false, error: 'transactionId required' };
     if (!propertyIds.length) return { ok: false, error: 'At least one propertyId required' };
     if (!visitDate) return { ok: false, error: 'visitDate required (YYYY-MM-DD)' };
     if (!visitTime) return { ok: false, error: 'visitTime required (HH:MM)' };
     const slotError = this._validateVisitSlot(visitDate, visitTime);
     if (slotError) return { ok: false, error: slotError };
 
-    const requirement = this.repo.readRequirement(requirementId);
-    if (!requirement) return { ok: false, error: 'Requirement not found' };
-    const lead = this.repo.readLead(requirement.LeadID);
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+    const lead = this.repo.readLead(transaction.LeadID);
     if (!lead) return { ok: false, error: 'Lead not found' };
 
     // Validate all properties exist
@@ -119,10 +119,10 @@ class SiteVisitBookingService {
     db.Shortlists = db.Shortlists || [];
 
     // Site visit is downstream of shortlist: every selected property must
-    // already be actively shortlisted for this requirement.
+    // already be actively shortlisted for this transaction.
     const activeShortlisted = new Set(
       db.Shortlists
-        .filter((row) => row.RequirementID === requirementId && row.Status === 'Active')
+        .filter((row) => row.TransactionID === transactionId && row.Status === 'Active')
         .map((row) => row.PropertyID)
     );
     const notShortlisted = propertyIds.filter((pid) => !activeShortlisted.has(pid));
@@ -137,14 +137,14 @@ class SiteVisitBookingService {
     const requestedStatus = this._validStatus(payload.status || payload.Status || 'Scheduled');
     const duplicate = db.SiteVisits.find((row) =>
       row &&
-      row.RequirementID === requirementId &&
+      row.TransactionID === transactionId &&
       propertyIds.includes(row.PropertyID) &&
       row.VisitDate === visitDate &&
       row.VisitTime === visitTime &&
       !['Completed', 'Cancelled'].includes(this._validStatus(row.Status))
     );
     if (duplicate) {
-      return { ok: false, error: 'Duplicate active site visit already exists for this requirement/property/date/time', code: 'DUPLICATE_SITE_VISIT' };
+      return { ok: false, error: 'Duplicate active site visit already exists for this transaction/property/date/time', code: 'DUPLICATE_SITE_VISIT' };
     }
 
     const bookingId = this.repo.createId('BOOK');
@@ -162,8 +162,7 @@ class SiteVisitBookingService {
         VisitBookingID: bookingId,
         VisitOrder: idx + 1,
         LeadID: lead.LeadID,
-        TransactionID: requirement.TransactionID || null,
-        RequirementID: requirementId,
+        TransactionID: transactionId,
         PropertyID: item.id,
         MatchID: null,
         ShortlistID: null,
@@ -215,9 +214,9 @@ class SiteVisitBookingService {
       .sort((a, b) => `${b.VisitDate} ${b.VisitTime}`.localeCompare(`${a.VisitDate} ${a.VisitTime}`));
   }
 
-  listByRequirement(requirementId) {
+  listByTransaction(transactionId) {
     const db = this.repo.read();
-    const rows = (db.SiteVisits || []).filter((r) => r.RequirementID === requirementId && r.VisitBookingID);
+    const rows = (db.SiteVisits || []).filter((r) => r.TransactionID === transactionId && r.VisitBookingID);
     return this._groupBookings(rows);
   }
 
@@ -272,7 +271,7 @@ class SiteVisitBookingService {
     const duplicate = db.SiteVisits.find((row) =>
       row &&
       row.VisitBookingID !== bookingId &&
-      row.RequirementID === rows[0].RequirementID &&
+      row.TransactionID === rows[0].TransactionID &&
       propertyIdSet.has(row.PropertyID) &&
       row.VisitDate === nextDate &&
       row.VisitTime === nextTime &&
@@ -280,7 +279,7 @@ class SiteVisitBookingService {
       !['Completed', 'Cancelled'].includes(this._validStatus(nextStatus))
     );
     if (duplicate) {
-      return { ok: false, error: 'Duplicate active site visit already exists for this requirement/property/date/time', code: 'DUPLICATE_SITE_VISIT' };
+      return { ok: false, error: 'Duplicate active site visit already exists for this transaction/property/date/time', code: 'DUPLICATE_SITE_VISIT' };
     }
     const now = this._now();
     const previousDate = rows[0].VisitDate || null;
@@ -295,7 +294,7 @@ class SiteVisitBookingService {
       if ((patch.VisitDate && patch.VisitDate !== previousDate) || (patch.VisitTime && patch.VisitTime !== previousTime)) {
         this.repo.addTimelineEntry(rows[0].LeadID, 'SiteVisitBooking', bookingId, 'SITE_VISIT_RESCHEDULED', 'Site visit rescheduled', {
           VisitBookingID: bookingId,
-          RequirementID: rows[0].RequirementID,
+          TransactionID: rows[0].TransactionID,
           previousDate,
           previousTime,
           nextDate,
@@ -304,7 +303,7 @@ class SiteVisitBookingService {
       } else if (patch.Status && patch.Status !== previousStatus) {
         this.repo.addTimelineEntry(rows[0].LeadID, 'SiteVisitBooking', bookingId, patch.Status === 'Completed' ? 'SITE_VISIT_COMPLETED' : 'SITE_VISIT_CANCELLED', `Site visit ${patch.Status.toLowerCase()}`, {
           VisitBookingID: bookingId,
-          RequirementID: rows[0].RequirementID,
+          TransactionID: rows[0].TransactionID,
           status: patch.Status
         });
       }

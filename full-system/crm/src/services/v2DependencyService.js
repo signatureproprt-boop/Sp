@@ -346,6 +346,34 @@ class V2DependencyService {
   }
 
   /**
+   * Full dependency evaluation from a stored Transaction.
+   */
+  evaluateTransaction(transactionId) {
+    const db = this.repository.read();
+    const txn = (db.Transactions || []).find((t) => t.TransactionID === transactionId);
+    if (!txn) return { ok: false, error: `Transaction not found: ${transactionId}` };
+
+    const context = {
+      transactionType: txn.TransactionType || txn.Type || null,
+      category: txn.Category || null,
+      subCategory: txn.SubCategory || null,
+      fields: txn.Fields || {}
+    };
+    const fieldStates = this.resolveAllFieldStates(context);
+    return {
+      ok: true,
+      context: {
+        transactionId,
+        transactionType: context.transactionType,
+        category: context.category,
+        subCategory: context.subCategory,
+        formVersion: txn.FormVersion || null
+      },
+      fields: fieldStates
+    };
+  }
+
+  /**
    * Evaluate from a raw context object (no DB lookup needed).
    * context: { transactionType, category, subCategory, fields? }
    */
