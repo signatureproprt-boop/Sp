@@ -357,6 +357,9 @@ class BuilderProjectService {
 
   _normalizePayload(payload = {}) {
     const out = {};
+    if (payload.CompanyID !== undefined) out.CompanyID = payload.CompanyID || null;
+    if (payload.BrokerageID !== undefined) out.BrokerageID = payload.BrokerageID || null;
+    if (payload.BuilderID !== undefined) out.BuilderID = String(payload.BuilderID || '').trim() || null;
     if (payload.ProjectName !== undefined) out.ProjectName = String(payload.ProjectName || '').trim() || null;
     if (payload.BuilderName !== undefined) out.BuilderName = String(payload.BuilderName || '').trim() || null;
     if (payload.DeveloperName !== undefined) out.DeveloperName = String(payload.DeveloperName || '').trim() || null;
@@ -373,7 +376,7 @@ class BuilderProjectService {
     if (payload.MapUrl !== undefined) out.MapUrl = String(payload.MapUrl || '').trim() || null;
     if (payload.RERANumber !== undefined) out.RERANumber = String(payload.RERANumber || '').trim() || null;
     if (payload.ReraUrl !== undefined) out.ReraUrl = String(payload.ReraUrl || '').trim() || null;
-    if (payload.ProjectStatus !== undefined) out.ProjectStatus = payload.ProjectStatus || 'Under Construction';
+    if (payload.ProjectStatus !== undefined) out.ProjectStatus = normalizeStatus(payload.ProjectStatus);
     if (payload.Category !== undefined) out.Category = payload.Category || 'Residential';
     if (payload.PossessionDate !== undefined) out.PossessionDate = payload.PossessionDate || null;
     if (payload.PossessionStatus !== undefined) out.PossessionStatus = payload.PossessionStatus || null;
@@ -437,17 +440,50 @@ class BuilderProjectService {
     return out;
   }
 
+  _resolveBuilderIdentity(clean) {
+    const builders = this.repo.list('Builders') || [];
+    if (clean.BuilderID) {
+      const builder = builders.find((b) => b.BuilderID === clean.BuilderID);
+      if (!builder) return { ok: false, error: 'BuilderID not found' };
+      return { ok: true, BuilderID: builder.BuilderID, BuilderName: builder.BuilderName || builder.Name || clean.BuilderName };
+    }
+    const wanted = this._normalizeBuilderKey(clean.BuilderName);
+    if (!wanted) return { ok: true, BuilderID: null, BuilderName: clean.BuilderName || null };
+    const matches = builders.filter((b) => this._normalizeBuilderKey(b.BuilderName || b.Name) === wanted);
+    if (matches.length === 1) {
+      return { ok: true, BuilderID: matches[0].BuilderID, BuilderName: matches[0].BuilderName || matches[0].Name || clean.BuilderName };
+    }
+    return { ok: true, BuilderID: null, BuilderName: clean.BuilderName || null };
+  }
+
+  _findDuplicateProject(clean, excludeProjectId = null) {
+    const candidateKeys = new Set(this._keysForProject(clean));
+    return this.repo.list('BuilderProjects').find((project) => {
+      if (project.Active === false || project.ProjectID === excludeProjectId) return false;
+      return this._keysForProject(project).some((key) => candidateKeys.has(key));
+    }) || null;
+  }
+
   create(payload, userId = 'system') {
     const clean = this._normalizePayload(payload);
     if (!clean.ProjectName) return { ok: false, error: 'ProjectName is required' };
     if (!clean.BuilderName) return { ok: false, error: 'BuilderName is required' };
     if (!clean.Location1) return { ok: false, error: 'Location1 is required' };
+    const builderIdentity = this._resolveBuilderIdentity(clean);
+    if (!builderIdentity.ok) return builderIdentity;
+    clean.BuilderID = builderIdentity.BuilderID;
+    clean.BuilderName = builderIdentity.BuilderName;
+    const duplicate = this._findDuplicateProject(clean);
+    if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
     const db = this.repo.read();
     const now = new Date().toISOString();
     const row = {
       ProjectID: this.repo.createId('BLDP'),
       ProjectName: clean.ProjectName,
+      BuilderID: clean.BuilderID || null,
       BuilderName: clean.BuilderName,
+      CompanyID: clean.CompanyID || null,
+      BrokerageID: clean.BrokerageID || null,
       DeveloperName: clean.DeveloperName || clean.BuilderName || null,
       PromoterName: clean.PromoterName || clean.BuilderName || null,
       Location1: clean.Location1,
@@ -507,6 +543,13 @@ class BuilderProjectService {
     const row = this._all(db).find((p) => p.ProjectID === id);
     if (!row) return { ok: false, error: 'Project not found' };
     const clean = this._normalizePayload(payload);
+    const builderIdentity = this._resolveBuilderIdentity({ ...row, ...clean });
+    if (!builderIdentity.ok) return builderIdentity;
+    clean.BuilderID = builderIdentity.BuilderID;
+    clean.BuilderName = builderIdentity.BuilderName;
+    const merged = { ...row, ...clean };
+    const duplicate = this._findDuplicateProject(merged, id);
+    if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
     Object.assign(row, clean, { UpdatedAt: new Date().toISOString() });
     this.repo.write(db);
     return { ok: true, data: row };

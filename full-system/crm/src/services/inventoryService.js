@@ -106,8 +106,19 @@ class InventoryService {
     return db.Inventory.find(p => p.PropertyID === propertyId && !p._deleted) || null;
   }
 
+  _resolveProjectLink(payload, db) {
+    const projectId = payload.ProjectID || payload.ProjectId || null;
+    if (!projectId) return { ok: true, project: null };
+    const project = (db.BuilderProjects || []).find((p) => p.ProjectID === projectId && p.Active !== false);
+    if (!project) return { ok: false, error: 'Builder project not found' };
+    return { ok: true, project };
+  }
+
   create(payload, actor = {}) {
     const db = this._ensureDb();
+    const projectLink = this._resolveProjectLink(payload, db);
+    if (!projectLink.ok) return projectLink;
+    const linkedProject = projectLink.project;
     const id = payload.PropertyID || `PROP-${String(++db._V2Counters.Property).padStart(4, '0')}`;
     const now = new Date().toISOString();
     const inventorySource = payload.InventorySource || _deriveInventorySource(payload.OwnerType);
@@ -124,10 +135,10 @@ class InventoryService {
       OwnerType:      payload.OwnerType || 'Direct Owner',
       ExclusiveWithMe:!!payload.ExclusiveWithMe,
       SocietyName:    payload.SocietyName || null,
-      BuilderName:    payload.BuilderName || null,
-      BuilderID:      payload.BuilderID || payload.BuilderId || null,
-      ProjectID:      payload.ProjectID || payload.ProjectId || null,
-      ProjectName:    payload.ProjectName || null,
+      BuilderName:    linkedProject?.BuilderName || payload.BuilderName || null,
+      BuilderID:      linkedProject?.BuilderID || payload.BuilderID || payload.BuilderId || null,
+      ProjectID:      linkedProject?.ProjectID || null,
+      ProjectName:    linkedProject?.ProjectName || payload.ProjectName || null,
       BrokerName:     payload.BrokerName || null,
       BrokerMobile:   payload.BrokerMobile || null,
       BrokerCommissionShare: payload.BrokerCommissionShare || null,
@@ -154,6 +165,17 @@ class InventoryService {
     const db = this._ensureDb();
     const p = db.Inventory.find(x => x.PropertyID === propertyId && !x._deleted);
     if (!p) return null;
+    const projectLink = this._resolveProjectLink(payload, db);
+    if (!projectLink.ok) return projectLink;
+    if (projectLink.project) {
+      payload = {
+        ...payload,
+        ProjectID: projectLink.project.ProjectID,
+        ProjectName: projectLink.project.ProjectName || null,
+        BuilderID: projectLink.project.BuilderID || null,
+        BuilderName: projectLink.project.BuilderName || null
+      };
+    }
     const keepKeys = new Set(['Photos', 'CreatedAt', 'CreatedBy', 'PropertyID', '_v2']);
     for (const [k, v] of Object.entries(payload || {})) {
       if (keepKeys.has(k)) continue;

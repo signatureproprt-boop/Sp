@@ -2237,7 +2237,14 @@ async function handleApi(req, res, url) {
       const idMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/?$/i);
       if (idMatch) {
         const id = idMatch[1];
-        if (req.method === 'GET') { const out = svc.get(id); sendJson(res, out, out.ok ? 200 : 404); return; }
+        if (req.method === 'GET') {
+          const out = svc.get(id);
+          if (out.ok) {
+            const tenant = tenantCheck(out.data, actor);
+            if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+          }
+          sendJson(res, out, out.ok ? 200 : 404); return;
+        }
         if (req.method === 'PATCH') { const out = svc.update(id, bodyForV2 || {}); sendJson(res, out, out.ok ? 200 : 400); return; }
         if (req.method === 'DELETE') { const out = svc.remove(id); sendJson(res, out, out.ok ? 200 : 404); return; }
         sendJson(res, { ok: false, error: 'Method not supported' }, 405);
@@ -2256,12 +2263,20 @@ async function handleApi(req, res, url) {
             page: url.searchParams.get('page') || 1,
             limit: url.searchParams.get('limit') || 50
           });
+          if (out.ok) {
+            out.data = (out.data || []).filter((row) => tenantCheck(row, actor).ok);
+            out.count = out.data.length;
+          }
           if (perf) perf.serviceMs = elapsedMs(serviceStartedAt);
           sendJson(res, out);
           return;
         }
         if (req.method === 'POST') {
-          const out = svc.create(bodyForV2 || {}, actor?.userId || 'system');
+          const out = svc.create({
+            ...(bodyForV2 || {}),
+            CompanyID: actor.companyId || null,
+            BrokerageID: actor.brokerageId || null
+          }, actor?.userId || 'system');
           sendJson(res, out, out.ok ? 201 : 400);
           return;
         }
