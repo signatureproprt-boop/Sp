@@ -65,3 +65,40 @@ test('BuilderProjectService listPage returns bounded pagination', () => {
   assert.equal(page.data.length, 50);
   assert.equal(page.data[0].ProjectID, 'PRJ-54');
 });
+
+
+test('InventoryService canonicalizes builder metadata from linked BuilderProject', () => {
+  const db = {
+    Inventory: [],
+    BuilderProjects: [{
+      ProjectID: 'PRJ-1', ProjectName: 'Canonical Project', BuilderID: 'BLD-1',
+      BuilderName: 'Canonical Builder', Active: true
+    }],
+    _V2Counters: { Property: 0 }
+  };
+  let written;
+  const repo = repoWith(db);
+  repo.write = (next) => { written = next; };
+  const svc = new InventoryService(repo);
+  const row = svc.create({
+    ProjectID: 'PRJ-1',
+    ProjectName: 'Wrong Project',
+    BuilderID: 'WRONG',
+    BuilderName: 'Wrong Builder'
+  }, { userId: 'U1' });
+
+  assert.equal(row.ProjectID, 'PRJ-1');
+  assert.equal(row.ProjectName, 'Canonical Project');
+  assert.equal(row.BuilderID, 'BLD-1');
+  assert.equal(row.BuilderName, 'Canonical Builder');
+  assert.equal(written.Inventory[0].ProjectID, 'PRJ-1');
+});
+
+test('InventoryService rejects an unknown BuilderProject link', () => {
+  const db = { Inventory: [], BuilderProjects: [], _V2Counters: { Property: 0 } };
+  const svc = new InventoryService(repoWith(db));
+  const out = svc.create({ ProjectID: 'PRJ-MISSING' }, { userId: 'U1' });
+
+  assert.equal(out.ok, false);
+  assert.equal(out.error, 'Builder project not found');
+});
