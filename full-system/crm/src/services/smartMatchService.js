@@ -332,8 +332,11 @@ class SmartMatchService {
     };
   }
 
-  matchByTransactionId(transactionId, options = {}) {
-    return this.matchByTransactionId(transactionId, options);
+  matchByRequirementId(requirementId, options = {}) {
+    const db = this.repository.read();
+    const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
+    if (!legacy?.TransactionID) return { ok: false, error: 'Transaction not found for legacy requirement' };
+    return this.matchByTransactionId(legacy.TransactionID, options);
   }
 
   matchByTransactionId(transactionId, options = {}) {
