@@ -1194,12 +1194,37 @@ class V2Router {
       const q = String(filters.q).toLowerCase();
       const qDigits = q.replace(/\\D/g, '');
       result = result.filter(l => {
-        const name  = String(l.ClientName || l.Name || '').toLowerCase();
-        const mobile = String(l.PrimaryMobile || l.Phone || '').replace(/\\D/g, '');
+        const name = String(l.ClientName || l.Name || '').toLowerCase();
+        const mobile = String(l.PrimaryMobile || l.Phone || '').replace(/\\D/g, '').slice(-10);
+        const alternateMobiles = [
+          l.AlternateMobile,
+          ...(Array.isArray(l.AlternateMobiles) ? l.AlternateMobiles : [])
+        ].map(v => String(v || '').replace(/\\D/g, '').slice(-10)).filter(Boolean);
         const email = String(l.Email || '').toLowerCase();
-        const lid   = String(l.LeadID || '').toLowerCase();
-        return name.includes(q) || (qDigits && mobile.includes(qDigits)) || email.includes(q) || lid.includes(q);
+        const lid = String(l.LeadID || '').toLowerCase();
+        const mergedInto = String(l.MergedIntoClientID || '').toLowerCase();
+        const phoneHit = qDigits && ([mobile, ...alternateMobiles].some(v => v && v.includes(qDigits.slice(-10))));
+        return name.includes(q) || phoneHit || email.includes(q) || lid.includes(q) || mergedInto.includes(q);
       });
+      // Old IDs/mobiles remain searchable, but operational navigation resolves
+      // to the surviving master Client instead of reopening an archived stub.
+      const byId = new Map(leads.map(l => [l.LeadID, l]));
+      const resolved = [];
+      const seen = new Set();
+      for (const row of result) {
+        let master = row;
+        const visited = new Set();
+        while (master?.MergedIntoClientID && !visited.has(master.LeadID)) {
+          visited.add(master.LeadID);
+          master = byId.get(master.MergedIntoClientID) || master;
+          if (!master?.MergedIntoClientID) break;
+        }
+        if (master && !seen.has(master.LeadID)) {
+          seen.add(master.LeadID);
+          resolved.push(master);
+        }
+      }
+      result = resolved;
     }
 
     const visible = actor ? this.accessSvc.filterReadableLeads(result, actor) : result;
