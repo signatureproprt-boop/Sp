@@ -1658,9 +1658,8 @@ class JsonRepository {
     if (!validation.ok) return validation;
 
     const leadId = payload.LeadID || payload.leadId;
-    const transactionId = payload.TransactionID || payload.transactionId;
-    const propertyId = payload.PropertyID || payload.propertyId;
     const transactionId = payload.TransactionID || payload.transactionId || validation.transaction.TransactionID || null;
+    const propertyId = payload.PropertyID || payload.propertyId;
 
     const status = this.normalizeNegotiationStatus(payload.Status || payload.status || 'OPEN');
     if (!this.isValidNegotiationStatus(status)) return { ok: false, error: 'Invalid negotiation status' };
@@ -1670,12 +1669,11 @@ class JsonRepository {
       return row.LeadID === leadId
         && row.TransactionID === transactionId
         && row.PropertyID === propertyId
-        && row.TransactionID === transactionId
         && row.NegotiationID !== id
         && !this.isNegotiationTerminalStatus(row.Status);
     });
     if (activeDuplicate) {
-      return { ok: false, error: 'Duplicate active negotiation already exists for this lead/transaction/property/transaction' };
+      return { ok: false, error: 'Duplicate active negotiation already exists for this lead/transaction/property' };
     }
 
     const askingPriceCheck = this.validateNonNegativeMoney('AskingPrice', payload.AskingPrice ?? payload.askingPrice);
