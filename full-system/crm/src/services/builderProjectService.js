@@ -373,7 +373,7 @@ class BuilderProjectService {
     if (payload.MapUrl !== undefined) out.MapUrl = String(payload.MapUrl || '').trim() || null;
     if (payload.RERANumber !== undefined) out.RERANumber = String(payload.RERANumber || '').trim() || null;
     if (payload.ReraUrl !== undefined) out.ReraUrl = String(payload.ReraUrl || '').trim() || null;
-    if (payload.ProjectStatus !== undefined) out.ProjectStatus = payload.ProjectStatus || 'Under Construction';
+    if (payload.ProjectStatus !== undefined) out.ProjectStatus = normalizeStatus(payload.ProjectStatus);
     if (payload.Category !== undefined) out.Category = payload.Category || 'Residential';
     if (payload.PossessionDate !== undefined) out.PossessionDate = payload.PossessionDate || null;
     if (payload.PossessionStatus !== undefined) out.PossessionStatus = payload.PossessionStatus || null;
@@ -437,11 +437,21 @@ class BuilderProjectService {
     return out;
   }
 
+  _findDuplicateProject(clean, excludeProjectId = null) {
+    const candidateKeys = new Set(this._keysForProject(clean));
+    return this.repo.list('BuilderProjects').find((project) => {
+      if (project.Active === false || project.ProjectID === excludeProjectId) return false;
+      return this._keysForProject(project).some((key) => candidateKeys.has(key));
+    }) || null;
+  }
+
   create(payload, userId = 'system') {
     const clean = this._normalizePayload(payload);
     if (!clean.ProjectName) return { ok: false, error: 'ProjectName is required' };
     if (!clean.BuilderName) return { ok: false, error: 'BuilderName is required' };
     if (!clean.Location1) return { ok: false, error: 'Location1 is required' };
+    const duplicate = this._findDuplicateProject(clean);
+    if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
     const db = this.repo.read();
     const now = new Date().toISOString();
     const row = {
@@ -507,6 +517,9 @@ class BuilderProjectService {
     const row = this._all(db).find((p) => p.ProjectID === id);
     if (!row) return { ok: false, error: 'Project not found' };
     const clean = this._normalizePayload(payload);
+    const merged = { ...row, ...clean };
+    const duplicate = this._findDuplicateProject(merged, id);
+    if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
     Object.assign(row, clean, { UpdatedAt: new Date().toISOString() });
     this.repo.write(db);
     return { ok: true, data: row };
