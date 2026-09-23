@@ -3,11 +3,11 @@
  * Phase 16 — V2 Activity Service
  *
  * Canonical wrapper around the repository's activity primitives,
- * adding the full V2 activity model (RequirementID, ActivityDirection,
+ * adding the full V2 activity model (TransactionID, ActivityDirection,
  * Outcome, NextAction, FollowUpDate, Version) and audit fields.
  *
  * Reading activities NEVER mutates data.
- * Creating an activity NEVER creates a new Lead or Requirement.
+ * Creating an activity NEVER creates a new Client or Transaction.
  */
 
 const VALID_TYPES = new Set([
@@ -18,11 +18,11 @@ const VALID_DIRECTIONS = new Set(['INBOUND', 'OUTBOUND', '']);
 class V2ActivityService {
   /**
    * @param {import('../data/repository').JsonRepository} repo
-   * @param {import('./v2RequirementService').V2RequirementService} [reqSvc]  optional — used to PATCH requirement fields during conversation capture
+   * @param {import('./v2TransactionService').V2TransactionService} [txnSvc] optional — used to PATCH transaction fields during conversation capture
    */
-  constructor(repo, reqSvc = null) {
-    this.repo   = repo;
-    this.reqSvc = reqSvc;
+  constructor(repo, txnSvc = null) {
+    this.repo = repo;
+    this.txnSvc = txnSvc;
   }
 
   // ── Create ──────────────────────────────────────────────────────────────────
@@ -33,7 +33,6 @@ class V2ActivityService {
    * payload:
    *   LeadID *          string
    *   TransactionID?    string
-   *   RequirementID?    string
    *   ActivityType      CALL|WHATSAPP|SMS|MEETING|SITE_VISIT|NOTE|EMAIL|OTHER
    *   ActivityDirection INBOUND|OUTBOUND
    *   Summary?          string  — one-line description
@@ -136,7 +135,7 @@ class V2ActivityService {
 
     // Conversation-captured fields update the Transaction directly.
     let transactionPatch = null;
-    if (payload.TransactionID && payload.FieldUpdates && Object.keys(payload.FieldUpdates).length > 0 && this.reqSvc?.updateTransactionDetails) {
+    if (payload.TransactionID && payload.FieldUpdates && Object.keys(payload.FieldUpdates).length > 0 && this.txnSvc?.updateTransactionDetails) {
       transactionPatch = this.reqSvc.updateTransactionDetails(payload.TransactionID, payload.FieldUpdates, actor);
     }
 
