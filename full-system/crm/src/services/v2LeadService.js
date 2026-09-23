@@ -178,6 +178,18 @@ class V2LeadService {
       LeadStatus:       clientStatus, // backward compat
       Phone:            payload.Phone || payload.phone || payload.PrimaryMobile || payload.primaryMobile || null, // backward compat
       City:             payload.City || payload.city || null,
+      Area:             payload.Area || payload.area || null,
+      PreferredLanguage: payload.PreferredLanguage || payload.preferredLanguage || null,
+      PreferredContactMode: payload.PreferredContactMode || payload.preferredContactMode || null,
+      ClientIntent:     payload.ClientIntent || payload.clientIntent || null,
+      Occupation:       payload.Occupation || payload.occupation || null,
+      ReferralBy:       payload.ReferralBy || payload.referralBy || null,
+      SourceDetail:     payload.SourceDetail || payload.sourceDetail || payload.SubSource || payload.subSource || null,
+      Priority:         payload.Priority || payload.priority || 'Normal',
+      NextActionType:   payload.NextActionType || payload.nextActionType || null,
+      NextActionNote:   payload.NextActionNote || payload.nextActionNote || null,
+      NextFollowUpAt:   payload.NextFollowUpAt || payload.nextFollowUpAt || null,
+      LastContactChannel: payload.LastContactChannel || payload.lastContactChannel || null,
       RequirementProfile: payload.RequirementProfile || payload.requirementProfile || null,
       BudgetMax:        payload.BudgetMax || payload.budgetMax || payload.Budget || payload.budget || null,
       BudgetMin:        payload.BudgetMin || payload.budgetMin || null,
@@ -268,6 +280,18 @@ class V2LeadService {
       LeadStatus:      clientStatus,
       Phone:           payload.Phone || payload.phone || payload.PrimaryMobile || payload.primaryMobile || existing.Phone,
       City:            payload.City || payload.city || existing.City,
+      Area:            payload.Area ?? payload.area ?? existing.Area ?? null,
+      PreferredLanguage: payload.PreferredLanguage ?? payload.preferredLanguage ?? existing.PreferredLanguage ?? null,
+      PreferredContactMode: payload.PreferredContactMode ?? payload.preferredContactMode ?? existing.PreferredContactMode ?? null,
+      ClientIntent:    payload.ClientIntent ?? payload.clientIntent ?? existing.ClientIntent ?? null,
+      Occupation:      payload.Occupation ?? payload.occupation ?? existing.Occupation ?? null,
+      ReferralBy:      payload.ReferralBy ?? payload.referralBy ?? existing.ReferralBy ?? null,
+      SourceDetail:    payload.SourceDetail ?? payload.sourceDetail ?? payload.SubSource ?? payload.subSource ?? existing.SourceDetail ?? null,
+      Priority:        payload.Priority ?? payload.priority ?? existing.Priority ?? 'Normal',
+      NextActionType:  payload.NextActionType ?? payload.nextActionType ?? existing.NextActionType ?? null,
+      NextActionNote:  payload.NextActionNote ?? payload.nextActionNote ?? existing.NextActionNote ?? null,
+      NextFollowUpAt:  payload.NextFollowUpAt ?? payload.nextFollowUpAt ?? existing.NextFollowUpAt ?? null,
+      LastContactChannel: payload.LastContactChannel ?? payload.lastContactChannel ?? existing.LastContactChannel ?? null,
       RequirementProfile: payload.RequirementProfile || payload.requirementProfile || existing.RequirementProfile || null,
       BudgetMax:       payload.BudgetMax || payload.budgetMax || payload.Budget || payload.budget || existing.BudgetMax || null,
       BudgetMin:       payload.BudgetMin || payload.budgetMin || existing.BudgetMin || null,
@@ -299,7 +323,9 @@ class V2LeadService {
 
     const hasMeaningfulChange = [
       'ClientName', 'PrimaryMobile', 'AlternateMobile', 'WhatsApp', 'Email', 'ClientStatus', 'ClientLifecycle',
-      'Source', 'LeadSource', 'LeadStatus', 'Phone', 'City', 'RequirementProfile', 'BudgetMax', 'BudgetMin',
+      'Source', 'LeadSource', 'LeadStatus', 'Phone', 'City', 'Area', 'PreferredLanguage', 'PreferredContactMode',
+      'ClientIntent', 'Occupation', 'ReferralBy', 'SourceDetail', 'Priority', 'NextActionType', 'NextActionNote',
+      'NextFollowUpAt', 'LastContactChannel', 'RequirementProfile', 'BudgetMax', 'BudgetMin',
       'Location1', 'PropertyType', 'RequirementType', 'AssignedAgentID', 'CompanyID', 'BrokerageID', 'Notes',
       'LostReason', 'LostNote', 'LostAt', 'ReactivatedAt'
     ].some((key) => JSON.stringify(existing[key] ?? null) !== JSON.stringify(updated[key] ?? null))
