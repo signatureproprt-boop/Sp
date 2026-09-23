@@ -440,6 +440,22 @@ class BuilderProjectService {
     return out;
   }
 
+  _resolveBuilderIdentity(clean) {
+    const builders = this.repo.list('Builders') || [];
+    if (clean.BuilderID) {
+      const builder = builders.find((b) => b.BuilderID === clean.BuilderID);
+      if (!builder) return { ok: false, error: 'BuilderID not found' };
+      return { ok: true, BuilderID: builder.BuilderID, BuilderName: builder.BuilderName || builder.Name || clean.BuilderName };
+    }
+    const wanted = this._normalizeBuilderKey(clean.BuilderName);
+    if (!wanted) return { ok: true, BuilderID: null, BuilderName: clean.BuilderName || null };
+    const matches = builders.filter((b) => this._normalizeBuilderKey(b.BuilderName || b.Name) === wanted);
+    if (matches.length === 1) {
+      return { ok: true, BuilderID: matches[0].BuilderID, BuilderName: matches[0].BuilderName || matches[0].Name || clean.BuilderName };
+    }
+    return { ok: true, BuilderID: null, BuilderName: clean.BuilderName || null };
+  }
+
   _findDuplicateProject(clean, excludeProjectId = null) {
     const candidateKeys = new Set(this._keysForProject(clean));
     return this.repo.list('BuilderProjects').find((project) => {
@@ -453,6 +469,10 @@ class BuilderProjectService {
     if (!clean.ProjectName) return { ok: false, error: 'ProjectName is required' };
     if (!clean.BuilderName) return { ok: false, error: 'BuilderName is required' };
     if (!clean.Location1) return { ok: false, error: 'Location1 is required' };
+    const builderIdentity = this._resolveBuilderIdentity(clean);
+    if (!builderIdentity.ok) return builderIdentity;
+    clean.BuilderID = builderIdentity.BuilderID;
+    clean.BuilderName = builderIdentity.BuilderName;
     const duplicate = this._findDuplicateProject(clean);
     if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
     const db = this.repo.read();
@@ -523,6 +543,10 @@ class BuilderProjectService {
     const row = this._all(db).find((p) => p.ProjectID === id);
     if (!row) return { ok: false, error: 'Project not found' };
     const clean = this._normalizePayload(payload);
+    const builderIdentity = this._resolveBuilderIdentity({ ...row, ...clean });
+    if (!builderIdentity.ok) return builderIdentity;
+    clean.BuilderID = builderIdentity.BuilderID;
+    clean.BuilderName = builderIdentity.BuilderName;
     const merged = { ...row, ...clean };
     const duplicate = this._findDuplicateProject(merged, id);
     if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
