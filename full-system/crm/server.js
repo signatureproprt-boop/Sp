@@ -3459,17 +3459,25 @@ async function handleApi(req, res, url) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const body = await readJson(req);
-      const requirementId = body.requirementId || body.requirementID;
-      if (!requirementId) {
-        sendJson(res, { ok: false, error: 'requirementId required' }, 400);
+
+      let transactionId = body.transactionId || body.TransactionID || null;
+      const legacyRequirementId = body.requirementId || body.requirementID || body.RequirementID || null;
+      if (!transactionId && legacyRequirementId) {
+        const legacyRequirement = runtime.repository.readRequirement(legacyRequirementId);
+        transactionId = legacyRequirement?.TransactionID || null;
+      }
+      if (!transactionId) {
+        sendJson(res, { ok: false, error: 'transactionId required' }, 400);
         return;
       }
-      const requirement = runtime.repository.readRequirement(requirementId);
-      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-        permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+
+      const transaction = runtime.repository.find('Transactions', 'TransactionID', transactionId);
+      const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ']
       });
-      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
-      const payload = await runtime.runMatching(requirementId);
+      if (!transactionAccess.ok) { sendJson(res, { ok: false, error: transactionAccess.error }, transactionAccess.statusCode); return; }
+
+      const payload = await runtime.runMatching(transactionId);
       if (payload.ok && Array.isArray(payload.data?.matches)) {
         payload.data.matches = payload.data.matches.filter((row) => {
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
@@ -3486,15 +3494,16 @@ async function handleApi(req, res, url) {
     if (pathname === '/api/matching') {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
-      const payload = await runtime.matching();
+      const requestedTransactionId = url.searchParams.get('transactionId') || url.searchParams.get('TransactionID') || null;
+      const payload = await runtime.matching(requestedTransactionId);
       if (payload.ok && Array.isArray(payload.data)) {
         payload.data = payload.data.filter((row) => {
-          const requirement = runtime.repository.readRequirement(row.RequirementID);
-          const requirementAccess = accessSvc.authorizeRequirement(actor, requirement, {
-            permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ'],
+          const transaction = runtime.repository.find('Transactions', 'TransactionID', row.TransactionID);
+          const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+            permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
             hideExistence: true
           });
-          if (!requirementAccess.ok) return false;
+          if (!transactionAccess.ok) return false;
           const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
           return accessSvc.authorizeProperty(actor, property, {
             permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
@@ -3512,11 +3521,11 @@ async function handleApi(req, res, url) {
       const matchId = pathname.split('/').pop();
       const payload = await runtime.getMatch(matchId);
       if (payload?.ok && payload.data) {
-        const requirement = runtime.repository.readRequirement(payload.data.RequirementID);
-        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
-          permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+        const transaction = runtime.repository.find('Transactions', 'TransactionID', payload.data.TransactionID);
+        const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+          permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ']
         });
-        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        if (!transactionAccess.ok) { sendJson(res, { ok: false, error: transactionAccess.error }, transactionAccess.statusCode); return; }
         const property = runtime.repository.find('Inventory', 'PropertyID', payload.data.PropertyID);
         const propertyAccess = accessSvc.authorizeProperty(actor, property, {
           permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
