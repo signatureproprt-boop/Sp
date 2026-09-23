@@ -436,6 +436,12 @@ class V2LeadService {
     const db    = this.repository.read();
     let rows    = db.Leads || [];
 
+    // Merged records are audit stubs, not active client identities.
+    // They remain directly resolvable by ID/mobile but stay out of normal lists.
+    if (!filters.includeMerged) {
+      rows = rows.filter((r) => !r.MergedIntoClientID && r.ClientStatus !== 'Merged');
+    }
+
     if (filters.ClientStatus)   rows = rows.filter((r) => r.ClientStatus === filters.ClientStatus || r.LeadStatus === filters.ClientStatus);
     if (filters.ClientLifecycle) rows = rows.filter((r) => r.ClientLifecycle === filters.ClientLifecycle);
     if (filters.AssignedAgentID) rows = rows.filter((r) => r.AssignedAgentID === filters.AssignedAgentID);
@@ -458,9 +464,21 @@ class V2LeadService {
     const norm  = normalizePhone(mobile);
     if (!norm) return null;
     const leads = this.repository.read().Leads || [];
-    return leads.find((l) => normalizePhone(l.PrimaryMobile || l.Phone) === norm
+    const matched = leads.find((l) => normalizePhone(l.PrimaryMobile || l.Phone) === norm
                           || normalizePhone(l.AlternateMobile) === norm
+                          || (Array.isArray(l.AlternateMobiles) && l.AlternateMobiles.some((m) => normalizePhone(m) === norm))
                           || normalizePhone(l.WhatsApp) === norm) || null;
+    if (!matched) return null;
+
+    let current = matched;
+    const visited = new Set();
+    while (current?.MergedIntoClientID && !visited.has(current.LeadID)) {
+      visited.add(current.LeadID);
+      const master = leads.find((l) => l.LeadID === current.MergedIntoClientID);
+      if (!master) break;
+      current = master;
+    }
+    return current;
   }
 
   // ── Validators ─────────────────────────────────────────────────────────────
