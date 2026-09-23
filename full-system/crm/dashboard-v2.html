@@ -24,6 +24,49 @@ button,input{font:inherit}.topbar{height:58px;background:#fff;border-bottom:1px 
 @media(max-width:1050px){.nav{display:none}.kpis{grid-template-columns:repeat(4,1fr)}.grid{grid-template-columns:1fr 1fr}.grid .right{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}.grid .right .panel{margin-bottom:0}}
 @media(max-width:700px){.mobile-menu{top:54px}.topbar{height:54px;padding:0 11px;gap:9px}.brand{font-size:13px}.brand img{width:27px;height:27px}.page-name,.search,.top-actions .icon{display:none}.hamb{display:block;border:1px solid var(--line);background:#fff;border-radius:7px;width:34px;height:34px}.top-actions{gap:5px}.page{padding:13px 11px 30px}.head{margin-bottom:12px}.head h1{font-size:19px}.head p{font-size:10.5px}.primary{padding:8px 10px;font-size:11px}.kpis{display:flex;overflow-x:auto;gap:7px;margin:0 -11px 12px;padding:0 11px 2px;scrollbar-width:none}.kpis::-webkit-scrollbar{display:none}.kpi{flex:0 0 118px;padding:9px}.kpi .value{font-size:19px}.grid{display:block}.grid .right{display:block}.panel{margin-bottom:9px}.ph{padding:9px 11px}.body{padding:9px 11px}.quick a{padding:8px 6px}.visit{grid-template-columns:43px 1fr auto}.money div{padding:8px 6px}.money b{font-size:12px}}
 </style>
+
+/* Architect dashboard visual system — preserves the existing dashboard data contract. */
+<style>
+:root{
+  --ink:#172522;--brown:#24483f;--brown2:#17372f;--gold:#d9a441;--goldbg:#fbf5e8;
+  --bg:#eef4f1;--card:#ffffff;--line:#dcebe6;--muted:#667b76;--ok:#2e7d32;
+  --warn:#a86f13;--danger:#b94a42;--blue:#315a92;--architect:#6b3f1f;
+}
+body{
+  background:
+    linear-gradient(rgba(23,55,47,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(23,55,47,.025) 1px,transparent 1px),
+    var(--bg);
+  background-size:28px 28px;
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+}
+.topbar{height:64px;padding:0 24px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(23,55,47,.04)}
+.brand{color:var(--brown2);letter-spacing:-.01em}.brand img{width:34px;height:34px}
+.page-name{color:var(--architect);font-weight:700}.nav a{border-radius:10px;padding:9px 11px}
+.nav a:hover,.nav a.active{background:#eaf2ee;color:var(--brown2)}
+.search{height:40px;border-color:#d4e3de;border-radius:11px;background:#f7faf8}
+.search:focus{border-color:var(--brown);box-shadow:0 0 0 3px rgba(36,72,63,.08)}
+.icon{height:40px;width:40px;border-radius:11px}.avatar{height:38px;width:38px;background:var(--brown2);box-shadow:0 0 0 3px #e5eee9}
+.page{max-width:1440px;padding:28px 30px 54px}.head{margin-bottom:22px}
+.head h1{font-size:30px;letter-spacing:-.035em;color:var(--brown2)}
+.head p{font-size:12px;margin-top:6px}.primary{background:var(--brown2);border-radius:10px;padding:10px 14px;box-shadow:0 5px 14px rgba(23,55,47,.12)}
+.primary:hover{background:var(--brown)}
+.kpis{gap:12px;margin-bottom:20px}.kpi{position:relative;border-color:var(--line);border-radius:14px;padding:15px 15px 14px;box-shadow:0 8px 24px rgba(18,42,44,.045);overflow:hidden}
+.kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold)}
+.kpi .label{font-size:9.5px;letter-spacing:.09em}.kpi .value{font-size:25px;color:var(--brown2);letter-spacing:-.03em}.kpi .sub{margin-top:4px}
+.grid{grid-template-columns:1fr 1.35fr .92fr;gap:16px}.panel{border-color:var(--line);border-radius:14px;margin-bottom:16px;box-shadow:0 8px 24px rgba(18,42,44,.045)}
+.ph{padding:14px 16px;background:linear-gradient(180deg,#fff,#fbfdfc)}.ph h2{color:var(--brown2);font-size:13px;letter-spacing:.01em}.ph a{color:var(--architect)}
+.body{padding:13px 16px}.work-row,.visit,.activity,.client{border-color:#edf3f0}.work-row{padding:11px 0}
+.quick{gap:9px}.quick a{border-color:#dce8e3;border-radius:10px;padding:11px 10px;color:var(--brown2);background:#fbfdfc}
+.quick a:hover{border-color:var(--gold);background:var(--goldbg);transform:translateY(-1px)}
+.initial{background:#e7f0ec;color:var(--brown2)}.dot{background:var(--gold)}
+.money{gap:9px}.money div,.invtag{border-color:#dce8e3;border-radius:10px;background:#fbfdfc}.money b{color:var(--brown2)}
+.status.active,.badge{background:#e5f2e9}.status.hot{background:#fff0ec}.badge.pending{background:#fff4df}
+@media(max-width:700px){
+  .topbar{height:58px}.mobile-menu{top:58px}.page{padding:18px 13px 34px}.head{align-items:flex-start;gap:12px}.head h1{font-size:24px}
+  .kpi{flex-basis:132px}.grid{display:block}.panel{border-radius:12px}
+}
+</style>
 </head>
 <body>
 <header class="topbar">
