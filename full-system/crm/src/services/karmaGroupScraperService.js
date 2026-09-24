@@ -18,6 +18,7 @@ const TRANSIENT_MAX_RETRIES = 2;
 const BROCHURE_DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
 const BROCHURE_HARD_MAX_BYTES = 300 * 1024 * 1024;
 const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
 const KARMA_PROJECT_LIST_URL = 'https://karmagroup.co.in/Projects/ProjectList';
 const KARMA_CATEGORY_FILTERS = [
   { id: '1', sourceCategory: 'Residential Projects', category: 'Residential' },
@@ -1023,21 +1024,21 @@ class KarmaGroupScraperService {
     if (existing) return { ok: true, reused: true, bytesStored: 0, record: existing };
 
     const downloaded = await this.downloadMediaSafely(sourceUrl, {
-      kind: mediaType === 'brochure' ? 'pdf' : 'image',
+      kind: mediaType === 'brochure' ? 'pdf' : (mediaType === 'video' ? 'binary' : 'image'),
       timeoutMs: Math.max(this.timeoutMs, 30000),
-      maxBytes: mediaType === 'brochure' ? BROCHURE_HARD_MAX_BYTES : IMAGE_MAX_BYTES,
-      allowImageHeaderMismatch: mediaType !== 'brochure'
+      maxBytes: mediaType === 'brochure' ? BROCHURE_HARD_MAX_BYTES : (mediaType === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES),
+      allowImageHeaderMismatch: mediaType !== 'brochure' && mediaType !== 'video'
     });
     if (!downloaded.ok) return { ok: false, sourceKey, mediaType, error: sanitizeError(downloaded.error) };
 
     const extension = extensionForContentType(downloaded.contentType);
     const filename = filenameFromMediaUrl(sourceUrl, `${mediaType}-${sourceKey}`, downloaded.contentType);
-    const storageFolder = mediaType === 'brochure' ? 'brochures' : (mediaType === 'floor_plan' ? 'floor-plans' : 'photos');
+    const storageFolder = mediaType === 'brochure' ? 'brochures' : (mediaType === 'floor_plan' ? 'floor-plans' : (mediaType === 'video' ? 'videos' : 'photos'));
     const storagePath = `builder-projects/${project.ProjectID}/${storageFolder}/${sourceKey}.${extension}`;
     let driveRecord = null;
     try {
       const driveSvc = new BuilderProjectDriveService(this.repo, createGoogleDriveClient());
-      const category = mediaType === 'brochure' ? 'Brochures' : (mediaType === 'floor_plan' ? 'Floor Plans' : 'Project Images');
+      const category = mediaType === 'brochure' ? 'Brochures' : (mediaType === 'floor_plan' ? 'Floor Plans' : (mediaType === 'video' ? 'Videos' : 'Project Images'));
       const driveOut = await driveSvc.uploadProjectFile(project.ProjectID, category, filename, downloaded.buffer, downloaded.contentType, tenant);
       if (driveOut.ok) {
         driveRecord = driveOut.data;
@@ -1089,12 +1090,14 @@ class KarmaGroupScraperService {
     const queue = [
       ...(parsed.photoUrls || []).map((url) => ({ url, field: 'Photos', mediaType: 'project_image' })),
       ...(parsed.floorPlanUrls || []).map((url) => ({ url, field: 'FloorPlans', mediaType: 'floor_plan' })),
-      ...(parsed.brochureUrl ? [{ url: parsed.brochureUrl, field: 'Brochures', mediaType: 'brochure' }] : [])
+      ...(parsed.brochureUrl ? [{ url: parsed.brochureUrl, field: 'Brochures', mediaType: 'brochure' }] : []),
+      ...(parsed.videoUrls || []).filter((url) => /\.mp4(?:$|[?#])/i.test(url)).map((url) => ({ url, field: 'Videos', mediaType: 'video' }))
     ];
     counters.mediaDiscovered += queue.length;
     project.Photos = (Array.isArray(project.Photos) ? project.Photos : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
     project.FloorPlans = (Array.isArray(project.FloorPlans) ? project.FloorPlans : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
     project.Brochures = (Array.isArray(project.Brochures) ? project.Brochures : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
+    project.Videos = (Array.isArray(project.Videos) ? project.Videos : []).filter((row) => row?.StoragePath);
     project.BrochureUrl = null;
     const failures = [];
     await runPool(queue, this.mediaConcurrency, async (item) => {
@@ -1212,6 +1215,7 @@ class KarmaGroupScraperService {
       Photos: this.ingestMedia ? [] : mergeMediaByUrl([], parsed.photoUrls || []),
       FloorPlans: this.ingestMedia ? [] : mergeMediaByUrl([], parsed.floorPlanUrls || []),
       BrochureUrl: this.ingestMedia ? null : (parsed.brochureUrl || null),
+      Videos: [],
       VideoUrls: mergeUniqueStrings([], parsed.videoUrls || []),
       VirtualTourUrls: mergeUniqueStrings([], parsed.virtualTourUrls || []),
       Brochures: [],
