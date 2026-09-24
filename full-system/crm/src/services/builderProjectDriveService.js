@@ -70,6 +70,19 @@ class BuilderProjectDriveService {
 
     return { ok: true, created: true, data: project };
   }
+
+  async uploadProjectFile(projectId, category, filename, buffer, mimeType, tenant = {}) {
+    const ensured = await this.ensureProjectFolder(projectId, tenant);
+    if (!ensured.ok) return ensured;
+    const project = ensured.data;
+    const folderId = project.DriveSubfolders?.[category];
+    if (!folderId) return { ok: false, statusCode: 400, error: `Unknown Drive category: ${category}` };
+    if (!this.drive || typeof this.drive.uploadBuffer !== 'function') {
+      return { ok: false, statusCode: 503, error: 'Google Drive upload client is not configured' };
+    }
+    const uploaded = await this.drive.uploadBuffer(safeFolderName(filename) || 'file', buffer, folderId, mimeType);
+    return { ok: true, data: uploaded, project };
+  }
 }
 
 module.exports = { BuilderProjectDriveService, PROJECT_SUBFOLDERS, safeFolderName };
