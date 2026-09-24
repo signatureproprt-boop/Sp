@@ -23,6 +23,28 @@ function createGoogleDriveClient() {
         name: res.data.name,
         url: res.data.webViewLink || (res.data.id ? `https://drive.google.com/drive/folders/${res.data.id}` : null)
       };
+    },
+    async uploadBuffer(filename, buffer, parentId, mimeType = 'application/octet-stream') {
+      const { Readable } = require('stream');
+      const res = await drive.files.create({
+        requestBody: {
+          name: filename,
+          parents: parentId ? [parentId] : undefined
+        },
+        media: {
+          mimeType,
+          body: Readable.from(buffer)
+        },
+        fields: 'id,name,webViewLink,webContentLink,mimeType,size'
+      });
+      return {
+        id: res.data.id,
+        name: res.data.name,
+        url: res.data.webViewLink || (res.data.id ? `https://drive.google.com/file/d/${res.data.id}/view` : null),
+        downloadUrl: res.data.webContentLink || null,
+        mimeType: res.data.mimeType || mimeType,
+        size: Number(res.data.size || buffer?.length || 0)
+      };
     }
   };
 }
