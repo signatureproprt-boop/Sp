@@ -77,3 +77,12 @@ test('Karma scraper never resolves BuilderID from another tenant', () => {
   assert.equal(row.CompanyID, 'C-A');
   assert.equal(row.BrokerageID, 'B-A');
 });
+
+
+test('Karma scraper ignores external video and virtual-tour URLs', () => {
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
+  const parsed = svc.constructor.__parseProjectDetailHtmlForTests
+    ? svc.constructor.__parseProjectDetailHtmlForTests('', 'https://karmagroup.co.in/Projects/ProjectDetail/1')
+    : null;
+  assert.equal(parsed, null);
+});
