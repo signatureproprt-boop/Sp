@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const { BuilderProjectDriveService } = require('./builderProjectDriveService');
+const { createGoogleDriveClient } = require('./googleDriveClient');
 const objectStorage = require('./objectStorageService');
 const { openPdfStreamSafely, downloadMediaSafely, assertPublicHttpUrl, DEFAULT_MAX_BYTES } = require('./safeUrlDownloader');
 
@@ -1010,7 +1012,7 @@ class KarmaGroupScraperService {
     return { ok: true, storagePath: upload.path };
   }
 
-  async _ingestOneProjectMedia(project, sourceUrl, field, mediaType) {
+  async _ingestOneProjectMedia(project, sourceUrl, field, mediaType, tenant = {}) {
     const sourceKey = mediaSourceKey(sourceUrl);
     project[field] = Array.isArray(project[field]) ? project[field] : [];
     const existing = project[field].find((row) => row?.SourceKey === sourceKey && row?.StoragePath && row?.verified === true);
@@ -1028,6 +1030,18 @@ class KarmaGroupScraperService {
     const filename = filenameFromMediaUrl(sourceUrl, `${mediaType}-${sourceKey}`, downloaded.contentType);
     const storageFolder = mediaType === 'brochure' ? 'brochures' : (mediaType === 'floor_plan' ? 'floor-plans' : 'photos');
     const storagePath = `builder-projects/${project.ProjectID}/${storageFolder}/${sourceKey}.${extension}`;
+    let driveRecord = null;
+    try {
+      const driveSvc = new BuilderProjectDriveService(this.repo, createGoogleDriveClient());
+      const category = mediaType === 'brochure' ? 'Brochures' : (mediaType === 'floor_plan' ? 'Floor Plans' : 'Project Images');
+      const driveOut = await driveSvc.uploadProjectFile(project.ProjectID, category, filename, downloaded.buffer, downloaded.contentType, tenant);
+      if (driveOut.ok) {
+        driveRecord = driveOut.data;
+        project.DriveFolderID = driveOut.project.DriveFolderID || project.DriveFolderID || null;
+        project.DriveFolderURL = driveOut.project.DriveFolderURL || project.DriveFolderURL || null;
+        project.DriveSubfolders = driveOut.project.DriveSubfolders || project.DriveSubfolders || {};
+      }
+    } catch (_) {}
     const stored = await this.objectStorage.putObject(storagePath, downloaded.buffer, downloaded.contentType, filename, {
       metadata: { projectId: project.ProjectID, mediaType, source: 'KarmaGroupScrape', sourceKey }
     });
@@ -1052,7 +1066,9 @@ class KarmaGroupScraperService {
       SourceKey: sourceKey,
       mimeType: downloaded.contentType,
       sizeBytes: downloaded.buffer.length,
-      storageType: 'gridfs',
+      storageType: driveRecord ? 'google-drive+gridfs' : 'gridfs',
+      DriveFileID: driveRecord?.id || null,
+      DriveFileURL: driveRecord?.url || null,
       storageBucket: this.objectStorage.BUCKET_NAME || 'signature_objects',
       stored: true,
       verified: true,
@@ -1065,7 +1081,7 @@ class KarmaGroupScraperService {
     return { ok: true, reused: false, bytesStored: downloaded.buffer.length, record };
   }
 
-  async _ingestProjectMedia(project, parsed, counters) {
+  async _ingestProjectMedia(project, parsed, counters, tenant = {}) {
     const queue = [
       ...(parsed.photoUrls || []).map((url) => ({ url, field: 'Photos', mediaType: 'project_image' })),
       ...(parsed.floorPlanUrls || []).map((url) => ({ url, field: 'FloorPlans', mediaType: 'floor_plan' })),
@@ -1080,7 +1096,7 @@ class KarmaGroupScraperService {
     await runPool(queue, this.mediaConcurrency, async (item) => {
       try {
         updateStage(latestStatus, 'media-storage', { selectedProjectID: project.ProjectID, selectedProjectName: project.ProjectName });
-        const result = await this._ingestOneProjectMedia(project, item.url, item.field, item.mediaType);
+        const result = await this._ingestOneProjectMedia(project, item.url, item.field, item.mediaType, tenant);
         if (result.ok) {
           if (result.reused) counters.mediaReused += 1;
           else counters.mediaStored += 1;
@@ -1228,7 +1244,7 @@ class KarmaGroupScraperService {
     if (existing) {
       const changed = this._applyParsedProjectData(existing, parsed, { allowSourceIdentityUpdate: true, stage: 'update' });
       if (this.ingestMedia) {
-        await this._ingestProjectMedia(existing, parsed, counters);
+        await this._ingestProjectMedia(existing, parsed, counters, tenant);
       } else if (parsed.brochureUrl && this.ingestBrochures) {
         existing.BrochureUrl = pickNonEmpty(parsed.brochureUrl, existing.BrochureUrl);
         const brochure = await this._ingestBrochure(existing, parsed.brochureUrl, latestStatus);
@@ -1244,7 +1260,7 @@ class KarmaGroupScraperService {
     const created = this._createProjectFromParsed(db, parsed, userId, tenant);
     latestStatus.selectedProjectID = created.ProjectID;
     if (this.ingestMedia) {
-      await this._ingestProjectMedia(created, parsed, counters);
+      await this._ingestProjectMedia(created, parsed, counters, tenant);
     } else if (parsed.brochureUrl && this.ingestBrochures) {
       const brochure = await this._ingestBrochure(created, parsed.brochureUrl, latestStatus);
       if (!brochure.ok) {
