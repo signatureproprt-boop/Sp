@@ -455,6 +455,8 @@ function parseProjectDetailHtml(html, detailUrl, seed = {}) {
   const allImageUrls = preferredImageUrls.filter((url) => /\.(?:png|jpe?g|webp|gif)(?:$|[?#])/i.test(url) && !/fav-icon|logo|icon|property_default/i.test(url));
   const floorPlanUrls = allImageUrls.filter((url) => /\/floorplans?\//i.test(url));
   const photoUrls = allImageUrls.filter((url) => !/\/floorplans?\//i.test(url));
+  const videoUrls = allAttributeUrls.filter((url) => /(?:youtube\.com|youtu\.be|vimeo\.com|\.mp4(?:$|[?#]))/i.test(url));
+  const virtualTourUrls = allAttributeUrls.filter((url) => /(?:360|virtual[-_ ]?tour|matterport)/i.test(url));
 
   const amenitiesSection = (String(html).match(/Amenities[\s\S]{0,1500}/i) || [])[0] || '';
   const highlightsSection = (String(html).match(/Highlights[\s\S]{0,1500}/i) || [])[0] || '';
@@ -489,6 +491,8 @@ function parseProjectDetailHtml(html, detailUrl, seed = {}) {
     brochureUrl: brochureUrl || null,
     photoUrls,
     floorPlanUrls,
+    videoUrls,
+    virtualTourUrls,
     metadata: {
       sourceTitle: stripTags((String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || ''),
       rawLength: String(html || '').length,
@@ -1154,6 +1158,8 @@ class KarmaGroupScraperService {
       existing.FloorPlans = mergeMediaByUrl(existing.FloorPlans || [], parsed.floorPlanUrls || []);
     }
     existing.SourceCategory = pickNonEmpty(parsed.sourceCategory, existing.SourceCategory);
+    existing.VideoUrls = mergeUniqueStrings(existing.VideoUrls || [], parsed.videoUrls || []);
+    existing.VirtualTourUrls = mergeUniqueStrings(existing.VirtualTourUrls || [], parsed.virtualTourUrls || []);
 
     if (options.allowSourceIdentityUpdate !== false) {
       existing.SourceProjectID = pickNonEmpty(parsed.sourceProjectID, existing.SourceProjectID);
@@ -1206,6 +1212,8 @@ class KarmaGroupScraperService {
       Photos: this.ingestMedia ? [] : mergeMediaByUrl([], parsed.photoUrls || []),
       FloorPlans: this.ingestMedia ? [] : mergeMediaByUrl([], parsed.floorPlanUrls || []),
       BrochureUrl: this.ingestMedia ? null : (parsed.brochureUrl || null),
+      VideoUrls: mergeUniqueStrings([], parsed.videoUrls || []),
+      VirtualTourUrls: mergeUniqueStrings([], parsed.virtualTourUrls || []),
       Brochures: [],
       SourceUrl: parsed.sourceUrl || null,
       SourceProjectID: parsed.sourceProjectID || null,
