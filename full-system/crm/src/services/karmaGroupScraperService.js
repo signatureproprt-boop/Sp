@@ -456,8 +456,7 @@ function parseProjectDetailHtml(html, detailUrl, seed = {}) {
   const allImageUrls = preferredImageUrls.filter((url) => /\.(?:png|jpe?g|webp|gif)(?:$|[?#])/i.test(url) && !/fav-icon|logo|icon|property_default/i.test(url));
   const floorPlanUrls = allImageUrls.filter((url) => /\/floorplans?\//i.test(url));
   const photoUrls = allImageUrls.filter((url) => !/\/floorplans?\//i.test(url));
-  const videoUrls = allAttributeUrls.filter((url) => /(?:youtube\.com|youtu\.be|vimeo\.com|\.mp4(?:$|[?#]))/i.test(url));
-  const virtualTourUrls = allAttributeUrls.filter((url) => /(?:360|virtual[-_ ]?tour|matterport)/i.test(url));
+  const directVideoUrls = allAttributeUrls.filter((url) => /\.mp4(?:$|[?#])/i.test(url));
 
   const amenitiesSection = (String(html).match(/Amenities[\s\S]{0,1500}/i) || [])[0] || '';
   const highlightsSection = (String(html).match(/Highlights[\s\S]{0,1500}/i) || [])[0] || '';
@@ -492,8 +491,7 @@ function parseProjectDetailHtml(html, detailUrl, seed = {}) {
     brochureUrl: brochureUrl || null,
     photoUrls,
     floorPlanUrls,
-    videoUrls,
-    virtualTourUrls,
+    directVideoUrls,
     metadata: {
       sourceTitle: stripTags((String(html).match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || ''),
       rawLength: String(html || '').length,
@@ -1091,7 +1089,7 @@ class KarmaGroupScraperService {
       ...(parsed.photoUrls || []).map((url) => ({ url, field: 'Photos', mediaType: 'project_image' })),
       ...(parsed.floorPlanUrls || []).map((url) => ({ url, field: 'FloorPlans', mediaType: 'floor_plan' })),
       ...(parsed.brochureUrl ? [{ url: parsed.brochureUrl, field: 'Brochures', mediaType: 'brochure' }] : []),
-      ...(parsed.videoUrls || []).filter((url) => /\.mp4(?:$|[?#])/i.test(url)).map((url) => ({ url, field: 'Videos', mediaType: 'video' }))
+      ...(parsed.directVideoUrls || []).map((url) => ({ url, field: 'Videos', mediaType: 'video' }))
     ];
     counters.mediaDiscovered += queue.length;
     project.Photos = (Array.isArray(project.Photos) ? project.Photos : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
@@ -1161,8 +1159,6 @@ class KarmaGroupScraperService {
       existing.FloorPlans = mergeMediaByUrl(existing.FloorPlans || [], parsed.floorPlanUrls || []);
     }
     existing.SourceCategory = pickNonEmpty(parsed.sourceCategory, existing.SourceCategory);
-    existing.VideoUrls = mergeUniqueStrings(existing.VideoUrls || [], parsed.videoUrls || []);
-    existing.VirtualTourUrls = mergeUniqueStrings(existing.VirtualTourUrls || [], parsed.virtualTourUrls || []);
 
     if (options.allowSourceIdentityUpdate !== false) {
       existing.SourceProjectID = pickNonEmpty(parsed.sourceProjectID, existing.SourceProjectID);
@@ -1216,8 +1212,6 @@ class KarmaGroupScraperService {
       FloorPlans: this.ingestMedia ? [] : mergeMediaByUrl([], parsed.floorPlanUrls || []),
       BrochureUrl: this.ingestMedia ? null : (parsed.brochureUrl || null),
       Videos: [],
-      VideoUrls: mergeUniqueStrings([], parsed.videoUrls || []),
-      VirtualTourUrls: mergeUniqueStrings([], parsed.virtualTourUrls || []),
       Brochures: [],
       SourceUrl: parsed.sourceUrl || null,
       SourceProjectID: parsed.sourceProjectID || null,
