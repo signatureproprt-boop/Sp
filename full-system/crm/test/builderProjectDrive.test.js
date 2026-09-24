@@ -91,3 +91,41 @@ test('missing Drive root configuration fails before any folder is created', asyn
     if (oldRoot !== undefined) process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
   }
 });
+
+
+test('uploadProjectFile stores bytes in the correct Drive subfolder', async () => {
+  const db = {
+    BuilderProjects: [{
+      ProjectID: 'BLDP-A',
+      ProjectName: 'Alpha',
+      CompanyID: 'C-A',
+      BrokerageID: 'B-A',
+      Active: true,
+      DriveFolderID: 'ROOT-A',
+      DriveFolderURL: 'https://drive.google.com/drive/folders/ROOT-A',
+      DriveSubfolders: { Brochures: 'BROCHURES-A' }
+    }]
+  };
+  const repo = makeRepo(db);
+  const uploads = [];
+  const drive = {
+    async uploadBuffer(filename, buffer, parentId, mimeType) {
+      uploads.push({ filename, bytes: buffer.length, parentId, mimeType });
+      return { id: 'FILE-1', url: 'https://drive.google.com/file/d/FILE-1/view' };
+    }
+  };
+  const svc = new BuilderProjectDriveService(repo, drive);
+  const out = await svc.uploadProjectFile(
+    'BLDP-A',
+    'Brochures',
+    'alpha.pdf',
+    Buffer.from('pdf-bytes'),
+    'application/pdf',
+    { companyId: 'C-A', brokerageId: 'B-A' }
+  );
+  assert.equal(out.ok, true);
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].parentId, 'BROCHURES-A');
+  assert.equal(uploads[0].filename, 'alpha.pdf');
+  assert.equal(out.data.id, 'FILE-1');
+});
