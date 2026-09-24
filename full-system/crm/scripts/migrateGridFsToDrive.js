@@ -2,8 +2,6 @@
 
 const { MongoClient, GridFSBucket } = require('mongodb');
 const { google } = require('googleapis');
-const { Readable } = require('stream');
-const { pipeline } = require('stream/promises');
 
 const BUCKET_NAME = 'signature_objects';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
@@ -61,7 +59,45 @@ async function findDriveFilesByKey(drive, key) {
   return response.data.files || [];
 }
 
-async function uploadFromGridFs({ drive, bucket, file, rootFolderId }) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableMongoError(error) {
+  const name = String(error?.name || '');
+  const message = String(error?.message || error || '').toLowerCase();
+  return name.includes('MongoNetwork') || name.includes('MongoServerSelection') || name.includes('MongoSocket') || message.includes('timed out') || message.includes('connection') && message.includes('closed');
+}
+
+async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId, metadata, originalFilename, mimeType }) {
+  const stream = bucket.openDownloadStream(file._id);
+  let streamError = null;
+  stream.once('error', (error) => { streamError = error; });
+  try {
+    const created = await drive.files.create({
+      requestBody: {
+        name: originalFilename,
+        parents: [projectFolderId],
+        appProperties: {
+          logicalKey: file.filename,
+          projectId: String(metadata.projectId || projectIdFromKey(file.filename)),
+          mediaType: String(metadata.mediaType || ''),
+          checksum: String(metadata.checksum || ''),
+          originalUrl: String(metadata.originalUrl || '')
+        },
+        description: JSON.stringify({ key: file.filename, migratedFrom: 'MongoGridFS', metadata })
+      },
+      media: { mimeType, body: stream },
+      fields: 'id,name,mimeType,size,webViewLink,webContentLink,appProperties,parents'
+    });
+    if (streamError) throw streamError;
+    return created;
+  } finally {
+    stream.destroy();
+  }
+}
+
+async function uploadFromGridFs({ drive, bucket, file, rootFolderId, readRetries = 4, retryDelayMs = 5000 }) {
   const key = file.filename;
   const existing = await findDriveFilesByKey(drive, key);
   if (existing.length) {
@@ -76,23 +112,21 @@ async function uploadFromGridFs({ drive, bucket, file, rootFolderId }) {
   const originalFilename = metadata.originalFilename || key.split('/').pop() || 'media.bin';
   const mimeType = metadata.contentType || 'application/octet-stream';
 
-  const stream = bucket.openDownloadStream(file._id);
-  const created = await drive.files.create({
-    requestBody: {
-      name: originalFilename,
-      parents: [projectFolderId],
-      appProperties: {
-        logicalKey: key,
-        projectId: String(metadata.projectId || projectId),
-        mediaType: String(metadata.mediaType || ''),
-        checksum: String(metadata.checksum || ''),
-        originalUrl: String(metadata.originalUrl || '')
-      },
-      description: JSON.stringify({ key, migratedFrom: 'MongoGridFS', metadata })
-    },
-    media: { mimeType, body: stream },
-    fields: 'id,name,mimeType,size,webViewLink,webContentLink,appProperties,parents'
-  });
+  let created;
+  let lastError;
+  for (let attempt = 1; attempt <= readRetries; attempt += 1) {
+    try {
+      created = await createDriveFileFromGridFs({ drive, bucket, file, projectFolderId, metadata, originalFilename, mimeType });
+      lastError = null;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableMongoError(error) || attempt === readRetries) break;
+      console.error(JSON.stringify({ key, status: 'retrying-gridfs-read', attempt, maxAttempts: readRetries, error: String(error.message || error) }));
+      await sleep(retryDelayMs * attempt);
+    }
+  }
+  if (lastError) throw lastError;
 
   const uploaded = created.data;
   const uploadedSize = Number(uploaded.size || 0);
@@ -113,6 +147,8 @@ async function main() {
   const dryRun = boolEnv('DRIVE_BACKFILL_DRY_RUN', true);
   const deleteAfterVerify = boolEnv('DRIVE_BACKFILL_DELETE_GRIDFS_AFTER_VERIFY', false);
   const limit = intEnv('DRIVE_BACKFILL_LIMIT', 10000);
+  const readRetries = intEnv('DRIVE_BACKFILL_READ_RETRIES', 4);
+  const retryDelayMs = intEnv('DRIVE_BACKFILL_RETRY_DELAY_MS', 5000);
 
   if (!dryRun && deleteAfterVerify && !boolEnv('DRIVE_BACKFILL_I_UNDERSTAND_DELETE', false)) {
     throw new Error('Refusing GridFS deletion: set DRIVE_BACKFILL_I_UNDERSTAND_DELETE=true after a successful dry run');
@@ -160,7 +196,7 @@ async function main() {
         continue;
       }
 
-      const result = await uploadFromGridFs({ drive, bucket, file, rootFolderId });
+      const result = await uploadFromGridFs({ drive, bucket, file, rootFolderId, readRetries, retryDelayMs });
       if (result.status === 'uploaded') summary.uploaded += 1;
       else summary.alreadyPresent += 1;
       summary.bytesVerified += Number(file.length || 0);
