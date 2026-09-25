@@ -2,7 +2,8 @@
 
 // Repair legacy BuilderProjects that predate tenant scoping. Dry-run by default.
 // Apply requires an exact expected count, a single active tenant, and a local backup.
-const { MongoClient, EJSON } = require('mongodb');
+const { MongoClient, BSON } = require('mongodb');
+const EJSON = BSON.EJSON;
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
