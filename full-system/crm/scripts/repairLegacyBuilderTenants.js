@@ -5,6 +5,7 @@
 const { MongoClient, EJSON } = require('mongodb');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 
 const LOCK = 'db-snapshot-write';
 const SNAP = 'singleton';
@@ -64,7 +65,9 @@ async function main() {
       const check = plan(current);
       if (check.unscoped !== expected || check.companyId !== preview.companyId ||
           check.brokerageId !== preview.brokerageId) throw new Error('Snapshot changed; retry dry run');
-      const backup = path.resolve('builder-tenant-backup-' + Date.now() + '.ejson');
+      const backupDir = path.join(os.homedir(), '.signature-crm-backups');
+      fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      const backup = path.join(backupDir, 'builder-tenant-backup-' + Date.now() + '.ejson');
       fs.writeFileSync(backup, EJSON.stringify(current), { mode: 0o600, flag: 'wx' });
       const payload = { ...current.payload, BuilderProjects: current.payload.BuilderProjects.map(p =>
         !p.CompanyID && !p.BrokerageID
