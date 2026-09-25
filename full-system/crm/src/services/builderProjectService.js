@@ -325,7 +325,8 @@ class BuilderProjectService {
   }
 
   listPage(filter = {}) {
-    const rows = this.list(filter).data || [];
+    const allRows = this.list(filter).data || [];
+    const rows = typeof filter.visible === 'function' ? allRows.filter(filter.visible) : allRows;
     const page = clampPage(filter.page);
     const limit = clampLimit(filter.limit);
     const total = rows.length;

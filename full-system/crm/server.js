@@ -2278,12 +2278,9 @@ async function handleApi(req, res, url) {
             status: url.searchParams.get('status'),
             category: url.searchParams.get('category'),
             page: url.searchParams.get('page') || 1,
-            limit: url.searchParams.get('limit') || 50
+            limit: url.searchParams.get('limit') || 50,
+            visible: (row) => tenantCheck(row, actor).ok
           });
-          if (out.ok) {
-            out.data = (out.data || []).filter((row) => tenantCheck(row, actor).ok);
-            out.count = out.data.length;
-          }
           if (perf) perf.serviceMs = elapsedMs(serviceStartedAt);
           sendJson(res, out);
           return;
