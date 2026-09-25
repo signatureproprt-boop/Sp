@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const objectStorage = require('./objectStorageService');
 const downloader = require('./safeUrlDownloader');
+const { google } = require('googleapis');
 
 const DEFAULT_TIMEOUT_MS = 20000;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
@@ -67,6 +68,7 @@ class ProjectMediaCanaryMigrationService {
     this.repo = repository;
     this.objectStorage = deps.objectStorage || objectStorage;
     this.downloader = deps.downloader || downloader;
+    this.drive = deps.drive || google.drive({ version: 'v3', auth: new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/drive.readonly'] }) });
   }
 
   _all(db) {
@@ -622,18 +624,31 @@ class ProjectMediaCanaryMigrationService {
     };
   }
 
+  async _readVerifiedMedia(row, contentType, maxBytes) {
+    if (row.DriveFileID) {
+      const response = await this.drive.files.get(
+        { fileId: row.DriveFileID, alt: 'media' },
+        { responseType: 'arraybuffer' }
+      );
+      const buffer = Buffer.from(response.data);
+      if (buffer.length > maxBytes) return { ok: false, statusCode: 413, error: 'Stored file exceeds size limit' };
+      return { ok: true, buffer, contentType, size: buffer.length };
+    }
+    const out = await this.objectStorage.getObject(row.StoragePath);
+    return { ok: true, buffer: out.buffer, contentType: contentType || out.contentType, size: Number(out.size || out.buffer?.length || 0) || undefined };
+  }
+
   async getProjectBrochureFile(projectId) {
     const db = this.repo.read();
     const project = this._findProject(db, projectId);
     if (!project) return { ok: false, statusCode: 404, error: 'Project not found' };
     const brochure = (project.Brochures || []).find((row) =>
-      row.StoragePath &&
+      (row.DriveFileID || row.StoragePath) &&
       row.verified === true &&
       String(row.downloadStatus || '').toLowerCase() === 'downloaded'
     );
     if (!brochure) return { ok: false, statusCode: 404, error: 'Stored brochure not found' };
-    const out = await this.objectStorage.getObject(brochure.StoragePath);
-    return { ok: true, buffer: out.buffer, contentType: 'application/pdf', size: Number(out.size || out.buffer?.length || 0) || undefined };
+    return this._readVerifiedMedia(brochure, 'application/pdf', 300 * 1024 * 1024);
   }
 
   async getProjectImageFile(projectId, imageId) {
@@ -642,17 +657,12 @@ class ProjectMediaCanaryMigrationService {
     if (!project) return { ok: false, statusCode: 404, error: 'Project not found' };
     const image = (project.Photos || []).find((row) =>
       String(row.MediaID || '') === String(imageId || '') &&
-      row.StoragePath &&
+      (row.DriveFileID || row.StoragePath) &&
+      row.verified === true &&
       String(row.downloadStatus || '').toLowerCase() === 'downloaded'
     );
-    if (!image || !image.StoragePath) return { ok: false, statusCode: 404, error: 'Stored image not found' };
-    const out = await this.objectStorage.getObject(image.StoragePath);
-    return {
-      ok: true,
-      buffer: out.buffer,
-      contentType: image.mimeType || out.contentType || 'application/octet-stream',
-      size: Number(out.size || out.buffer?.length || 0) || undefined
-    };
+    if (!image) return { ok: false, statusCode: 404, error: 'Stored image not found' };
+    return this._readVerifiedMedia(image, image.mimeType || 'image/jpeg', 30 * 1024 * 1024);
   }
 }
 
