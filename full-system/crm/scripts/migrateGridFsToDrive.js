@@ -164,7 +164,25 @@ async function main() {
 
   const db = client.db(mongoDb);
   const bucket = new GridFSBucket(db, { bucketName: BUCKET_NAME });
-  const auth = new google.auth.GoogleAuth({ scopes: [DRIVE_SCOPE] });
+  const oauthClientId = env('SIG_REALTY_GOOGLE_CLIENT_ID');
+  const oauthClientSecret = env('SIG_REALTY_GOOGLE_CLIENT_SECRET');
+  const oauthRefreshToken = env('SIG_REALTY_GOOGLE_REFRESH_TOKEN');
+
+  const oauthValues = [oauthClientId, oauthClientSecret, oauthRefreshToken];
+  const oauthConfigured = oauthValues.every(Boolean);
+  if (!oauthConfigured && oauthValues.some(Boolean)) {
+    throw new Error('Incomplete Google OAuth configuration: SIG_REALTY_GOOGLE_CLIENT_ID, SIG_REALTY_GOOGLE_CLIENT_SECRET, and SIG_REALTY_GOOGLE_REFRESH_TOKEN must all be set');
+  }
+
+  let auth;
+  if (oauthConfigured) {
+    auth = new google.auth.OAuth2(oauthClientId, oauthClientSecret);
+    auth.setCredentials({ refresh_token: oauthRefreshToken });
+    console.log('[gridfs-drive-backfill] Drive auth: OAuth2 user refresh token');
+  } else {
+    auth = new google.auth.GoogleAuth({ scopes: [DRIVE_SCOPE] });
+    console.log('[gridfs-drive-backfill] Drive auth: application default credentials');
+  }
   const drive = google.drive({ version: 'v3', auth });
 
   const files = await bucket.find({}).sort({ uploadDate: 1 }).limit(limit).toArray();
