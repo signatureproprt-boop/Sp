@@ -530,6 +530,8 @@ class KarmaGroupScraperService {
     this.ingestBrochures = deps.ingestBrochures !== false;
     this.ingestMedia = deps.ingestMedia === true;
     this.useCategoryDiscovery = deps.useCategoryDiscovery === true;
+    // Safe by default: recovery scrapes may update matched CRM projects, but must not create duplicates.
+    this.allowProjectCreation = deps.allowProjectCreation === true;
   }
 
   static getStatus() {
@@ -1087,10 +1089,11 @@ class KarmaGroupScraperService {
       ...(parsed.directVideoUrls || []).map((url) => ({ url, field: 'Videos', mediaType: 'video' }))
     ];
     counters.mediaDiscovered += queue.length;
-    project.Photos = (Array.isArray(project.Photos) ? project.Photos : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
-    project.FloorPlans = (Array.isArray(project.FloorPlans) ? project.FloorPlans : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
-    project.Brochures = (Array.isArray(project.Brochures) ? project.Brochures : []).filter((row) => row?.StoragePath && row?.Url?.startsWith('/api/'));
-    project.Videos = (Array.isArray(project.Videos) ? project.Videos : []).filter((row) => row?.StoragePath);
+    const isStoredMedia = (row) => Boolean(row?.DriveFileID || row?.StoragePath);
+    project.Photos = (Array.isArray(project.Photos) ? project.Photos : []).filter(isStoredMedia);
+    project.FloorPlans = (Array.isArray(project.FloorPlans) ? project.FloorPlans : []).filter(isStoredMedia);
+    project.Brochures = (Array.isArray(project.Brochures) ? project.Brochures : []).filter(isStoredMedia);
+    project.Videos = (Array.isArray(project.Videos) ? project.Videos : []).filter(isStoredMedia);
     project.BrochureUrl = null;
     const failures = [];
     await runPool(queue, this.mediaConcurrency, async (item) => {
@@ -1258,6 +1261,11 @@ class KarmaGroupScraperService {
       return;
     }
 
+    if (!this.allowProjectCreation) {
+      counters.skipped += 1;
+      return;
+    }
+
     const created = this._createProjectFromParsed(db, parsed, userId, tenant);
     latestStatus.selectedProjectID = created.ProjectID;
     if (this.ingestMedia) {
@@ -1410,6 +1418,17 @@ class KarmaGroupScraperService {
     }
 
     let targetProject = selectedProject || this._findExistingByIdentity(db, parsed, { companyId, brokerageId });
+    if (!targetProject && !this.allowProjectCreation) {
+      latestStatus.classification = 'NO_EXISTING_MATCH';
+      latestStatus.result = {
+        scanned: 1, created: 0, updated: 0, unchanged: 0, skipped: 1,
+        failed: 0, ambiguous: 0, transientFailures: 0, staleDetailFailures: 0
+      };
+      this.repo.write(db);
+      updateStage(latestStatus, 'complete');
+      return;
+    }
+
     if (!targetProject) {
       targetProject = this._createProjectFromParsed(db, parsed, userId, { companyId, brokerageId });
       latestStatus.selectedProjectID = targetProject.ProjectID;
