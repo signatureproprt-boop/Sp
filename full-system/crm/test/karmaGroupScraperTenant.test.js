@@ -86,3 +86,21 @@ test('Karma scraper ignores external video and virtual-tour URLs', () => {
     : null;
   assert.equal(parsed, null);
 });
+
+test('Karma scraper reuses verified Google Drive media on repeat scrape', async () => {
+  const crypto = require('crypto');
+  const sourceUrl = 'https://karmagroup.co.in/media/photo.jpg';
+  const sourceKey = crypto.createHash('sha256').update(sourceUrl).digest('hex').slice(0, 24);
+  const saved = { SourceKey: sourceKey, DriveFileID: 'drive-file-1', StoragePath: null, verified: true };
+  const project = { ProjectID: 'BLDP-1', Photos: [saved] };
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [project] }), {
+    downloadMediaSafely: async () => { throw new Error('duplicate download attempted'); }
+  });
+
+  const result = await svc._ingestOneProjectMedia(project, sourceUrl, 'Photos', 'project_image');
+  assert.equal(result.ok, true);
+  assert.equal(result.reused, true);
+  assert.equal(result.record, saved);
+  assert.equal(project.Photos.length, 1);
+  assert.equal(project.Photos[0].DriveFileID, 'drive-file-1');
+});

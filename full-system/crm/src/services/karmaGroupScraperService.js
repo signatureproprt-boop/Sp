@@ -1020,7 +1020,7 @@ class KarmaGroupScraperService {
   async _ingestOneProjectMedia(project, sourceUrl, field, mediaType, tenant = {}) {
     const sourceKey = mediaSourceKey(sourceUrl);
     project[field] = Array.isArray(project[field]) ? project[field] : [];
-    const existing = project[field].find((row) => row?.SourceKey === sourceKey && row?.StoragePath && row?.verified === true);
+    const existing = project[field].find((row) => row?.SourceKey === sourceKey && (row?.DriveFileID || row?.StoragePath) && row?.verified === true);
     if (existing) return { ok: true, reused: true, bytesStored: 0, record: existing };
 
     const downloaded = await this.downloadMediaSafely(sourceUrl, {
