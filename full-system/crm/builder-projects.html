@@ -727,48 +727,24 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function isStoredPhoto(photo) {
-    if (!photo) return false;
-    if (photo.stored === true) return true;
-    if (String(photo.downloadStatus || '').toLowerCase() === 'downloaded') return true;
-    if (photo.fileId) return true;
-    if (photo.StoragePath) return true;
-    if (hasInternalPath(photo.Url, 'image') || hasInternalPath(photo.SourceUrl, 'image') || hasInternalPath(photo.OriginalUrl, 'image')) return true;
-    return false;
+    return Boolean(photo && photo.MediaID && photo.verified === true &&
+      (photo.DriveFileID || photo.StoragePath));
   }
 
   function isStoredBrochure(brochure) {
-    if (!brochure) return false;
-    if (brochure.stored === true) return true;
-    if (String(brochure.downloadStatus || '').toLowerCase() === 'downloaded') return true;
-    if (brochure.fileId) return true;
-    if (brochure.StoragePath) return true;
-    if (hasInternalPath(brochure.Url, 'brochure') || hasInternalPath(brochure.SourceUrl, 'brochure') || hasInternalPath(brochure.OriginalUrl, 'brochure')) return true;
-    return false;
+    return Boolean(brochure && brochure.verified === true &&
+      (brochure.DriveFileID || brochure.StoragePath));
   }
 
   function preferredPhotoUrl(project, photo) {
-    if (!project || !photo) return '';
-    if (isStoredPhoto(photo) && photo.MediaID) return `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/images/${encodeURIComponent(photo.MediaID)}`;
-    // Fallback to the original imported image URL so the photo always shows.
-    const ext = photo.Url || photo.SourceUrl || photo.OriginalUrl;
-    if (typeof ext === 'string' && /^https?:\/\//i.test(ext.trim())) return ext.trim();
+    if (project && isStoredPhoto(photo))
+      return `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/images/${encodeURIComponent(photo.MediaID)}`;
     return MEDIA_PLACEHOLDER_IMAGE;
   }
 
   function preferredBrochureUrl(project, brochure) {
-    if (!project) return '';
-    if (
-      brochure &&
-      isStoredBrochure(brochure) &&
-      brochure.verified === true &&
-      hasInternalPath(brochure.Url, 'brochure')
-    ) {
+    if (project && isStoredBrochure(brochure))
       return `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure`;
-    }
-    // Fallback to the original imported brochure URL so it always opens.
-    const ext = project.BrochureUrl
-      || (brochure && (brochure.SourceUrl || brochure.OriginalUrl || brochure.Url));
-    if (typeof ext === 'string' && /^https?:\/\//i.test(ext.trim())) return ext.trim();
     return '';
   }
 
@@ -776,10 +752,8 @@ table td,table th{border-color:var(--v2-line)!important}
     const brochures = Array.isArray(project?.Brochures) ? project.Brochures : [];
     if (brochures.some(isStoredBrochure)) return '✓ Permanently Stored';
     if (brochures.some(b => b.downloadStatus === 'failed')) return '⚠ Failed — Retry';
-    const ext = project && project.BrochureUrl;
-    if (typeof ext === 'string' && /^https?:\/\//i.test(ext.trim())) return '🔗 Brochure available';
-    if (!brochures.length) return '— No brochure';
-    return '⏳ Pending permanent storage';
+    if (project?.BrochureUrl || brochures.length) return '⏳ Pending permanent storage';
+    return '— No brochure';
   }
 
   function renderCard(p) {
