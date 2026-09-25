@@ -841,9 +841,18 @@ class BuilderProjectService {
 
     const db = this.repo.read();
     this._all(db);
+    const companyId = String(options.companyId || '').trim();
+    const brokerageId = String(options.brokerageId || '').trim();
+    const scoped = Boolean(companyId && brokerageId);
     const byKey = new Map();
+    const unscopedKeys = new Set();
     for (const p of db.BuilderProjects) {
-      for (const key of this._keysForProject(p)) byKey.set(key, p);
+      const keys = this._keysForProject(p);
+      if (scoped && !p.CompanyID && !p.BrokerageID) {
+        for (const key of keys) unscopedKeys.add(key);
+      } else if (!scoped || (p.CompanyID === companyId && p.BrokerageID === brokerageId)) {
+        for (const key of keys) byKey.set(key, p);
+      }
     }
 
     const now = new Date().toISOString();
@@ -853,6 +862,9 @@ class BuilderProjectService {
     for (const agg of projects) {
       const keys = this._keysForProject(agg);
       const existing = keys.map((key) => byKey.get(key)).find(Boolean);
+      if (scoped && !existing && keys.some((key) => unscopedKeys.has(key))) {
+        return { ok: false, error: 'Legacy Builder Project has no tenant metadata; reconcile ownership before import' };
+      }
       if (existing) {
         const changedFields = new Set();
         assignIfChanged(existing, 'ProjectStatus', agg.ProjectStatus, changedFields);
@@ -929,6 +941,8 @@ class BuilderProjectService {
         const projectId = this.repo.createId('BLDP');
         const row = {
           ProjectID: projectId,
+          CompanyID: companyId || null,
+          BrokerageID: brokerageId || null,
           ProjectName: agg.ProjectName,
           BuilderName: agg.BuilderName,
           DeveloperName: agg.DeveloperName || agg.BuilderName,
