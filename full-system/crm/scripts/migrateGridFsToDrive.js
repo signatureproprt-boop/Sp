@@ -102,6 +102,13 @@ async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId,
       },
       media: { mimeType, body: stream },
       fields: 'id,name,mimeType,size,webViewLink,webContentLink,appProperties,parents'
+    }, {
+      // Large GridFS PDFs can take several minutes to upload. The default
+      // HTTP timeout was causing Google Drive 408 responses around 6 minutes.
+      // Disable the client-side request timeout for this migration; the
+      // existing retry + exact-size verification remain the safety boundary.
+      timeout: 0,
+      retry: false
     });
     if (streamError) throw streamError;
     return created;
