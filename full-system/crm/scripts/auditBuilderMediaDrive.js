@@ -35,6 +35,18 @@ async function main() {
     const folders = await listAll(drive,
       `trashed = false and mimeType = 'application/vnd.google-apps.folder' and '${rootId.replace(/'/g, "\\'")}' in parents`,
       'id,name');
+    const fields = ['BuilderName', 'Address', 'Configurations', 'PriceRange', 'PossessionDate', 'RERANumber', 'Overview', 'Amenities'];
+    const missingDetails = Object.fromEntries(fields.map(field => [field, 0]));
+    for (const p of projects) {
+      for (const field of fields) {
+        const value = p[field];
+        const missing = value == null || value === '' ||
+          (Array.isArray(value) && value.length === 0) ||
+          (field === 'BuilderName' && (!value || value === 'Unknown Builder')) ||
+          (field === 'PriceRange' && (!value || (value.min == null && value.max == null)));
+        if (missing) missingDetails[field]++;
+      }
+    }
     const byProjectId = new Map(projects.map(p => [String(p.ProjectID), p]));
     let files = 0, pdfs = 0, placeholders = 0, sameNameAndSizeExtra = 0, foldersWithoutProject = 0;
     let mediaWithDriveId = 0, mediaWithoutDriveId = 0;
@@ -77,7 +89,7 @@ async function main() {
       dryRun: true, writes: 0, crmProjects: projects.length, crmMediaWithDriveId: mediaWithDriveId,
       crmMediaWithoutDriveId: mediaWithoutDriveId, rootProjectFolders: folders.filter(f => /^Project-/.test(f.name || '')).length,
       matchingProjectFolders, foldersWithoutProject, files, pdfs, placeholders,
-      sameNameAndSizeExtra, anomalies
+      sameNameAndSizeExtra, missingDetails, anomalies
     }));
   } finally { await client.close(); }
 }
