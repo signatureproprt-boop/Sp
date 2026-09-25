@@ -1045,13 +1045,8 @@ class KarmaGroupScraperService {
         project.DriveSubfolders = driveOut.project.DriveSubfolders || project.DriveSubfolders || {};
       }
     } catch (_) {}
-    const stored = await this.objectStorage.putObject(storagePath, downloaded.buffer, downloaded.contentType, filename, {
-      metadata: { projectId: project.ProjectID, mediaType, source: 'KarmaGroupScrape', sourceKey }
-    });
-    const info = await this.objectStorage.getObjectInfo(storagePath);
-    if (!info || Number(info.size) !== downloaded.buffer.length) {
-      try { await this.objectStorage.deleteObject(storagePath); } catch (_) {}
-      return { ok: false, sourceKey, mediaType, error: 'GridFS size verification failed' };
+    if (!driveRecord) {
+      return { ok: false, sourceKey, mediaType, error: 'Google Drive upload failed; GridFS fallback is disabled' };
     }
 
     const mediaId = this.repo.createId('MED');
@@ -1063,16 +1058,16 @@ class KarmaGroupScraperService {
     const record = {
       MediaID: mediaId,
       Filename: filename,
-      StoragePath: stored.path,
+      StoragePath: null,
       Url: internalUrl,
       Source: 'KarmaGroupScrape',
       SourceKey: sourceKey,
       mimeType: downloaded.contentType,
       sizeBytes: downloaded.buffer.length,
-      storageType: driveRecord ? 'google-drive+gridfs' : 'gridfs',
+      storageType: 'google-drive',
       DriveFileID: driveRecord?.id || null,
       DriveFileURL: driveRecord?.url || null,
-      storageBucket: this.objectStorage.BUCKET_NAME || 'signature_objects',
+      storageBucket: null,
       stored: true,
       verified: true,
       downloadStatus: 'downloaded',
