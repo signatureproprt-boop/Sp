@@ -69,6 +69,19 @@ function isRetryableMongoError(error) {
   return name.includes('MongoNetwork') || name.includes('MongoServerSelection') || name.includes('MongoSocket') || message.includes('timed out') || message.includes('connection') && message.includes('closed');
 }
 
+function isRetryableDriveError(error) {
+  const status = Number(error?.response?.status || error?.code || 0);
+  const message = String(error?.message || error || '').toLowerCase();
+
+  return status === 408 ||
+    status === 429 ||
+    (status >= 500 && status <= 599) ||
+    message.includes('request timeout') ||
+    message.includes('timed out') ||
+    message.includes('socket hang up') ||
+    message.includes('econnreset');
+}
+
 async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId, metadata, originalFilename, mimeType }) {
   const stream = bucket.openDownloadStream(file._id);
   let streamError = null;
@@ -121,8 +134,16 @@ async function uploadFromGridFs({ drive, bucket, file, rootFolderId, readRetries
       break;
     } catch (error) {
       lastError = error;
-      if (!isRetryableMongoError(error) || attempt === readRetries) break;
-      console.error(JSON.stringify({ key, status: 'retrying-gridfs-read', attempt, maxAttempts: readRetries, error: String(error.message || error) }));
+      const retryableMongo = isRetryableMongoError(error);
+      const retryableDrive = isRetryableDriveError(error);
+      if ((!retryableMongo && !retryableDrive) || attempt === readRetries) break;
+      console.error(JSON.stringify({
+        key,
+        status: retryableDrive ? 'retrying-drive-upload' : 'retrying-gridfs-read',
+        attempt,
+        maxAttempts: readRetries,
+        error: String(error.message || error)
+      }));
       await sleep(retryDelayMs * attempt);
     }
   }
