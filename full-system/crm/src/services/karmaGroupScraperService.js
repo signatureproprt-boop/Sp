@@ -453,7 +453,7 @@ function parseProjectDetailHtml(html, detailUrl, seed = {}) {
   const brochureUrl = projectMediaUrls.find((url) => /\.pdf(?:$|[?#])/i.test(url)) ||
     allAttributeUrls.find((url) => /\.pdf(?:$|[?#])/i.test(url) && !/terms?(?:%20|\s|[-_])*and(?:%20|\s|[-_])*conditions?/i.test(url)) || null;
   const preferredImageUrls = projectMediaUrls.length ? projectMediaUrls : allAttributeUrls;
-  const allImageUrls = preferredImageUrls.filter((url) => /\.(?:png|jpe?g|webp|gif)(?:$|[?#])/i.test(url) && !/fav-icon|logo|icon|property_default/i.test(url));
+  const allImageUrls = preferredImageUrls.filter((url) => /\.(?:png|jpe?g|webp|gif)(?:$|[?#])/i.test(url) && !/fav-icon|logo|icon|property_default|(?:^|[\/])pdfimg\.png|(?:^|[\/])loader-image\.png/i.test(url));
   const floorPlanUrls = allImageUrls.filter((url) => /\/floorplans?\//i.test(url));
   const photoUrls = allImageUrls.filter((url) => !/\/floorplans?\//i.test(url));
   const directVideoUrls = allAttributeUrls.filter((url) => /\.mp4(?:$|[?#])/i.test(url));
@@ -1018,6 +1018,9 @@ class KarmaGroupScraperService {
   }
 
   async _ingestOneProjectMedia(project, sourceUrl, field, mediaType, tenant = {}) {
+    if (mediaType === 'project_image' && /(?:^|[\/])(?:pdfimg|loader-image)\.png(?:$|[?#])/i.test(sourceUrl)) {
+      return { ok: false, mediaType, error: 'Placeholder image skipped' };
+    }
     const sourceKey = mediaSourceKey(sourceUrl);
     project[field] = Array.isArray(project[field]) ? project[field] : [];
     const existing = project[field].find((row) => row?.SourceKey === sourceKey && (row?.DriveFileID || row?.StoragePath) && row?.verified === true);
