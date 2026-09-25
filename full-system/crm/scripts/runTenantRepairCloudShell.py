@@ -49,7 +49,7 @@ def main():
         env["TENANT_REPAIR_EXPECTED_COUNT"] = str(EXPECTED)
         done = subprocess.run(cmd, env=env, text=True, capture_output=True)
         if done.returncode:
-            raise RuntimeError("Repair stopped; database may be unchanged. Inspect local backup and rerun audit.")
+            raise RuntimeError("Repair stopped: " + done.stderr.replace(env["MONGO_URL"], "[redacted]")[-600:])
         print(next(line for line in done.stdout.splitlines() if line.startswith("TENANT_REPAIR=")))
     except Exception as error:
         print("REPAIR_LAUNCHER_FAILED=" + str(error).replace(
