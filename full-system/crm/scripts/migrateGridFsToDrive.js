@@ -168,6 +168,24 @@ async function uploadFromGridFs({ drive, bucket, file, rootFolderId, readRetries
   return { status: 'uploaded', file: uploaded };
 }
 
+
+function collectLinkedDriveIds(payload) {
+  const links = new Map();
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { for (const item of value) visit(item); return; }
+    const key = String(value.StoragePath || value.storagePath || '').trim();
+    const id = String(value.DriveFileID || value.DriveFileId || value.driveFileId || '').trim();
+    if (key && id) {
+      if (!links.has(key)) links.set(key, new Set());
+      links.get(key).add(id);
+    }
+    for (const child of Object.values(value)) if (child && typeof child === 'object') visit(child);
+  };
+  visit(payload);
+  return links;
+}
+
 async function main() {
   const mongoUrl = env('MONGO_URL', true);
   const mongoDb = env('MONGO_DB') || 'signature_properties';
@@ -213,6 +231,9 @@ async function main() {
   }
   const drive = google.drive({ version: 'v3', auth });
 
+  const snapshot = await db.collection('db_snapshot').findOne({ _id: 'singleton' }, { projection: { payload: 1 } });
+  if (!snapshot?.payload) throw new Error('CRM snapshot missing; refusing migration');
+  const linkedDriveIds = collectLinkedDriveIds(snapshot.payload);
   const files = await bucket.find({}).sort({ uploadDate: 1 }).limit(limit).toArray();
   const summary = {
     total: files.length,
@@ -220,6 +241,8 @@ async function main() {
     deleteAfterVerify,
     uploaded: 0,
     alreadyPresent: 0,
+    eligibleForDeletion: 0,
+    blockedUnlinked: 0,
     deletedGridFs: 0,
     failed: 0,
     bytesVerified: 0,
@@ -232,12 +255,15 @@ async function main() {
       if (dryRun) {
         const existing = await findDriveFilesByKey(drive, key);
         const verified = existing.find((item) => Number(item.size || 0) === Number(file.length || 0));
+        const linked = verified && linkedDriveIds.get(key)?.has(verified.id);
+        if (linked) summary.eligibleForDeletion += 1;
+        else summary.blockedUnlinked += 1;
         if (verified) {
           summary.alreadyPresent += 1;
           summary.bytesVerified += Number(file.length || 0);
-          console.log(JSON.stringify({ key, status: 'already-present', bytes: file.length }));
+          console.log(JSON.stringify({ key, status: 'already-present', bytes: file.length, crmLinked: Boolean(linked) }));
         } else {
-          console.log(JSON.stringify({ key, status: 'would-upload', bytes: file.length }));
+          console.log(JSON.stringify({ key, status: 'would-upload', bytes: file.length, crmLinked: false }));
         }
         continue;
       }
@@ -247,7 +273,10 @@ async function main() {
       else summary.alreadyPresent += 1;
       summary.bytesVerified += Number(file.length || 0);
 
-      if (deleteAfterVerify) {
+      const crmLinked = linkedDriveIds.get(key)?.has(result.file?.id);
+      if (crmLinked) summary.eligibleForDeletion += 1;
+      else summary.blockedUnlinked += 1;
+      if (deleteAfterVerify && crmLinked) {
         await bucket.delete(file._id);
         summary.deletedGridFs += 1;
       }
@@ -257,7 +286,8 @@ async function main() {
         status: result.status,
         driveFileId: result.file?.id || null,
         bytes: file.length,
-        gridFsDeleted: deleteAfterVerify
+        crmLinked: Boolean(crmLinked),
+        gridFsDeleted: Boolean(deleteAfterVerify && crmLinked)
       }));
     } catch (error) {
       summary.failed += 1;
