@@ -88,5 +88,9 @@ async function main() {
     }
   } finally { await client.close(); }
 }
-main().catch(e => { console.error('TENANT_REPAIR_FAILED=' + String(e.message || e).replace(
-  String(process.env.MONGO_URL || ''), '[redacted]')); process.exitCode = 1; });
+if (require.main === module) main().catch(e => {
+  console.error('TENANT_REPAIR_FAILED=' + String(e.message || e).replace(
+    String(process.env.MONGO_URL || ''), '[redacted]'));
+  process.exitCode = 1;
+});
+module.exports = { plan };
