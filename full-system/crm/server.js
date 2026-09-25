@@ -2239,7 +2239,7 @@ async function handleApi(req, res, url) {
           sendJson(res, out, out.ok ? 200 : 400);
           return;
         }
-        const out = await svc.commit(buffer, filename, { userId: actor?.userId || 'system' });
+        const out = await svc.commit(buffer, filename, { userId: actor?.userId || 'system', companyId: actor.companyId, brokerageId: actor.brokerageId });
         sendJson(res, out, out.ok ? 200 : 400);
         return;
       }
