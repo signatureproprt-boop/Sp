@@ -82,8 +82,29 @@ function isRetryableDriveError(error) {
     message.includes('econnreset');
 }
 
-async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId, metadata, originalFilename, mimeType }) {
+async function readGridFsToBuffer(bucket, file) {
+  const chunks = [];
+  let total = 0;
   const stream = bucket.openDownloadStream(file._id);
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+    total += chunk.length;
+  }
+  if (total !== Number(file.length || 0)) {
+    throw new Error(`GridFS read verification failed for ${file.filename}: expected ${file.length}, got ${total}`);
+  }
+  return Buffer.concat(chunks, total);
+}
+
+async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId, metadata, originalFilename, mimeType }) {
+  // Google returned HTTP 408 when a large GridFS stream was proxied directly
+  // into Drive for several minutes. Stage large objects in memory first so
+  // the Drive request receives bytes immediately instead of waiting on Mongo.
+  const largeFileThreshold = 8 * 1024 * 1024;
+  const body = Number(file.length || 0) >= largeFileThreshold
+    ? await readGridFsToBuffer(bucket, file)
+    : bucket.openDownloadStream(file._id);
+  const stream = Buffer.isBuffer(body) ? null : body;
   let streamError = null;
   stream.once('error', (error) => { streamError = error; });
   try {
@@ -100,7 +121,7 @@ async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId,
         },
         description: JSON.stringify({ key: file.filename, migratedFrom: 'MongoGridFS', metadata })
       },
-      media: { mimeType, body: stream },
+      media: { mimeType, body },
       fields: 'id,name,mimeType,size,webViewLink,webContentLink,appProperties,parents'
     }, {
       // Large GridFS PDFs can take several minutes to upload. The default
@@ -113,7 +134,7 @@ async function createDriveFileFromGridFs({ drive, bucket, file, projectFolderId,
     if (streamError) throw streamError;
     return created;
   } finally {
-    stream.destroy();
+    if (stream) stream.destroy();
   }
 }
 
