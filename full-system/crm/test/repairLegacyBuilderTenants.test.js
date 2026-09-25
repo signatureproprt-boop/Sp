@@ -21,3 +21,11 @@ test('preflight rejects mixed tenant and duplicate identities', () => {
     { Status: 'ACTIVE', CompanyID: 'OTHER', BrokerageID: 'BRK-DEFAULT' }
   ])), /exactly one/);
 });
+
+test('bundled BSON serializer preserves snapshot dates in a backup', () => {
+  const { BSON } = require('mongodb');
+  const value = { updatedAt: new Date('2026-09-25T00:00:00Z') };
+  const roundtrip = BSON.EJSON.parse(BSON.EJSON.stringify(value));
+  assert.ok(roundtrip.updatedAt instanceof Date);
+  assert.equal(roundtrip.updatedAt.getTime(), value.updatedAt.getTime());
+});
