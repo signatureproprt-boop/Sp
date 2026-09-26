@@ -577,7 +577,11 @@ table td,table th{border-color:var(--v2-line)!important}
       return;
     }
     if (data?.status === 'completed') {
-      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}`;
+      const mediaFailureExamples = Array.isArray(result.mediaFailureExamples) ? result.mediaFailureExamples : [];
+      const mediaFailureNote = mediaFailureExamples.length
+        ? ` · Media errors: ${mediaFailureExamples.slice(0, 2).map(item => `${item.mediaType || 'file'}: ${String(item.error || 'Unknown error').slice(0, 120)}`).join(' | ')}`
+        : '';
+      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}${mediaFailureNote}`;
       return;
     }
     if (data?.status === 'failed') {
