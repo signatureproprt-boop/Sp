@@ -225,6 +225,7 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <button class="btn btn-accent" id="karma-scrape-btn" data-testid="karma-scrape-btn" onclick="startKarmaScrape()">🔄 Scrape Karma Group</button>
+      <button class="btn btn-ghost" id="karma-scrape-test-btn" data-testid="karma-scrape-test-btn" onclick="startKarmaScrape(1)">🧪 Test 1 project</button>
       <button class="btn btn-ghost" data-testid="cleanup-builders-btn" onclick="openCleanupModal()">🧹 Clean Names</button>
       <button class="btn btn-ghost" data-testid="fix-unknown-btn" onclick="openUnknownModal()">🏗️ Fix Unknown Builders</button>
       <button class="btn btn-ghost" data-testid="bulk-brochure-btn" onclick="openBulkBrochureModal()">🤖 Bulk from Brochures</button>
@@ -563,10 +564,14 @@ table td,table th{border-color:var(--v2-line)!important}
   function renderKarmaScrapeStatus(data) {
     const box = document.getElementById('karma-scrape-status');
     const button = document.getElementById('karma-scrape-btn');
+    const testButton = document.getElementById('karma-scrape-test-btn');
     const result = data?.result || {};
+    const running = data?.status === 'running';
     box.style.display = 'block';
-    button.disabled = data?.status === 'running';
-    button.textContent = data?.status === 'running' ? '⏳ Scraping Karma Group…' : '🔄 Scrape Karma Group';
+    button.disabled = running;
+    testButton.disabled = running;
+    button.textContent = running ? '⏳ Scraping Karma Group…' : '🔄 Scrape Karma Group';
+    testButton.textContent = running ? '⏳ Scrape running…' : '🧪 Test 1 project';
     if (data?.status === 'running') {
       box.textContent = `Karma Group scrape running · ${data.currentStage || 'starting'}${data.selectedProjectName ? ` · ${data.selectedProjectName}` : ''}`;
       return;
@@ -596,20 +601,25 @@ table td,table th{border-color:var(--v2-line)!important}
       clearTimeout(karmaScrapePoll);
       karmaScrapePoll = null;
       document.getElementById('karma-scrape-btn').disabled = false;
+      document.getElementById('karma-scrape-test-btn').disabled = false;
       toast('Scrape status failed: ' + error.message, true);
     }
   }
 
-  async function startKarmaScrape() {
-    if (!confirm('Karma Group website se latest Builder Projects scrape karein? Existing projects Source Project ID se update honge; duplicate create nahi honge.')) return;
-    const button = document.getElementById('karma-scrape-btn');
+  async function startKarmaScrape(limit = 1000) {
+    const testOnly = Number(limit) === 1;
+    const prompt = testOnly
+      ? 'Sirf Karma Group ki list ka pehla project test hoga. Existing CRM projects hi update honge; koi naya project create nahi hoga. Continue?'
+      : 'Karma Group website se latest Builder Projects scrape karein? Existing projects Source Project ID se update honge; duplicate create nahi honge.';
+    if (!confirm(prompt)) return;
+    const button = document.getElementById(testOnly ? 'karma-scrape-test-btn' : 'karma-scrape-btn');
     button.disabled = true;
     button.textContent = '⏳ Starting…';
     try {
       const response = await fetch('/api/v2/builder-projects/scrape/karma-group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 1000 })
+        body: JSON.stringify({ limit: testOnly ? 1 : 1000 })
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
@@ -618,11 +628,10 @@ table td,table th{border-color:var(--v2-line)!important}
       karmaScrapePoll = setTimeout(pollKarmaScrape, 700);
     } catch (error) {
       button.disabled = false;
-      button.textContent = '🔄 Scrape Karma Group';
+      button.textContent = testOnly ? '🧪 Test 1 project' : '🔄 Scrape Karma Group';
       toast('Scrape start failed: ' + error.message, true);
     }
   }
-
   function updateBuilderNameOptions() {
     const names = Array.from(new Set(allProjects.map(p => p.BuilderName).filter(Boolean))).sort();
     document.getElementById('dl-builder-names').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
