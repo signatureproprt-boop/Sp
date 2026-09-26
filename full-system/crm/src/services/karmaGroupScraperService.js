@@ -521,6 +521,7 @@ class KarmaGroupScraperService {
     this.objectStorage = deps.objectStorage || objectStorage;
     this.openPdfStreamSafely = deps.openPdfStreamSafely || openPdfStreamSafely;
     this.downloadMediaSafely = deps.downloadMediaSafely || downloadMediaSafely;
+    this.driveClient = deps.driveClient || null;
     this.listingUrl = deps.listingUrl || DEFAULT_LISTING_URL;
     this.timeoutMs = Number(deps.timeoutMs || DEFAULT_TIMEOUT_MS);
     this.maxPages = Number(deps.maxPages || DEFAULT_MAX_PAGES);
@@ -1039,8 +1040,9 @@ class KarmaGroupScraperService {
     const storageFolder = mediaType === 'brochure' ? 'brochures' : (mediaType === 'floor_plan' ? 'floor-plans' : (mediaType === 'video' ? 'videos' : 'photos'));
     const storagePath = `builder-projects/${project.ProjectID}/${storageFolder}/${sourceKey}.${extension}`;
     let driveRecord = null;
+    let driveFailure = null;
     try {
-      const driveSvc = new BuilderProjectDriveService(this.repo, createGoogleDriveClient());
+      const driveSvc = new BuilderProjectDriveService(this.repo, this.driveClient || createGoogleDriveClient());
       const category = mediaType === 'brochure' ? 'Brochures' : (mediaType === 'floor_plan' ? 'Floor Plans' : (mediaType === 'video' ? 'Videos' : 'Project Images'));
       const driveOut = await driveSvc.uploadProjectFile(project.ProjectID, category, filename, downloaded.buffer, downloaded.contentType, tenant);
       if (driveOut.ok) {
@@ -1048,10 +1050,15 @@ class KarmaGroupScraperService {
         project.DriveFolderID = driveOut.project.DriveFolderID || project.DriveFolderID || null;
         project.DriveFolderURL = driveOut.project.DriveFolderURL || project.DriveFolderURL || null;
         project.DriveSubfolders = driveOut.project.DriveSubfolders || project.DriveSubfolders || {};
+      } else {
+        driveFailure = driveOut.error || (driveOut.statusCode ? `HTTP ${driveOut.statusCode}` : null);
       }
-    } catch (_) {}
+    } catch (error) {
+      driveFailure = error;
+    }
     if (!driveRecord) {
-      return { ok: false, sourceKey, mediaType, error: 'Google Drive upload failed; GridFS fallback is disabled' };
+      const reason = driveFailure ? `: ${sanitizeError(driveFailure)}` : '';
+      return { ok: false, sourceKey, mediaType, error: `Google Drive upload failed${reason}; GridFS fallback is disabled` };
     }
 
     const mediaId = this.repo.createId('MED');
