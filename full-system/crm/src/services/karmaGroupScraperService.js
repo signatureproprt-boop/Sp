@@ -1110,10 +1110,19 @@ class KarmaGroupScraperService {
         } else {
           counters.mediaFailed += 1;
           failures.push({ sourceKey: result.sourceKey, mediaType: result.mediaType, error: result.error });
+          counters.mediaFailureExamples = Array.isArray(counters.mediaFailureExamples) ? counters.mediaFailureExamples : [];
+          if (counters.mediaFailureExamples.length < 5) {
+            counters.mediaFailureExamples.push({ projectName: project.ProjectName || null, mediaType: result.mediaType, error: result.error });
+          }
         }
       } catch (error) {
         counters.mediaFailed += 1;
-        failures.push({ sourceKey: mediaSourceKey(item.url), mediaType: item.mediaType, error: sanitizeError(error) });
+        const failureMessage = sanitizeError(error);
+        failures.push({ sourceKey: mediaSourceKey(item.url), mediaType: item.mediaType, error: failureMessage });
+        counters.mediaFailureExamples = Array.isArray(counters.mediaFailureExamples) ? counters.mediaFailureExamples : [];
+        if (counters.mediaFailureExamples.length < 5) {
+          counters.mediaFailureExamples.push({ projectName: project.ProjectName || null, mediaType: item.mediaType, error: failureMessage });
+        }
       }
     });
     project.MediaIngestion = {
