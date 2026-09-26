@@ -620,16 +620,22 @@ table td,table th{border-color:var(--v2-line)!important}
     button.disabled = true;
     button.textContent = '⏳ Starting…';
     try {
-      const response = await fetch('/api/v2/builder-projects/scrape/karma-group', {
+      const scrapeRequest = fetch('/api/v2/builder-projects/scrape/karma-group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ limit: testOnly ? 1 : 1000 })
       });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
       renderKarmaScrapeStatus({ status: 'running', currentStage: 'discovery' });
       clearTimeout(karmaScrapePoll);
       karmaScrapePoll = setTimeout(pollKarmaScrape, 700);
+
+      const response = await scrapeRequest;
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      if (payload.data?.status && payload.data.status !== 'accepted') {
+        renderKarmaScrapeStatus(payload.data);
+        if (payload.data.status === 'completed') await loadProjects();
+      }
     } catch (error) {
       button.disabled = false;
       button.textContent = testOnly ? '🧪 Test 1 project' : '🔄 Scrape Karma Group';

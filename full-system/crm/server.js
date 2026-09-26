@@ -2070,9 +2070,10 @@ async function handleApi(req, res, url) {
           limit: Number(bodyForV2?.limit) || 1000,
           userId: actor.userId || 'system',
           companyId: actor.companyId || null,
-          brokerageId: actor.brokerageId || null
+          brokerageId: actor.brokerageId || null,
+          waitForCompletion: true
         });
-        sendJson(res, out, out.ok ? 202 : (out.statusCode || 400));
+        sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
         return;
       }
 
