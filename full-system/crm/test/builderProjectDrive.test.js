@@ -129,3 +129,38 @@ test('uploadProjectFile stores bytes in the correct Drive subfolder', async () =
   assert.equal(uploads[0].filename, 'alpha.pdf');
   assert.equal(out.data.id, 'FILE-1');
 });
+
+test('concurrent service instances share one project folder creation', async () => {
+  const db = {
+    BuilderProjects: [{
+      ProjectID: 'BLDP-RACE', ProjectName: 'Race Test', CompanyID: 'C-A', BrokerageID: 'B-A', Active: true
+    }]
+  };
+  const repo = makeRepo(db);
+  const calls = [];
+  const drive = {
+    async createFolder(name, parentId) {
+      calls.push({ name, parentId });
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      const id = 'RACE-' + calls.length;
+      return { id, url: 'https://drive.google.com/drive/folders/' + id };
+    }
+  };
+  const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'MASTER';
+  try {
+    const tenant = { companyId: 'C-A', brokerageId: 'B-A' };
+    const [first, second] = await Promise.all([
+      new BuilderProjectDriveService(repo, drive).ensureProjectFolder('BLDP-RACE', tenant),
+      new BuilderProjectDriveService(repo, drive).ensureProjectFolder('BLDP-RACE', tenant)
+    ]);
+    assert.equal(first.ok, true);
+    assert.equal(second.ok, true);
+    assert.equal(first.data.DriveFolderID, second.data.DriveFolderID);
+    assert.equal(calls.length, 1 + PROJECT_SUBFOLDERS.length);
+    assert.equal(repo.writes(), 1);
+  } finally {
+    if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
+  }
+});
