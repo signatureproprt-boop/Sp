@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 59946)
-Total output lines: 5484
-
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const crypto = require('node:crypto');
 const http = require('http');
@@ -1503,7 +1500,2442 @@ async function handleApi(req, res, url) {
         return req.method === 'GET' ? 'COMMISSION_READ' : 'COMMISSION_UPDATE';
       }
       if (/^\/api\/closing(?:\/|$)/i.test(pathname)) {
-        return req.method =…29946 tokens truncated…(negotiationId, body);
+        return req.method === 'GET' ? 'DEAL_READ' : 'DEAL_UPDATE';
+      }
+      return null;
+    })();
+    if (legacyCapability && !ensurePermissionOrRespond(req, res, url, legacyCapability)) return;
+
+    // ── Smart Match V2 (dynamic scoring against inventory) ──────────────────
+    // GET /api/v2/requirements/:id/matches?limit=10&minScore=40
+    const matchV2 = pathname.match(/^\/api\/v2\/requirements\/([^\/]+)\/matches\/?$/i);
+    if (matchV2 && req.method === 'GET') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const requirement = runtime.repository.readRequirement(matchV2[1]);
+      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+        permissions: ['MATCHING_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      const { SmartMatchService } = require('./src/services/smartMatchService');
+      const svc = new SmartMatchService(runtime.repository);
+      const opts = {
+        limit:    Number(url.searchParams.get('limit')) || 20,
+        minScore: url.searchParams.get('minScore') != null ? Number(url.searchParams.get('minScore')) : 40
+      };
+      const out = svc.matchByRequirementId(matchV2[1], opts);
+      if (out.ok && out.data && Array.isArray(out.data.matches)) {
+        out.data.matches = out.data.matches.filter((row) => {
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+        out.data.total = out.data.matches.length;
+      }
+      sendJson(res, out, out.ok ? 200 : 404);
+      return;
+    }
+
+    // ── Shortlist V2 (property-level shortlist per requirement, notes-aware) ─
+    // GET    /api/v2/shortlist/:reqId
+    // POST   /api/v2/shortlist/:reqId/add          { propertyId, notes?, priority?, matchScore?, matchLevel? }
+    // DELETE /api/v2/shortlist/:reqId/remove/:propId
+    // PATCH  /api/v2/shortlist/:reqId/notes/:propId { notes }
+    const slV2List   = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/?$/i);
+    const slV2Add    = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/add\/?$/i);
+    const slV2Remove = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/remove\/([^\/]+)\/?$/i);
+    const slV2Notes  = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/notes\/([^\/]+)\/?$/i);
+    const slV2Manual = pathname.match(/^\/api\/v2\/shortlist\/([^\/]+)\/manual\/?$/i);
+    if (slV2List || slV2Add || slV2Remove || slV2Notes || slV2Manual) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const { ShortlistServiceV2 } = require('./src/services/shortlistServiceV2');
+      const svc = new ShortlistServiceV2(runtime.repository);
+
+      if (slV2List && req.method === 'GET') {
+        const requirement = runtime.repository.readRequirement(slV2List[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        const status = url.searchParams.get('status') || 'Active';
+        const rows = svc.list(slV2List[1], { status }).filter((row) => {
+          if (row.IsManual) return true;
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+        sendJson(res, { ok: true, data: rows, count: rows.length });
+        return;
+      }
+
+      if (slV2Add && req.method === 'POST') {
+        const body = bodyForV2 || {};
+        const requirement = runtime.repository.readRequirement(slV2Add[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        const property = runtime.repository.find('Inventory', 'PropertyID', body.propertyId || body.PropertyID);
+        const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+          permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+          hideExistence: true
+        });
+        if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        const out = svc.add(slV2Add[1], body);
+        sendJson(res, out, out.ok ? (out.alreadyShortlisted ? 200 : 201) : 400);
+        return;
+      }
+
+      if (slV2Manual && req.method === 'POST') {
+        const body = bodyForV2 || {};
+        const requirement = runtime.repository.readRequirement(slV2Manual[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        const out = svc.addManual(slV2Manual[1], { ...body, createdBy: actor.userId });
+        sendJson(res, out, out.ok ? 201 : 400);
+        return;
+      }
+
+      if (slV2Remove && req.method === 'DELETE') {
+        const requirement = runtime.repository.readRequirement(slV2Remove[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        const existingRows = svc.list(slV2Remove[1], { status: 'Active' });
+        const existingRow = existingRows.find((row) => row.PropertyID === slV2Remove[2]);
+        if (!existingRow) { sendJson(res, { ok: false, error: 'Shortlist entry not found' }, 404); return; }
+        if (!existingRow.IsManual) {
+          const property = runtime.repository.find('Inventory', 'PropertyID', slV2Remove[2]);
+          const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          });
+          if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        }
+        const out = svc.remove(slV2Remove[1], slV2Remove[2], actor.userId || 'system');
+        sendJson(res, out, out.ok ? 200 : 404);
+        return;
+      }
+
+      if (slV2Notes && req.method === 'PATCH') {
+        const body = bodyForV2 || {};
+        const requirement = runtime.repository.readRequirement(slV2Notes[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+        const existingRows = svc.list(slV2Notes[1], { status: 'Active' });
+        const existingRow = existingRows.find((row) => row.PropertyID === slV2Notes[2]);
+        if (!existingRow) { sendJson(res, { ok: false, error: 'Shortlist entry not found' }, 404); return; }
+        if (!existingRow.IsManual) {
+          const property = runtime.repository.find('Inventory', 'PropertyID', slV2Notes[2]);
+          const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          });
+          if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+        }
+        const out = svc.updateEntry(slV2Notes[1], slV2Notes[2], {
+          notes: body.notes,
+          priority: body.priority
+        });
+        sendJson(res, out, out.ok ? 200 : 404);
+        return;
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    // ── Broker Network V2 (WhatsApp share flow) ─────────────────────────────
+    // GET    /api/v2/broker-network                          — list brokers
+    // POST   /api/v2/broker-network                          — add broker
+    // PATCH  /api/v2/broker-network/:id                      — edit
+    // DELETE /api/v2/broker-network/:id                      — remove
+    // POST   /api/v2/requirements/:reqId/network-share       — { brokerIds[], message?, expiresInDays? }
+    // GET    /api/v2/requirements/:reqId/network-shares      — list shares
+    // POST   /api/v2/network-shares/:shareId/revoke
+    // GET    /api/v2/public/req/:token                       — anonymized (NO auth)
+    // POST   /api/v2/public/req/:token/response              — submit property (NO auth)
+    if (/^\/api\/v2\/(broker-network(?:\/[^\/]+)?(?:\/[^\/]+)?|requirements\/[^\/]+\/network-shares?|network-shares\/[^\/]+\/revoke|public\/req\/[^\/]+(?:\/response)?)\/?$/i.test(pathname)) {
+      const { BrokerNetworkV2Service } = require('./src/services/brokerNetworkV2Service');
+      const svc = new BrokerNetworkV2Service(runtime.repository);
+      const isPublicTokenPath = /^\/api\/v2\/public\/req\/[^\/]+(?:\/response)?\/?$/i.test(pathname);
+      const actor = getAuthenticatedActor(req, url);
+      if (!isPublicTokenPath && !actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!isPublicTokenPath) {
+        let brokerPermission = 'BROKER_NETWORK_READ';
+        if (/\/commission-ledger(?:\/|$)/i.test(pathname)) {
+          brokerPermission = req.method === 'GET' ? 'BROKER_NETWORK_ADMIN' : 'BROKER_NETWORK_ADMIN';
+        } else if (/\/shares(?:\/|$)/i.test(pathname) || /\/revoke(?:\/|$)/i.test(pathname)) {
+          brokerPermission = 'BROKER_NETWORK_ADMIN';
+        } else if (req.method === 'POST') {
+          brokerPermission = 'BROKER_NETWORK_CREATE';
+        } else if (req.method === 'PATCH') {
+          brokerPermission = 'BROKER_NETWORK_UPDATE';
+        } else if (req.method === 'DELETE') {
+          brokerPermission = 'BROKER_NETWORK_DELETE';
+        }
+        if (!ensurePermissionOrRespond(req, res, url, brokerPermission)) return;
+      }
+
+      // Broker registry CRUD
+      if (/^\/api\/v2\/broker-network\/?$/i.test(pathname)) {
+        if (req.method === 'GET') {
+          const active = url.searchParams.get('active');
+          const rows = svc.listBrokers({ active: active === 'true' ? true : active === 'false' ? false : undefined });
+          sendJson(res, { ok: true, data: rows, count: rows.length });
+          return;
+        }
+        if (req.method === 'POST') {
+          const out = svc.createBroker(bodyForV2 || {});
+          sendJson(res, out, out.ok ? 201 : 400);
+          return;
+        }
+      }
+      // Admin: list all shares (optional ?brokerId=)
+      if (/^\/api\/v2\/broker-network\/shares\/?$/i.test(pathname) && req.method === 'GET') {
+        const brokerId = url.searchParams.get('brokerId') || undefined;
+        sendJson(res, svc.listAllShares({ brokerId }));
+        return;
+      }
+
+      // Commission ledger
+      if (/^\/api\/v2\/broker-network\/commission-ledger\/?$/i.test(pathname) && req.method === 'GET') {
+        sendJson(res, svc.listCommissionLedger());
+        return;
+      }
+      const ledgerPatch = pathname.match(/^\/api\/v2\/broker-network\/commission-ledger\/([^\/]+)\/?$/i);
+      if (ledgerPatch && req.method === 'PATCH') {
+        const out = svc.updateCommissionEntry(ledgerPatch[1], bodyForV2 || {});
+        sendJson(res, out, out.ok ? 200 : 404);
+        return;
+      }
+
+      const bnById = pathname.match(/^\/api\/v2\/broker-network\/([^\/]+)\/?$/i);
+      if (bnById) {
+        if (req.method === 'PATCH') {
+          const out = svc.updateBroker(bnById[1], bodyForV2 || {});
+          sendJson(res, out, out.ok ? 200 : 404);
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const out = svc.deleteBroker(bnById[1]);
+          sendJson(res, out, out.ok ? 200 : 404);
+          return;
+        }
+      }
+
+      // Share create
+      const shareCreate = pathname.match(/^\/api\/v2\/requirements\/([^\/]+)\/network-share\/?$/i);
+      if (shareCreate && req.method === 'POST') {
+        const requirementAccess = accessSvc.authorizeRequirement(actor, runtime.repository.readRequirement(shareCreate[1]), {
+          permissions: ['BROKER_NETWORK_CREATE', 'REQUIREMENTS_READ', 'LEADS_READ'],
+          hideExistence: true
+        });
+        if (!requirementAccess.ok) { sendJson(res, { ok: false, error: requirementAccess.error }, requirementAccess.statusCode); return; }
+        const body = bodyForV2 || {};
+        const out = svc.share(shareCreate[1], {
+          brokerIds: Array.isArray(body.brokerIds) ? body.brokerIds : [],
+          message: body.message || '',
+          expiresInDays: Number(body.expiresInDays) || 30,
+          userId: actor.userId
+        });
+        sendJson(res, out, out.ok ? 201 : 400);
+        return;
+      }
+
+      // List shares for a requirement
+      const shareList = pathname.match(/^\/api\/v2\/requirements\/([^\/]+)\/network-shares\/?$/i);
+      if (shareList && req.method === 'GET') {
+        const requirementAccess = accessSvc.authorizeRequirement(actor, runtime.repository.readRequirement(shareList[1]), {
+          permissions: ['BROKER_NETWORK_ADMIN', 'REQUIREMENTS_READ', 'LEADS_READ'],
+          hideExistence: true
+        });
+        if (!requirementAccess.ok) { sendJson(res, { ok: false, error: requirementAccess.error }, requirementAccess.statusCode); return; }
+        const rows = svc.listSharesByRequirement(shareList[1]);
+        sendJson(res, { ok: true, data: rows, count: rows.length });
+        return;
+      }
+
+      // Revoke
+      const shareRevoke = pathname.match(/^\/api\/v2\/network-shares\/([^\/]+)\/revoke\/?$/i);
+      if (shareRevoke && req.method === 'POST') {
+        const db = runtime.repository.read();
+        const share = (db.RequirementShares || []).find((row) => row.ShareID === shareRevoke[1]);
+        const requirementAccess = accessSvc.authorizeRequirement(actor, share ? runtime.repository.readRequirement(share.RequirementID) : null, {
+          permissions: ['BROKER_NETWORK_ADMIN', 'REQUIREMENTS_READ', 'LEADS_READ'],
+          hideExistence: true
+        });
+        if (!requirementAccess.ok) { sendJson(res, { ok: false, error: requirementAccess.error }, requirementAccess.statusCode); return; }
+        const out = svc.revokeShare(shareRevoke[1]);
+        sendJson(res, out, out.ok ? 200 : 404);
+        return;
+      }
+
+      // Public token endpoints (NO auth)
+      const pubGet = pathname.match(/^\/api\/v2\/public\/req\/([^\/]+)\/?$/i);
+      if (pubGet && req.method === 'GET') {
+        const out = svc.getPublicShareByToken(pubGet[1]);
+        const statusCode = out.ok
+          ? 200
+          : (out.code === 'REVOKED' || out.code === 'EXPIRED' ? 410 : 404);
+        sendJson(res, out, statusCode);
+        return;
+      }
+      const pubPost = pathname.match(/^\/api\/v2\/public\/req\/([^\/]+)\/response\/?$/i);
+      if (pubPost && req.method === 'POST') {
+        const out = svc.submitResponse(pubPost[1], bodyForV2 || {});
+        sendJson(res, out, out.ok ? 201 : 400);
+        return;
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    // ── Storage health (Mongo migration observability) ──────────────────────
+    if (pathname === '/api/v2/storage/health' && req.method === 'GET') {
+      if (!ensurePermissionOrRespond(req, res, url, 'STORAGE_HEALTH_READ')) return;
+      try {
+        const mongoStore = require('./src/data/mongoStore');
+        sendJson(res, { ok: true, data: mongoStore.stats() });
+      } catch (e) {
+        sendJson(res, { ok: false, error: e.message }, 500);
+      }
+      return;
+    }
+
+    // ── Expiring raw object access ─────────────────────────────────────────
+    // Authenticated callers with STORAGE_OBJECT_READ may mint a short-lived
+    // bearer URL. Existing authenticated object requests remain supported.
+    if (pathname === '/api/v2/storage/signed-url' && req.method === 'POST') {
+      if (!ensurePermissionOrRespond(req, res, url, 'STORAGE_OBJECT_READ')) return;
+      const body = bodyForV2 || {};
+      const key = String(body.key || body.StoragePath || '').trim();
+      if (!key || key.includes('..') || key.includes('\0')) {
+        sendJson(res, { ok: false, error: 'Invalid object key' }, 400);
+        return;
+      }
+      const { createSignedObjectAccess } = require('./src/services/storageAccessService');
+      const signed = createSignedObjectAccess(key, {
+        expiresInSeconds: body.expiresInSeconds
+      });
+      sendJson(res, signed, signed.ok ? 200 : (signed.statusCode || 500));
+      return;
+    }
+
+    // ── Broker Profile (Digital Business Card) ──────────────────────────────
+    // GET   /api/v2/broker-profile
+    // PATCH /api/v2/broker-profile          { Name, Designation, Agency, Mobile, Email }
+    // POST  /api/v2/broker-profile/photo    { fileBase64 }
+    // GET   /api/v2/broker-profile/photo    — serves the uploaded photo bytes
+    if (/^\/api\/v2\/broker-profile(\/.*)?$/i.test(pathname)) {
+      const { BrokerProfileService } = require('./src/services/brokerProfileService');
+      const svc = new BrokerProfileService(runtime.repository);
+
+      if (/^\/api\/v2\/broker-profile\/photo\/?$/i.test(pathname)) {
+        if (req.method === 'GET') {
+          svc.getPhotoFile().then((out) => {
+            if (!out.ok) { sendJson(res, out, 404); return; }
+            res.writeHead(200, withSecurityHeaders({ 'Content-Type': out.contentType, 'Cache-Control': 'private, max-age=3600' }));
+            res.end(out.buffer);
+          }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+          return;
+        }
+        if (req.method === 'POST') {
+          if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+          const body = bodyForV2 || {};
+          svc.updatePhoto(body.fileBase64)
+            .then((out) => sendJson(res, out, out.ok ? 200 : 400))
+            .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+          return;
+        }
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+
+      if (/^\/api\/v2\/broker-profile\/?$/i.test(pathname)) {
+        if (req.method === 'GET') { sendJson(res, svc.getProfile()); return; }
+        if (req.method === 'PATCH') {
+          if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+          sendJson(res, svc.updateProfile(bodyForV2 || {}));
+          return;
+        }
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+    }
+
+    // ── Generic object storage streaming route (GridFS-backed) ──────────────
+    // GET /api/v2/storage/object/:encodedKey — key is base64url(logical key),
+    // e.g. Buffer.from(key).toString('base64url'). Public (media is meant to
+    // be shareable, matching the existing builder-project media route).
+    const storageObjectMatch = pathname.match(/^\/api\/v2\/storage\/object\/([^\/]+)\/?$/i);
+    if (storageObjectMatch) {
+      if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+      let key;
+      try {
+        key = Buffer.from(decodeURIComponent(storageObjectMatch[1]), 'base64url').toString('utf8');
+      } catch (e) {
+        sendJson(res, { ok: false, error: 'Invalid object key' }, 400);
+        return;
+      }
+      if (!key || key.includes('..') || key.includes('\0')) {
+        sendJson(res, { ok: false, error: 'Invalid object key' }, 400);
+        return;
+      }
+      const { verifySignedObjectAccess } = require('./src/services/storageAccessService');
+      const signedAttempt = url.searchParams.has('expiresAt') || url.searchParams.has('signature');
+      const signed = verifySignedObjectAccess(key, {
+        expiresAt: url.searchParams.get('expiresAt'),
+        signature: url.searchParams.get('signature')
+      });
+      if (!signed.ok && !signedAttempt) {
+        if (!ensurePermissionOrRespond(req, res, url, 'STORAGE_OBJECT_READ')) return;
+      } else if (!signed.ok) {
+        const actor = getAuthenticatedActor(req, url);
+        if (!actor?.userId) {
+          sendJson(res, { ok: false, error: signed.error, code: signed.code }, 401);
+          return;
+        }
+        if (!ensurePermissionOrRespond(req, res, url, 'STORAGE_OBJECT_READ')) return;
+      }
+      const { getObjectStream } = require('./src/services/objectStorageService');
+      getObjectStream(key).then((found) => {
+        if (!found) { sendJson(res, { ok: false, error: 'Not found' }, 404); return; }
+        const cacheSeconds = signed.ok ? Math.max(1, Math.floor((signed.expiresAt - Date.now()) / 1000)) : 3600;
+        const headers = withSecurityHeaders({ 'Content-Type': found.contentType, 'Cache-Control': `private, max-age=${cacheSeconds}` });
+        if (Number.isFinite(found.size)) headers['Content-Length'] = found.size;
+        res.writeHead(200, headers);
+        found.stream.on('error', () => { try { res.destroy(); } catch (_) {} });
+        found.stream.pipe(res);
+      }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+      return;
+    }
+
+    // CSV brochure import preview/commit. Preview is read-only; commit
+    // requires explicit confirmation and calls the Task 11 importer once
+    // per valid row. It never discovers URLs.
+    const brochureCsvImportMatch = pathname.match(/^\/api\/v2\/admin\/brochure-import\/csv\/(preview|commit)\/?$/i);
+    if (brochureCsvImportMatch) {
+      if (req.method !== 'POST') {
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+      const auth = ensureAdminPermissionOrRespond(req, res, url, 'BROCHURE_MIGRATION_MANAGE');
+      if (!auth) return;
+      const body = bodyForV2 || {};
+      if (!body.fileBase64) {
+        sendJson(res, { ok: false, error: 'fileBase64 required' }, 400);
+        return;
+      }
+      let buffer;
+      try {
+        buffer = Buffer.from(String(body.fileBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+      } catch (_) {
+        sendJson(res, { ok: false, error: 'Bad base64 payload' }, 400);
+        return;
+      }
+      const { BrochureCsvImportService } = require('./src/services/brochureCsvImportService');
+      const csvService = new BrochureCsvImportService(runtime.repository);
+      const isCommit = brochureCsvImportMatch[1].toLowerCase() === 'commit';
+      const operation = isCommit
+        ? csvService.importCsv(buffer, body.filename || 'brochure-import.csv', {
+          userId: auth.actor?.userId || 'system',
+          confirmed: body.confirmed === true
+        })
+        : csvService.preview(buffer, body.filename || 'brochure-import.csv');
+      Promise.resolve(operation).then((out) => {
+        sendJson(res, out, out.ok ? 200 : (out.statusCode || 400));
+      }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+      return;
+    }
+
+    // Explicit one-time brochure import. The caller supplies both the
+    // project ID and the exact URL; this route never discovers URLs.
+    const explicitBrochureImportMatch = pathname.match(/^\/api\/v2\/admin\/brochure-migration\/project\/([^\/]+)\/import\/?$/i);
+    const explicitBrochureImportRoot = /^\/api\/v2\/admin\/brochure-import\/?$/i.test(pathname);
+    if (explicitBrochureImportMatch || explicitBrochureImportRoot) {
+      if (req.method !== 'POST') {
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+      const auth = ensureAdminPermissionOrRespond(req, res, url, 'BROCHURE_MIGRATION_MANAGE');
+      if (!auth) return;
+      const body = bodyForV2 || {};
+      const projectId = explicitBrochureImportMatch
+        ? decodeURIComponent(explicitBrochureImportMatch[1])
+        : body.ProjectID;
+      const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
+      const canarySvc = new ProjectMediaCanaryMigrationService(runtime.repository);
+      canarySvc.importExplicitBrochure({
+        projectId,
+        brochureUrl: body.BrochureURL,
+        userId: auth.actor?.userId || 'system',
+        source: 'manual-url'
+      }).then((out) => {
+        sendJson(res, out, out.ok ? 200 : (out.statusCode || 500));
+      }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+      return;
+    }
+
+    // Targeted brochure migration is admin-only and invokes the canary
+    // service for exactly one explicitly supplied project. Bulk migration
+    // remains disabled below.
+    const brochureMigrationProjectMatch = pathname.match(/^\/api\/v2\/admin\/brochure-migration\/project\/([^\/]+)\/?$/i);
+    if (brochureMigrationProjectMatch) {
+      if (req.method !== 'POST') {
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+      const auth = ensureAdminPermissionOrRespond(req, res, url, 'BROCHURE_MIGRATION_MANAGE');
+      if (!auth) return;
+      const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
+      const canarySvc = new ProjectMediaCanaryMigrationService(runtime.repository);
+      const body = bodyForV2 || {};
+      const operation = body.BrochureURL
+        ? canarySvc.importExplicitBrochure({
+          projectId: decodeURIComponent(brochureMigrationProjectMatch[1]),
+          brochureUrl: body.BrochureURL,
+          userId: auth.actor?.userId || 'system',
+          source: 'manual-url'
+        })
+        : canarySvc.migrateProject({
+          projectId: decodeURIComponent(brochureMigrationProjectMatch[1]),
+          userId: auth.actor?.userId || 'system'
+        });
+      operation.then((out) => {
+        sendJson(res, out, out.ok ? 200 : (out.statusCode || 500));
+      }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+      return;
+    }
+
+    // Automatic/bulk brochure migration remains disabled. It discovers URLs
+    // from existing projects, so it must not be exposed as a bulk operation.
+    if (/^\/api\/v2\/admin\/brochure-migration(\/.*)?$/i.test(pathname)) {
+      const auth = ensureAdminPermissionOrRespond(req, res, url, 'BROCHURE_MIGRATION_MANAGE');
+      if (!auth) return;
+      sendJson(res, {
+        ok: false,
+        error: 'AUTOMATIC_MEDIA_MIGRATION_DISABLED',
+        message: 'Automatic media migration is disabled. Supply a legitimate URL through the Builder Project manual URL import.'
+      }, 410);
+      return;
+    }
+
+    // ── Builder Projects (Surat builder project master data) ────────────────
+    // GET    /api/v2/builder-projects?q=&location=&status=
+    // POST   /api/v2/builder-projects                { ProjectName, BuilderName, Location1, ... }
+    // GET    /api/v2/builder-projects/:id
+    // PATCH  /api/v2/builder-projects/:id
+    // DELETE /api/v2/builder-projects/:id
+    // POST   /api/v2/builder-projects/import/preview  { filename, fileBase64 }
+    // POST   /api/v2/builder-projects/import/commit   { filename, fileBase64 }
+    // GET    /api/v2/builder-projects/import/history?limit=20
+    if (/^\/api\/v2\/builder-projects(\/.*)?$/i.test(pathname)) {
+      const { BuilderProjectService } = require('./src/services/builderProjectService');
+      const svc = new BuilderProjectService(runtime.repository);
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+
+      if (/^\/api\/v2\/builder-projects\/scrape\/status\/?$/i.test(pathname)) {
+        if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_READ')) return;
+        const { KarmaGroupScraperService } = require('./src/services/karmaGroupScraperService');
+        sendJson(res, KarmaGroupScraperService.getStatus());
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/scrape\/karma-group\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_CREATE')) return;
+        const { KarmaGroupScraperService } = require('./src/services/karmaGroupScraperService');
+        const scraper = new KarmaGroupScraperService(runtime.repository, {
+          ingestBrochures: String(process.env.KARMA_SCRAPE_INGEST_BROCHURES || '').toLowerCase() === 'true',
+          ingestMedia: String(process.env.KARMA_SCRAPE_INGEST_MEDIA || '').toLowerCase() === 'true',
+          useCategoryDiscovery: true,
+          concurrency: 4,
+          mediaConcurrency: 2
+        });
+        const out = await scraper.startScrape({
+          limit: Number(bodyForV2?.limit) || 1000,
+          userId: actor.userId || 'system',
+          companyId: actor.companyId || null,
+          brokerageId: actor.brokerageId || null,
+          waitForCompletion: true
+        });
+        sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
+        return;
+      }
+
+      const driveSyncMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/drive-folder\/?$/i);
+      if (driveSyncMatch) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
+        const { BuilderProjectDriveService } = require('./src/services/builderProjectDriveService');
+        const { createGoogleDriveClient } = require('./src/services/googleDriveClient');
+        const driveSvc = new BuilderProjectDriveService(runtime.repository, createGoogleDriveClient());
+        driveSvc.ensureProjectFolder(decodeURIComponent(driveSyncMatch[1]), {
+          companyId: actor.companyId || null,
+          brokerageId: actor.brokerageId || null
+        }).then((out) => sendJson(res, out, out.ok ? 200 : (out.statusCode || 400)))
+          .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      const builderPermission = req.method === 'GET'
+        ? 'BUILDER_PROJECTS_READ'
+        : req.method === 'PATCH'
+          ? 'BUILDER_PROJECTS_UPDATE'
+          : req.method === 'DELETE'
+            ? 'BUILDER_PROJECTS_DELETE'
+            : 'BUILDER_PROJECTS_CREATE';
+      if (!ensurePermissionOrRespond(req, res, url, builderPermission)) return;
+
+      const brochureByProjectMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/brochure\/?$/i);
+      if (brochureByProjectMatch) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+        const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
+        const canarySvc = new ProjectMediaCanaryMigrationService(runtime.repository);
+        canarySvc.getProjectBrochureFile(decodeURIComponent(brochureByProjectMatch[1])).then((out) => {
+          if (!out.ok) { sendJson(res, out, out.statusCode || 404); return; }
+          const headers = withSecurityHeaders({ 'Content-Type': 'application/pdf', 'Cache-Control': 'private, max-age=3600' });
+          const contentLength = Number(out.size || out.buffer?.length || 0);
+          if (Number.isFinite(contentLength) && contentLength > 0) headers['Content-Length'] = contentLength;
+          res.writeHead(200, headers);
+          res.end(req.method === 'HEAD' ? undefined : out.buffer);
+        }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      const imageByProjectMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/images\/([^\/]+)\/?$/i);
+      if (imageByProjectMatch) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+        const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
+        const canarySvc = new ProjectMediaCanaryMigrationService(runtime.repository);
+        canarySvc.getProjectImageFile(decodeURIComponent(imageByProjectMatch[1]), decodeURIComponent(imageByProjectMatch[2])).then((out) => {
+          if (!out.ok) { sendJson(res, out, out.statusCode || 404); return; }
+          const headers = withSecurityHeaders({ 'Content-Type': out.contentType || 'application/octet-stream', 'Cache-Control': 'private, max-age=3600' });
+          const contentLength = Number(out.size || out.buffer?.length || 0);
+          if (Number.isFinite(contentLength) && contentLength > 0) headers['Content-Length'] = contentLength;
+          res.writeHead(200, headers);
+          res.end(req.method === 'HEAD' ? undefined : out.buffer);
+        }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/duplicate-builders\/?$/i.test(pathname)) {
+        if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        sendJson(res, svc.findDuplicateBuilderGroups());
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/merge-builders\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const body = bodyForV2 || {};
+        const out = svc.mergeBuilderNames(body.canonicalName, body.variants);
+        sendJson(res, out, out.ok ? 200 : 400);
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/unknown-builders\/?$/i.test(pathname)) {
+        if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        sendJson(res, svc.listUnknownBuilders());
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/extract-brochure\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const body = bodyForV2 || {};
+        if (!body.fileBase64) { sendJson(res, { ok: false, error: 'fileBase64 required' }, 400); return; }
+        const { extractBrochure } = require('./src/services/brochureExtractionService');
+        extractBrochure(body.fileBase64)
+          .then((data) => sendJson(res, { ok: true, data }))
+          .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/bulk-assign-builder\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const body = bodyForV2 || {};
+        const out = svc.bulkAssignBuilder(body.projectIds, body.builderName);
+        sendJson(res, out, out.ok ? 200 : 400);
+        return;
+      }
+
+      // GET /api/v2/builder-projects/media/:mediaId — serves photo/video/brochure bytes
+      const mediaFileMatch = pathname.match(/^\/api\/v2\/builder-projects\/media\/([^\/]+)\/?$/i);
+      if (mediaFileMatch) {
+        if (req.method !== 'GET' && req.method !== 'HEAD') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        svc.getMediaFile(mediaFileMatch[1]).then((out) => {
+          if (!out.ok) { sendJson(res, out, 404); return; }
+          res.writeHead(200, withSecurityHeaders({ 'Content-Type': out.contentType, 'Cache-Control': 'private, max-age=3600' }));
+          res.end(req.method === 'HEAD' ? undefined : out.buffer);
+        }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      // POST /api/v2/builder-projects/:id/media { kind, filename, fileBase64 }
+      const mediaUploadMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/media\/?$/i);
+      if (mediaUploadMatch) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const body = bodyForV2 || {};
+        svc.addMedia(mediaUploadMatch[1], body.kind, body.filename, body.fileBase64, actor?.userId || 'system')
+          .then((out) => sendJson(res, out, out.ok ? 200 : 400))
+          .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      // POST /api/v2/builder-projects/:id/media/import-url { kind, sourceUrl }
+      // Only the supplied URL is fetched; 403 responses are surfaced as
+      // failures and are never bypassed.
+      const mediaUrlImportMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/media\/import-url\/?$/i);
+      if (mediaUrlImportMatch) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const body = bodyForV2 || {};
+        svc.importMediaFromUrl(
+          decodeURIComponent(mediaUrlImportMatch[1]),
+          body.kind,
+          body.sourceUrl,
+          actor.userId || 'system'
+        ).then((out) => sendJson(res, out, out.ok ? 200 : 400))
+          .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+        return;
+      }
+
+      // DELETE /api/v2/builder-projects/:id/media/:mediaId
+      const mediaDeleteMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/media\/([^\/]+)\/?$/i);
+      if (mediaDeleteMatch) {
+        if (req.method !== 'DELETE') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const out = svc.removeMedia(mediaDeleteMatch[1], mediaDeleteMatch[2]);
+        sendJson(res, out, out.ok ? 200 : 404);
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/import\/(preview|commit)\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const body = bodyForV2 || {};
+        if (!body.fileBase64) { sendJson(res, { ok: false, error: 'fileBase64 required' }, 400); return; }
+        let buffer;
+        try {
+          buffer = Buffer.from(String(body.fileBase64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+        } catch (e) {
+          sendJson(res, { ok: false, error: 'Bad base64 payload' }, 400);
+          return;
+        }
+        const filename = body.filename || 'upload.csv';
+        if (/preview\/?$/i.test(pathname)) {
+          const out = await svc.preview(buffer, filename);
+          sendJson(res, out, out.ok ? 200 : 400);
+          return;
+        }
+        const out = await svc.commit(buffer, filename, { userId: actor?.userId || 'system', companyId: actor.companyId, brokerageId: actor.brokerageId });
+        sendJson(res, out, out.ok ? 200 : 400);
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/import\/history\/?$/i.test(pathname)) {
+        if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const limit = Number(url.searchParams.get('limit')) || 20;
+        sendJson(res, svc.listHistory(limit));
+        return;
+      }
+
+      const idMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/?$/i);
+      if (idMatch) {
+        const id = idMatch[1];
+        if (req.method === 'GET') {
+          const out = svc.get(id);
+          if (out.ok) {
+            const tenant = tenantCheck(out.data, actor);
+            if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+          }
+          sendJson(res, out, out.ok ? 200 : 404); return;
+        }
+        if (req.method === 'PATCH') { const out = svc.update(id, bodyForV2 || {}); sendJson(res, out, out.ok ? 200 : 400); return; }
+        if (req.method === 'DELETE') { const out = svc.remove(id); sendJson(res, out, out.ok ? 200 : 404); return; }
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+
+      if (/^\/api\/v2\/builder-projects\/?$/i.test(pathname)) {
+        if (req.method === 'GET') {
+          const perf = startApiPerformanceTrace(req, res, 'builder-projects.list');
+          const serviceStartedAt = process.hrtime.bigint();
+          const out = svc.listPage({
+            q: url.searchParams.get('q'),
+            location: url.searchParams.get('location'),
+            status: url.searchParams.get('status'),
+            category: url.searchParams.get('category'),
+            page: url.searchParams.get('page') || 1,
+            limit: url.searchParams.get('limit') || 50,
+            visible: (row) => tenantCheck(row, actor).ok
+          });
+          if (perf) perf.serviceMs = elapsedMs(serviceStartedAt);
+          sendJson(res, out);
+          return;
+        }
+        if (req.method === 'POST') {
+          const out = svc.create({
+            ...(bodyForV2 || {}),
+            CompanyID: actor.companyId || null,
+            BrokerageID: actor.brokerageId || null
+          }, actor?.userId || 'system');
+          sendJson(res, out, out.ok ? 201 : 400);
+          return;
+        }
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+
+      sendJson(res, { ok: false, error: 'Not found' }, 404);
+      return;
+    }
+
+    // ── Site Visit Bookings V2 (group N properties into one visit slot) ─────
+    // POST   /api/v2/site-visit-bookings                { requirementId, propertyIds[], visitDate, visitTime, ... }
+    // GET    /api/v2/site-visit-bookings?requirementId=X | ?leadId=X
+    // GET    /api/v2/site-visit-bookings/:bookingId
+    // PATCH  /api/v2/site-visit-bookings/:bookingId     { visitDate?, visitTime?, ... }
+    // POST   /api/v2/site-visit-bookings/:bookingId/cancel
+    // POST   /api/v2/site-visit-bookings/:bookingId/complete
+    if (/^\/api\/v2\/site-visit-bookings(?:\/[^\/]*(?:\/(?:cancel|complete))?)?\/?$/i.test(pathname)) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const { SiteVisitBookingService } = require('./src/services/siteVisitBookingService');
+      const svc = new SiteVisitBookingService(runtime.repository);
+
+      // Collection routes
+      if (/^\/api\/v2\/site-visit-bookings\/?$/i.test(pathname)) {
+        if (req.method === 'GET') {
+          const requirementId = url.searchParams.get('requirementId');
+          const leadId = url.searchParams.get('leadId');
+          if (!requirementId && !leadId) {
+            sendJson(res, { ok: false, error: 'requirementId or leadId query required' }, 400);
+            return;
+          }
+          if (requirementId) {
+            const requirement = runtime.repository.readRequirement(requirementId);
+            const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+              permissions: ['SITE_VISIT_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+            });
+            if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+          }
+          if (leadId === 'all') {
+            // Dashboard/reporting use-case: return all booking groups visible to the actor.
+            const db = runtime.repository.read();
+            const visibleRows = (db.SiteVisits || []).filter((row) => {
+              if (!row?.LeadID || !row?.VisitBookingID) return false;
+              const lead = runtime.repository.readLead(row.LeadID);
+              return accessSvc.authorizeLead(actor, lead, {
+                permissions: ['SITE_VISIT_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
+                hideExistence: true
+              }).ok;
+            });
+            const data = svc._groupBookings(visibleRows);
+            sendJson(res, { ok: true, data, count: data.length });
+            return;
+          }
+          if (leadId) {
+            const lead = runtime.repository.readLead(leadId);
+            const leadAccess = accessSvc.authorizeLead(actor, lead, {
+              permissions: ['SITE_VISIT_VIEW', 'LEADS_VIEW', 'LEADS_READ']
+            });
+            if (!leadAccess.ok) { sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode); return; }
+          }
+          const data = requirementId ? svc.listByRequirement(requirementId) : svc.listByLead(leadId);
+          sendJson(res, { ok: true, data, count: data.length });
+          return;
+        }
+        if (req.method === 'POST') {
+          const payload = bodyForV2 || {};
+          const requirement = runtime.repository.readRequirement(payload.requirementId || payload.RequirementID);
+          const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+            permissions: ['SITE_VISIT_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
+          });
+          if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+          const propertyIds = Array.isArray(payload.propertyIds) ? payload.propertyIds : (Array.isArray(payload.PropertyIDs) ? payload.PropertyIDs : []);
+          for (const propertyId of propertyIds) {
+            const property = runtime.repository.find('Inventory', 'PropertyID', propertyId);
+            const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+              permissions: ['SITE_VISIT_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+              hideExistence: true
+            });
+            if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+          }
+          const out = svc.create(payload, actor);
+          sendJson(res, out, out.ok ? 201 : 400);
+          return;
+        }
+      }
+
+      // Sub-resource: /:bookingId, /:bookingId/cancel, /:bookingId/complete
+      const bookingMatch = pathname.match(/^\/api\/v2\/site-visit-bookings\/([^\/]+)(?:\/(cancel|complete))?\/?$/i);
+      if (bookingMatch) {
+        const [, bookingId, action] = bookingMatch;
+        if (!action && req.method === 'GET') {
+          const bookingAccess = accessSvc.authorizeSiteVisitBooking(actor, bookingId, { permissions: ['SITE_VISIT_VIEW', 'LEADS_VIEW', 'LEADS_READ'] });
+          if (!bookingAccess.ok) { sendJson(res, { ok: false, error: bookingAccess.error }, bookingAccess.statusCode); return; }
+          const out = svc.get(bookingId);
+          sendJson(res, out, out.ok ? 200 : 404);
+          return;
+        }
+        if (!action && req.method === 'PATCH') {
+          const bookingAccess = accessSvc.authorizeSiteVisitBooking(actor, bookingId, { permissions: ['SITE_VISIT_VIEW', 'LEADS_EDIT', 'LEADS_UPDATE'] });
+          if (!bookingAccess.ok) { sendJson(res, { ok: false, error: bookingAccess.error }, bookingAccess.statusCode); return; }
+          const payload = bodyForV2 || {};
+          const propertyIds = Array.isArray(payload.propertyIds) ? payload.propertyIds : (Array.isArray(payload.PropertyIDs) ? payload.PropertyIDs : []);
+          for (const propertyId of propertyIds) {
+            const property = runtime.repository.find('Inventory', 'PropertyID', propertyId);
+            const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+              permissions: ['SITE_VISIT_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+              hideExistence: true
+            });
+            if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+          }
+          const out = svc.update(bookingId, payload, actor);
+          sendJson(res, out, out.ok ? 200 : 404);
+          return;
+        }
+        if (action === 'cancel' && req.method === 'POST') {
+          const bookingAccess = accessSvc.authorizeSiteVisitBooking(actor, bookingId, { permissions: ['SITE_VISIT_VIEW', 'LEADS_EDIT', 'LEADS_UPDATE'] });
+          if (!bookingAccess.ok) { sendJson(res, { ok: false, error: bookingAccess.error }, bookingAccess.statusCode); return; }
+          const out = svc.cancel(bookingId, actor);
+          sendJson(res, out, out.ok ? 200 : 404);
+          return;
+        }
+        if (action === 'complete' && req.method === 'POST') {
+          const bookingAccess = accessSvc.authorizeSiteVisitBooking(actor, bookingId, { permissions: ['SITE_VISIT_VIEW', 'LEADS_EDIT', 'LEADS_UPDATE'] });
+          if (!bookingAccess.ok) { sendJson(res, { ok: false, error: bookingAccess.error }, bookingAccess.statusCode); return; }
+          const out = svc.complete(bookingId, actor);
+          sendJson(res, out, out.ok ? 200 : 404);
+          return;
+        }
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    // ── Inventory / Property APIs ────────────────────────────────────────────
+    const invMatch = pathname.match(/^\/api\/v2\/inventory(?:\/([^\/]+))?(?:\/(photos|photos\/[^\/]+))?\/?$/i);
+    if (invMatch) {
+      const { InventoryService } = require('./src/services/inventoryService');
+      const svc = new InventoryService(runtime.repository);
+      const [, propertyId, subRoute] = invMatch;
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const inventoryPermission = req.method === 'GET'
+        ? 'INVENTORY_READ'
+        : req.method === 'POST'
+          ? (subRoute === 'photos' ? 'INVENTORY_UPDATE' : 'INVENTORY_CREATE')
+          : req.method === 'PATCH'
+            ? 'INVENTORY_UPDATE'
+            : req.method === 'DELETE'
+              ? 'INVENTORY_DELETE'
+              : null;
+      if (!inventoryPermission) {
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+      if (!ensurePermissionOrRespond(req, res, url, inventoryPermission)) return;
+
+      // GET /api/v2/inventory
+      if (!propertyId && !subRoute && req.method === 'GET') {
+        const perf = startApiPerformanceTrace(req, res, 'inventory.list');
+        const serviceStartedAt = process.hrtime.bigint();
+        const items = svc.listPage({
+          q:               url.searchParams.get('q') || undefined,
+          category:        url.searchParams.get('category') || undefined,
+          subCategory:     url.searchParams.get('subCategory') || undefined,
+          transactionType: url.searchParams.get('transactionType') || undefined,
+          status:          url.searchParams.get('status') || undefined,
+          projectId:       url.searchParams.get('projectId') || undefined,
+          builderId:       url.searchParams.get('builderId') || undefined,
+          builder:         url.searchParams.get('builder') || undefined,
+          location:        url.searchParams.get('location') || undefined,
+          society:         url.searchParams.get('society') || undefined,
+          source:          url.searchParams.get('source') || undefined,
+          page:            url.searchParams.get('page') || 1,
+          limit:           url.searchParams.get('limit') || 50
+        });
+        if (perf) perf.serviceMs = elapsedMs(serviceStartedAt);
+        const authorizationStartedAt = process.hrtime.bigint();
+        const authorized = items.data.filter((property) => accessSvc.authorizeProperty(actor, property, {
+          permissions: ['INVENTORY_READ'],
+          hideExistence: true
+        }).ok);
+        if (perf) perf.authorizationMs = elapsedMs(authorizationStartedAt);
+        sendJson(res, {
+          ok: true,
+          data: authorized,
+          count: authorized.length,
+          pagination: { ...items.pagination, count: authorized.length }
+        });
+        return;
+      }
+
+      // POST /api/v2/inventory (create)
+      if (!propertyId && req.method === 'POST') {
+        const body = bodyForV2 || {};
+        const created = svc.create(body, actor);
+        sendJson(res, { ok: true, data: created }, 201);
+        return;
+      }
+
+      // GET /api/v2/inventory/:id
+      if (propertyId && !subRoute && req.method === 'GET') {
+        const p = svc.get(propertyId);
+        if (!p) { sendJson(res, { ok: false, error: 'Property not found' }, 404); return; }
+        const access = accessSvc.authorizeProperty(actor, p, { permissions: ['INVENTORY_READ'], hideExistence: true });
+        if (!access.ok) { sendJson(res, { ok: false, error: access.error }, access.statusCode); return; }
+        sendJson(res, { ok: true, data: p });
+        return;
+      }
+
+      // PATCH /api/v2/inventory/:id
+      if (propertyId && !subRoute && req.method === 'PATCH') {
+        const existing = svc.get(propertyId);
+        const access = accessSvc.authorizeProperty(actor, existing, { permissions: ['INVENTORY_UPDATE'], hideExistence: true });
+        if (!access.ok) { sendJson(res, { ok: false, error: access.error }, access.statusCode); return; }
+        const updated = svc.update(propertyId, bodyForV2 || {}, actor);
+        if (!updated) { sendJson(res, { ok: false, error: 'Property not found' }, 404); return; }
+        sendJson(res, { ok: true, data: updated });
+        return;
+      }
+
+      // DELETE /api/v2/inventory/:id
+      if (propertyId && !subRoute && req.method === 'DELETE') {
+        const existing = svc.get(propertyId);
+        const access = accessSvc.authorizeProperty(actor, existing, { permissions: ['INVENTORY_DELETE'], hideExistence: true });
+        if (!access.ok) { sendJson(res, { ok: false, error: access.error }, access.statusCode); return; }
+        const ok = svc.remove(propertyId);
+        if (!ok) { sendJson(res, { ok: false, error: 'Property not found' }, 404); return; }
+        sendJson(res, { ok: true, action: 'DELETED', propertyId });
+        return;
+      }
+
+      // POST /api/v2/inventory/:id/photos — body: { photos: [dataUrl, ...] }
+      if (propertyId && subRoute === 'photos' && req.method === 'POST') {
+        const existing = svc.get(propertyId);
+        const access = accessSvc.authorizeProperty(actor, existing, { permissions: ['INVENTORY_UPDATE'], hideExistence: true });
+        if (!access.ok) { sendJson(res, { ok: false, error: access.error }, access.statusCode); return; }
+        const body = bodyForV2 || {};
+        const photosArr = Array.isArray(body.photos) ? body.photos : [];
+        const photos = svc.uploadPhotos(propertyId, photosArr, actor);
+        if (!photos) { sendJson(res, { ok: false, error: 'Property not found' }, 404); return; }
+        sendJson(res, { ok: true, data: photos });
+        return;
+      }
+
+      // DELETE /api/v2/inventory/:id/photos/:photoId
+      const delPhotoMatch = pathname.match(/^\/api\/v2\/inventory\/([^\/]+)\/photos\/([^\/]+)\/?$/i);
+      if (delPhotoMatch && req.method === 'DELETE') {
+        const [, pid, phid] = delPhotoMatch;
+        const existing = svc.get(pid);
+        const access = accessSvc.authorizeProperty(actor, existing, { permissions: ['INVENTORY_DELETE'], hideExistence: true });
+        if (!access.ok) { sendJson(res, { ok: false, error: access.error }, access.statusCode); return; }
+        const ok = svc.deletePhoto(pid, phid);
+        if (!ok) { sendJson(res, { ok: false, error: 'Photo or property not found' }, 404); return; }
+        sendJson(res, { ok: true, action: 'DELETED', propertyId: pid, photoId: phid });
+        return;
+      }
+    }
+
+    // ── Duplicate Review APIs ────────────────────────────────────────────────
+    // GET /api/v2/duplicates/pending — list all leads flagged as pending review
+    if (/^\/api\/v2\/duplicates\/pending\/?$/i.test(pathname) && req.method === 'GET') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_READ')) return;
+      const db = runtime.repository.read();
+      const pending = (db.Leads || []).filter(l => l._reviewStatus === 'PENDING_DUP_MERGE');
+      const enriched = pending.map(p => ({
+        lead: p,
+        candidates: (p._dupCandidates || []).map(id => (db.Leads || []).find(l => l.LeadID === id)).filter(Boolean),
+        reason: p._reviewNote || 'Duplicate detected'
+      }));
+      sendJson(res, { ok: true, data: enriched, count: enriched.length });
+      return;
+    }
+
+    // POST /api/v2/duplicates/keep-separate — clear pending flag on a lead (keep as new)
+    if (/^\/api\/v2\/duplicates\/keep-separate\/?$/i.test(pathname) && req.method === 'POST') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+      const body = bodyForV2 || {};
+      const leadId = String(body.leadId || '').trim();
+      if (!leadId) { sendJson(res, { ok: false, error: 'leadId required' }, 400); return; }
+      const db = runtime.repository.read();
+      const lead = (db.Leads || []).find(l => l.LeadID === leadId);
+      if (!lead) { sendJson(res, { ok: false, error: 'Lead not found' }, 404); return; }
+      delete lead._reviewStatus;
+      delete lead._dupCandidates;
+      delete lead._reviewNote;
+      lead.UpdatedAt = new Date().toISOString();
+      runtime.repository.write(db);
+      sendJson(res, { ok: true, action: 'KEPT_SEPARATE', leadId });
+      return;
+    }
+
+    // POST /api/v2/duplicates/merge — merge source client INTO target client.
+    // Source is retained as an audit stub; all business records move to target.
+    if (/^\/api\/v2\/duplicates\/merge\/?$/i.test(pathname) && req.method === 'POST') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+      const body = bodyForV2 || {};
+      const sourceLeadId = String(body.sourceLeadId || '').trim();
+      const targetLeadId = String(body.targetLeadId || '').trim();
+      const overrides = body.fieldOverrides || {};
+      if (!sourceLeadId || !targetLeadId) { sendJson(res, { ok: false, error: 'sourceLeadId & targetLeadId required' }, 400); return; }
+      if (sourceLeadId === targetLeadId) { sendJson(res, { ok: false, error: 'Cannot merge into self' }, 400); return; }
+      const db = runtime.repository.read();
+      const source = (db.Leads || []).find(l => l.LeadID === sourceLeadId);
+      const target = (db.Leads || []).find(l => l.LeadID === targetLeadId);
+      if (!source || !target) { sendJson(res, { ok: false, error: 'Lead(s) not found' }, 404); return; }
+      if (source.MergedIntoClientID) { sendJson(res, { ok: false, error: 'Source client is already merged', mergedIntoClientId: source.MergedIntoClientID }, 409); return; }
+
+      const normalizeMobile = (value) => {
+        let digits = String(value || '').replace(/\D/g, '');
+        if (digits.length > 10 && digits.startsWith('91')) digits = digits.slice(-10);
+        return digits.length === 10 ? digits : digits;
+      };
+      const sourceMobiles = [source.PrimaryMobile, source.Phone, source.AlternateMobile, ...(Array.isArray(source.AlternateMobiles) ? source.AlternateMobiles : [])]
+        .map(normalizeMobile).filter(Boolean);
+      const targetPrimary = normalizeMobile(target.PrimaryMobile || target.Phone);
+      const altSet = new Set([...(Array.isArray(target.AlternateMobiles) ? target.AlternateMobiles : []), target.AlternateMobile]
+        .map(normalizeMobile).filter(Boolean));
+      for (const mobile of sourceMobiles) if (mobile !== targetPrimary) altSet.add(mobile);
+
+      const mergeableFields = ['ClientName','Email','WhatsApp','City','LeadSource','Source','Notes','Tags','Priority','ClientLifecycle','AssignedAgentID'];
+      for (const field of mergeableFields) {
+        if (overrides[field] === 'source' && source[field] != null && source[field] !== '') target[field] = source[field];
+        else if (target[field] == null || target[field] === '') target[field] = source[field];
+      }
+      if (overrides.PrimaryMobile === 'source' && sourceMobiles[0]) {
+        if (targetPrimary && targetPrimary !== sourceMobiles[0]) altSet.add(targetPrimary);
+        target.PrimaryMobile = sourceMobiles[0];
+        target.Phone = sourceMobiles[0];
+        altSet.delete(sourceMobiles[0]);
+      } else if (targetPrimary) {
+        target.PrimaryMobile = targetPrimary;
+        target.Phone = targetPrimary;
+      }
+      target.AlternateMobiles = [...altSet];
+      target.AlternateMobile = target.AlternateMobiles[0] || null;
+      target.UpdatedAt = new Date().toISOString();
+      target._mergedFrom = [...new Set([...(target._mergedFrom || []), sourceLeadId])];
+
+      const linkedCollections = ['Transactions','Activities','FollowUps','Shortlists','SiteVisits','Negotiations','Tokens','Deals','Documents','Timeline','BrokerShares','BrokerSubmissions'];
+      for (const collection of linkedCollections) {
+        for (const row of db[collection] || []) if (row.LeadID === sourceLeadId) row.LeadID = targetLeadId;
+      }
+
+      // Keep the old identity for audit/history and old-mobile resolution.
+      source.ClientStatus = 'Merged';
+      source.LeadStatus = 'Merged';
+      source.ClientLifecycle = 'Archived';
+      source.ArchiveFlag = true;
+      source.MergedIntoClientID = targetLeadId;
+      source.MergedAt = new Date().toISOString();
+      source.MergedBy = actor?.userId || 'system';
+      source.UpdatedAt = source.MergedAt;
+      delete source._reviewStatus;
+      delete source._dupCandidates;
+      delete source._reviewNote;
+
+      runtime.repository.write(db);
+      try {
+        runtime.repository.addTimelineEntry(targetLeadId, 'Lead', targetLeadId, 'CLIENT_MERGED', 'Client records merged', { sourceLeadId, targetLeadId, alternateMobiles: target.AlternateMobiles });
+      } catch (_) {}
+      sendJson(res, { ok: true, action: 'MERGED', sourceLeadId, targetLeadId, alternateMobiles: target.AlternateMobiles });
+      return;
+    }
+
+    // DELETE /api/v2/duplicates/:leadId — hard delete a pending-review lead (was spam)
+    const delMatch = pathname.match(/^\/api\/v2\/duplicates\/([^\/]+)\/?$/i);
+    if (delMatch && req.method === 'DELETE') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+      const leadId = decodeURIComponent(delMatch[1]);
+      const db = runtime.repository.read();
+      const lead = (db.Leads || []).find(l => l.LeadID === leadId);
+      if (!lead) { sendJson(res, { ok: false, error: 'Lead not found' }, 404); return; }
+      // Only allow delete on PENDING items to prevent accidental data loss
+      if (lead._reviewStatus !== 'PENDING_DUP_MERGE') { sendJson(res, { ok: false, error: 'Only pending-review leads can be deleted here' }, 400); return; }
+      db.Leads         = (db.Leads || []).filter(l => l.LeadID !== leadId);
+      db.Transactions  = (db.Transactions || []).filter(t => t.LeadID !== leadId);
+      db.Requirements  = (db.Requirements || []).filter(r => r.LeadID !== leadId);
+      runtime.repository.write(db);
+      sendJson(res, { ok: true, action: 'DELETED', leadId });
+      return;
+    }
+
+    // ── Google Sheet Sync Webhook ────────────────────────────────────────────
+    if (/^\/api\/sync\/google-sheet\/?$/i.test(pathname) && req.method === 'POST') {
+      const { GoogleSheetSyncService } = require('./src/services/googleSheetSyncService');
+      const svc = new GoogleSheetSyncService(runtime.repository);
+      const configuredSyncToken = String(process.env.SHEET_SYNC_TOKEN || '').trim();
+      if (!configuredSyncToken || configuredSyncToken === 'CHANGE_ME_SECRET') {
+        sendJson(res, { ok: false, error: 'Sync token is not configured' }, 503);
+        return;
+      }
+      const token = req.headers['x-sync-token'] || req.headers['X-Sync-Token'] || '';
+      if (!svc.verifyToken(token)) {
+        sendJson(res, { ok: false, error: 'Invalid sync token' }, 401);
+        return;
+      }
+      const body = bodyForV2 || {};
+      const tab  = String(body.tab || '').trim();
+      const rows = Array.isArray(body.rows) ? body.rows : (body.row ? [body.row] : []);
+      if (!tab || !rows.length) {
+        sendJson(res, { ok: false, error: 'tab + rows[] required' }, 400);
+        return;
+      }
+      const results = await svc.syncRows(tab, rows);
+      const created = results.filter(r => r.action === 'CREATED').length;
+      const updated = results.filter(r => r.action === 'UPDATED').length;
+      const failed  = results.filter(r => !r.ok).length;
+      sendJson(res, { ok: true, tab, summary: { created, updated, failed, total: results.length }, results }, 200);
+      return;
+    }
+
+    // ── Simple sheet setup instructions endpoint ─────────────────────────────
+    if (/^\/api\/sync\/google-sheet\/setup\/?$/i.test(pathname) && req.method === 'GET') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_READ')) return;
+      const appUrl = String(process.env.APP_URL || '').trim() || `http://localhost:${process.env.PORT || 3000}`;
+      sendJson(res, {
+        ok: true,
+        data: {
+          webhookUrl: `${appUrl}/api/sync/google-sheet`,
+          syncTokenConfigured: Boolean(String(process.env.SHEET_SYNC_TOKEN || '').trim() && String(process.env.SHEET_SYNC_TOKEN || '').trim() !== 'CHANGE_ME_SECRET'),
+          instructions: 'Copy /app/scripts/apps-script-webhook.gs code and paste in your Google Sheet Extensions → Apps Script'
+        }
+      });
+      return;
+    }
+
+    if (/^\/api\/sync\/google-sheet\/export\/?$/i.test(pathname) && req.method === 'GET') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_READ')) return;
+      const leads = typeof runtime.repository.listLeads === 'function' ? runtime.repository.listLeads() : [];
+      sendJson(res, { ok: true, data: leads });
+      return;
+    }
+
+    const v2Result = await v2Router.handle(req, res, url, bodyForV2);
+    if (v2Result && v2Result.handled) {
+      sendJson(res, v2Result.body, v2Result.statusCode || 200);
+      return;
+    }
+    // ── End V2 Router ─────────────────────────────────────────────────────────
+
+    if (pathname === '/health' && req.method === 'GET') {
+      sendJson(res, { ok: true });
+      return;
+    }
+
+    if (pathname === '/api/auth/test-session' && req.method === 'POST') {
+      if (!isExplicitTestRuntime() && !isLoopbackRequest(req)) {
+        sendJson(res, { ok: false, error: 'Not found' }, 404);
+        return;
+      }
+      const secret = getConfiguredTestSessionSecret();
+      const body = bodyForV2 || {};
+      const user = findLoginUser(body);
+      if (!secret || !user || !safeSecretEquals(body.secret, secret)) {
+        sendJson(res, { ok: false, error: 'Unauthorized' }, 401);
+        return;
+      }
+      const token = runtime.auth.issueSession({
+        userId: user.UserID,
+        companyId: user.CompanyID || user.CompanyId || '',
+        brokerageId: user.BrokerageID || user.BrokerageId || '',
+        role: user.Role || 'AGENT',
+        permissions: Array.isArray(user.Permissions) ? user.Permissions : []
+      });
+      setSessionCookie(res, req, token);
+      sendJson(res, { ok: true, data: { token, userId: user.UserID } });
+      return;
+    }
+
+    if (pathname === '/api/auth/pin-login' && req.method === 'POST') {
+      const body = bodyForV2 || {};
+      const submitted = String(body.pin || body.code || '').trim();
+      const guardKey = PinLoginGuard.keyFromRequest(req, AUTH_EXCHANGE_STATE_SECRET);
+      const globalGuardKey = PinLoginGuard.keyFromScope('admin-pin', AUTH_EXCHANGE_STATE_SECRET);
+      const [ipGuardState, globalGuardState] = await Promise.all([
+        pinLoginIpGuard.checkAllowed(guardKey),
+        pinLoginGlobalGuard.checkAllowed(globalGuardKey)
+      ]);
+      const blockedGuard = !ipGuardState.allowed ? ipGuardState : globalGuardState;
+      if (!ipGuardState.allowed || !globalGuardState.allowed) {
+        logAuthEvent('pin_login_rejected', { reason: 'locked' });
+        sendJson(
+          res,
+          { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
+          429,
+          { 'Retry-After': String(Math.max(1, blockedGuard.retryAfterSeconds)) }
+        );
+        return;
+      }
+
+      const pinCredential = runtime?.repository?.getAdminPinCredential?.() || {
+        credential: String(process.env.APP_PIN || '').trim(),
+        source: 'env'
+      };
+      if (!pinCredential.credential) {
+        sendJson(res, { ok: false, error: 'PIN login is not configured' }, 503);
+        return;
+      }
+      const valid = pinCredential.source === 'settings'
+        ? runtime.repository.verifyAdminPin(submitted, pinCredential.credential)
+        : Boolean(submitted && safeSecretEquals(submitted, pinCredential.credential));
+      if (!valid) {
+        const [ipFailureState, globalFailureState] = await Promise.all([
+          pinLoginIpGuard.recordFailure(guardKey),
+          pinLoginGlobalGuard.recordFailure(globalGuardKey)
+        ]);
+        const failureState = ipFailureState.locked ? ipFailureState : globalFailureState;
+        logAuthEvent('pin_login_rejected', {
+          reason: failureState.locked ? 'locked_after_failures' : 'invalid_code'
+        });
+        if (ipFailureState.locked || globalFailureState.locked) {
+          sendJson(
+            res,
+            { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
+            429,
+            { 'Retry-After': String(Math.max(1, failureState.retryAfterSeconds)) }
+          );
+          return;
+        }
+        sendJson(res, { ok: false, error: 'Invalid code. Please try again.' }, 401);
+        return;
+      }
+
+      const [ipResetOk, globalResetOk] = await Promise.all([
+        pinLoginIpGuard.recordSuccess(guardKey),
+        pinLoginGlobalGuard.recordSuccess(globalGuardKey)
+      ]);
+      const resetOk = ipResetOk && globalResetOk;
+      if (!resetOk) {
+        logAuthEvent('pin_login_rejected', { reason: 'locked_during_verification' });
+        sendJson(
+          res,
+          { ok: false, error: 'PIN login temporarily locked. Please retry later.' },
+          429,
+          { 'Retry-After': '1' }
+        );
+        return;
+      }
+      const users = typeof runtime?.repository?.listUsers === 'function' ? (runtime.repository.listUsers() || []) : [];
+      const admin = users.find((u) => String(u.Status || '').trim().toUpperCase() === 'ACTIVE' && String(u.Role || '').trim().toUpperCase() === 'ADMIN')
+        || users.find((u) => u.UserID === 'USR-SYSTEM-ADMIN');
+      if (!admin) {
+        sendJson(res, { ok: false, error: 'No admin user available' }, 500);
+        return;
+      }
+      const token = runtime.auth.issueSession({
+        userId: admin.UserID,
+        role: admin.Role || 'ADMIN',
+        companyId: admin.CompanyID || admin.CompanyId || 'COMP-DEFAULT',
+        brokerageId: admin.BrokerageID || admin.BrokerageId || 'BRK-DEFAULT',
+        permissions: Array.isArray(admin.Permissions) && admin.Permissions.length ? admin.Permissions : ['*']
+      });
+      setSessionCookie(res, req, token);
+      logAuthEvent('pin_login_succeeded', { userId: admin.UserID });
+      sendJson(res, { ok: true, data: { redirectTo: '/' } });
+      return;
+    }
+
+
+    if (pathname === '/api/auth/login-state' && req.method === 'GET') {
+      const nextPath = sanitizeAuthNextPath(url?.searchParams?.get('next') || '/');
+      const authStateMaxAgeSeconds = getAuthExchangeStateMaxAgeSeconds(runtime?.repository);
+      const googleAuth = resolveGoogleOAuthConfig();
+      if (!googleAuth.enabled && (isProductionLikeRuntime() || isProductionRuntime())) {
+        logAuthEvent('login_state_rejected', { reason: 'google_oauth_not_configured', nextPath });
+        sendJson(res, { ok: false, error: 'Google sign-in is not configured' }, 503);
+        return;
+      }
+      let signInUrl = resolveAuthSignInUrl();
+      let authMode = 'provider_session';
+      let redirectUri = '';
+      const browserFlowId = crypto.randomBytes(24).toString('hex');
+      let state = issueAuthExchangeState('', authStateMaxAgeSeconds);
+      const providerRedirectUri = resolveGoogleOAuthRedirectUrl(req, nextPath);
+      if (!providerRedirectUri) {
+        sendJson(res, { ok: false, error: 'Unable to start Google sign-in' }, 500);
+        return;
+      }
+      const providerCallbackUrl = new URL(providerRedirectUri);
+      providerCallbackUrl.searchParams.set('auth_state', state);
+      const providerSignInUrl = new URL(signInUrl);
+      providerSignInUrl.searchParams.set('redirect', providerCallbackUrl.toString());
+      signInUrl = providerSignInUrl.toString();
+      if (googleAuth.enabled) {
+        redirectUri = resolveGoogleOAuthRedirectUrl(req, nextPath);
+        if (!redirectUri) {
+          sendJson(res, { ok: false, error: 'Unable to start Google sign-in' }, 500);
+          return;
+        }
+        state = issueAuthExchangeState(redirectUri, authStateMaxAgeSeconds);
+        const authorizeUrl = new URL(resolveGoogleOAuthAuthorizeUrl());
+        authorizeUrl.searchParams.set('client_id', googleAuth.clientId);
+        authorizeUrl.searchParams.set('response_type', 'code');
+        authorizeUrl.searchParams.set('scope', resolveGoogleOAuthScopes());
+        authorizeUrl.searchParams.set('state', state);
+        authorizeUrl.searchParams.set('redirect_uri', redirectUri);
+        signInUrl = authorizeUrl.toString();
+        authMode = 'google_oauth_code';
+      }
+      await persistAuthExchangeState(runtime?.repository, buildAuthExchangeStateRecord({
+        state,
+        redirectUri,
+        nextPath,
+        maxAgeSeconds: authStateMaxAgeSeconds,
+        browserFlowId,
+        authMode
+      }));
+      const signInHost = (() => {
+        try { return new URL(signInUrl).host; } catch (_) { return ''; }
+      })();
+      logAuthEvent('login_state_issued', { signInHost, authMode, nextPath });
+      sendJson(
+        res,
+        { ok: true, data: { state, signInUrl, authMode, browserFlowId, redirectUri } },
+        200,
+        { 'Set-Cookie': buildAuthFlowCookies(req, { state, nextPath, maxAgeSeconds: authStateMaxAgeSeconds }) }
+      );
+      return;
+    }
+
+    if (isAuthSessionExchangePath && req.method === 'POST') {
+      const body = await readJson(req);
+      const sessionId = String(body?.session_id || body?.sessionId || '').trim();
+      const authCode = String(body?.code || body?.authorization_code || body?.authorizationCode || '').trim();
+      const redirectUri = authCode
+        ? String(body?.redirect_uri || body?.redirectUri || '').trim() || resolveGoogleOAuthRedirectUrl(req)
+        : '';
+      const state = String(body?.state || '').trim();
+      const browserFlowId = String(body?.browser_flow_id || body?.browserFlowId || '').trim();
+      let nextPath = sanitizeAuthNextPath(parseCookies(req.headers || {})[AUTH_NEXT_PATH_COOKIE_NAME] || '/');
+      if (!sessionId && !authCode) {
+        logAuthEvent('session_exchange_rejected', { reason: 'missing_session_artifact' });
+        sendJson(res, { ok: false, error: 'session_id or code is required' }, 400);
+        return;
+      }
+      if (authCode && !redirectUri) {
+        logAuthEvent('session_exchange_rejected', { reason: 'missing_redirect_uri' });
+        sendJson(res, { ok: false, error: 'redirect_uri is required' }, 400);
+        return;
+      }
+      const consumedState = await consumeAuthExchangeState(
+        req.headers || {},
+        state,
+        authCode ? redirectUri : '',
+        { repository: runtime?.repository, browserFlowId }
+      );
+      if (!consumedState.ok) {
+        logAuthEvent('session_exchange_rejected', { reason: consumedState.reason || 'invalid_auth_state' });
+        sendJson(
+          res,
+          { ok: false, error: consumedState.error },
+          400,
+          { 'Set-Cookie': buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 }) }
+        );
+        return;
+      }
+      nextPath = sanitizeAuthNextPath(consumedState.nextPath || nextPath || '/');
+
+      let remote;
+      try {
+        if (authCode) {
+          remote = await fetchGoogleIdentityFromAuthCode(authCode, redirectUri);
+        } else {
+          remote = await fetchAuthProviderSessionData(sessionId);
+        }
+      } catch (error) {
+        logAuthEvent('session_exchange_provider_unavailable', { statusCode: 502, error: error.message });
+        sendJson(
+          res,
+          { ok: false, error: `Auth provider unavailable: ${error.message}` },
+          502,
+          { 'Set-Cookie': buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 }) }
+        );
+        return;
+      }
+
+      if (!remote.ok) {
+        const statusCode = remote.statusCode >= 500 ? 502 : remote.statusCode;
+        const error = remote.statusCode >= 500
+          ? `Auth provider error: ${remote.error}`
+          : (remote.error || 'Unauthorized');
+        logAuthEvent('session_exchange_provider_rejected', {
+          statusCode,
+          providerStatusCode: remote.statusCode,
+          error
+        });
+        sendJson(
+          res,
+          { ok: false, error },
+          statusCode,
+          { 'Set-Cookie': buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 }) }
+        );
+        return;
+      }
+
+      const user = findActiveUserByEmail(remote.identity.email);
+      if (!user) {
+        logAuthEvent('session_exchange_rejected', {
+          reason: 'unauthorized_google_account',
+          email: remote.identity.email
+        });
+        sendJson(
+          res,
+          { ok: false, error: 'This Google account is not authorized.' },
+          403,
+          { 'Set-Cookie': buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 }) }
+        );
+        return;
+      }
+
+      const companyId = String(user.CompanyID || user.CompanyId || '').trim();
+      const brokerageId = String(user.BrokerageID || user.BrokerageId || '').trim();
+      if (!companyId || !brokerageId) {
+        logAuthEvent('session_exchange_rejected', {
+          reason: 'missing_tenant_scope',
+          userId: user.UserID,
+          email: remote.identity.email
+        });
+        sendJson(
+          res,
+          { ok: false, error: 'Tenant scope required' },
+          403,
+          { 'Set-Cookie': buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 }) }
+        );
+        return;
+      }
+
+      const localSessionId = runtime.auth.issueSession({
+        userId: user.UserID,
+        role: user.Role,
+        companyId,
+        brokerageId,
+        permissions: Array.isArray(user.Permissions) ? user.Permissions : []
+      });
+      logAuthEvent('session_exchange_succeeded', {
+        userId: user.UserID,
+        role: String(user.Role || '').trim().toUpperCase(),
+        email: remote.identity.email
+      });
+      sendJson(res, {
+        ok: true,
+        data: {
+          userId: user.UserID,
+          role: String(user.Role || '').trim().toUpperCase(),
+          name: user.Name || remote.identity.name || '',
+          email: String(user.Email || '').trim().toLowerCase(),
+          redirectTo: nextPath
+        }
+      }, 200, appendSetCookie({
+        'Set-Cookie': sessionCookieValue(req, localSessionId)
+      }, buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 })));
+      return;
+    }
+
+    if (pathname === '/api/auth/me' && req.method === 'GET') {
+      const context = runtime.auth.resolveRequestContext({
+        headers: req.headers || {},
+        pathname
+      });
+      if (!context.authenticated || context.public || !context.userId) {
+        sendJson(res, { ok: false, error: 'Unauthorized' }, 401);
+        return;
+      }
+      const user = runtime.repository.getUser(context.userId);
+      sendJson(res, {
+        ok: true,
+        data: {
+          userId: context.userId,
+          role: context.role,
+          name: user?.Name || '',
+          email: String(user?.Email || '').trim().toLowerCase()
+        }
+      });
+      return;
+    }
+
+    if (pathname === '/api/auth/logout' && req.method === 'POST') {
+      const context = runtime.auth.resolveRequestContext({
+        headers: req.headers || {},
+        pathname
+      });
+      if (context.authenticated && !context.public && context.sessionId) {
+        runtime.auth.revokeSession(context.sessionId);
+      }
+      sendJson(res, { ok: true }, 200, {
+        'Set-Cookie': sessionCookieValue(req, '', { clear: true })
+      });
+      return;
+    }
+
+    if (pathname === '/api/auth/login' && req.method === 'POST') {
+      sendJson(res, { ok: false, error: 'Not found' }, 404);
+      return;
+    }
+
+      if (pathname === '/api/public/properties' && req.method === 'GET') {
+      const payload = await runtime.listPublicProperties();
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/public/projects' && req.method === 'GET') {
+      const payload = await runtime.listPublicProjects();
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/dashboard') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'REPORT_READ')) return;
+      const payload = await runtime.dashboard();
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/leads' && req.method === 'POST') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'LEADS_CREATE')) return;
+      const body = await readJson(req);
+      const payload = await runtime.createLead({
+        ...body,
+        AssignedAgentID: body.AssignedAgentID || body.assignedAgentId || actor.userId,
+        CompanyID: actor.companyId || actor.companyID || null,
+        BrokerageID: actor.brokerageId || actor.brokerageID || null,
+        CreatedBy: actor.userId
+      });
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/leads' && req.method === 'GET') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'LEADS_READ')) return;
+      const payload = await runtime.leads();
+      if (payload?.ok && Array.isArray(payload.data)) {
+        payload.data = accessSvc.filterReadableLeads(payload.data, actor);
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname.startsWith('/api/leads/')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const match = pathname.match(/^\/api\/leads\/([^/]+)(?:\/([^/]+))?$/);
+
+      if (!match) {
+        sendJson(res, { ok: false, error: 'Bad lead path' }, 400);
+        return;
+      }
+
+      const leadId = match[1];
+      const subPath = match[2];
+      const existingLead = await runtime.readLead(leadId);
+      const leadPermission = req.method === 'PATCH' || (req.method === 'POST' && ['transactions', 'requirements', 'activity'].includes(subPath))
+        ? 'LEADS_UPDATE'
+        : 'LEADS_READ';
+      const leadAccess = accessSvc.authorizeLead(actor, existingLead?.data, {
+        permissions: [leadPermission],
+        hideExistence: req.method === 'PATCH' ? false : true
+      });
+      if (!leadAccess.ok) {
+        sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode);
+        return;
+      }
+
+      if (req.method === 'GET') {
+        if (subPath === 'workspace') {
+          const workspace = await runtime.getLeadWorkspace(leadId);
+          sendJson(res, workspace);
+          return;
+        }
+
+        if (subPath === 'transactions' || subPath === 'requirements') {
+          const payload = await runtime.getLeadRequirements(leadId);
+          sendJson(res, payload);
+          return;
+        }
+
+        if (subPath === 'activity') {
+          const payload = await runtime.getLeadActivity(leadId);
+          sendJson(res, payload);
+          return;
+        }
+
+        const lead = await runtime.readLead(leadId);
+        sendJson(res, lead);
+        return;
+      }
+
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        const existing = existingLead;
+        if (!existing.ok) { sendJson(res, { ok: false, error: 'Lead not found' }, 404); return; }
+        const scope = tenantCheck(existing.data, actor);
+        if (!scope.ok) { sendJson(res, { ok: false, error: 'Forbidden' }, 403); return; }
+        const payload = await runtime.updateLead(leadId, { ...body, params: { leadId } });
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === 'POST') {
+        if (subPath === 'transactions' || subPath === 'requirements') {
+          const body = await readJson(req);
+          const transactionId = body.transactionId || body.TransactionID;
+          if (!transactionId) {
+            sendJson(res, { ok: false, error: 'transactionId required; create transactions through the transaction API' }, 400);
+            return;
+          }
+          const payload = await runtime.createRequirement(leadId, transactionId, body);
+          sendJson(res, { ...payload, compatibilityMode: subPath === 'requirements' });
+          return;
+        }
+
+        if (subPath === 'activity') {
+          const body = await readJson(req);
+          const payload = await runtime.addActivity(leadId, body);
+          sendJson(res, payload);
+          return;
+        }
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    if (pathname === '/api/transactions') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'TRANSACTIONS_READ')) return;
+      const payload = await runtime.router.route('transactions', 'list');
+      if (payload?.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((transaction) => accessSvc.authorizeTransaction(actor, transaction, {
+          permissions: ['TRANSACTIONS_READ'],
+          hideExistence: true
+        }).ok);
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/followups') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const followUpPermission = req.method === 'GET' ? 'LEADS_READ' : req.method === 'POST' ? 'LEADS_UPDATE' : null;
+      if (!followUpPermission) {
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+        return;
+      }
+      if (!ensurePermissionOrRespond(req, res, url, followUpPermission)) return;
+      if (req.method === 'GET') {
+        const leadId = url.searchParams.get('leadId') || url.searchParams.get('LeadID') || undefined;
+        const requirementId = url.searchParams.get('requirementId') || url.searchParams.get('RequirementID') || undefined;
+        const payload = await runtime.listFollowUps({
+          LeadID: leadId,
+          RequirementID: requirementId
+        });
+        if (payload?.ok && Array.isArray(payload.data)) {
+          payload.data = payload.data.filter((followUp) => accessSvc.authorizeFollowUp(actor, followUp, {
+            permissions: ['LEADS_READ'],
+            hideExistence: true
+          }).ok);
+        }
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === 'POST') {
+        const body = await readJson(req);
+        const lead = runtime.repository.readLead(body.leadId || body.LeadID);
+        const leadAccess = accessSvc.authorizeLead(actor, lead, {
+          permissions: ['LEADS_UPDATE', 'LEADS_READ'],
+          hideExistence: true
+        });
+        if (!leadAccess.ok) {
+          sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode);
+          return;
+        }
+        if (body.requirementId || body.RequirementID) {
+          const requirement = runtime.repository.readRequirement(body.requirementId || body.RequirementID);
+          const requirementAccess = accessSvc.authorizeRequirement(actor, requirement, {
+            permissions: ['REQUIREMENTS_READ', 'LEADS_READ'],
+            hideExistence: true
+          });
+          if (!requirementAccess.ok) {
+            sendJson(res, { ok: false, error: requirementAccess.error }, requirementAccess.statusCode);
+            return;
+          }
+        }
+        const payload = await runtime.createFollowUp({
+          ...body,
+          CompanyID: actor.companyId || actor.companyID || null,
+          BrokerageID: actor.brokerageId || actor.brokerageID || null,
+          CreatedBy: actor.userId,
+          AssignedUser: body.AssignedUser || body.assignedUser || actor.userId
+        });
+        sendJson(res, payload, 201);
+        return;
+      }
+    }
+
+    if (pathname === '/api/inventory' && req.method === 'GET') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'INVENTORY_READ')) return;
+      const payload = await runtime.listInventory();
+      if (payload?.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((property) => accessSvc.authorizeProperty(actor, property, {
+          permissions: ['INVENTORY_READ'],
+          hideExistence: true
+        }).ok);
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/inventory' && req.method === 'POST') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'INVENTORY_CREATE')) return;
+      const body = await readJson(req);
+      const payload = await runtime.createInventoryProperty(body, actor);
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/requirements' && req.method === 'POST') {
+      // Legacy compatibility only: never creates a Requirement row.
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'REQUIREMENTS_CREATE')) return;
+      const body = await readJson(req);
+      const leadId = body.leadId || body.LeadID;
+      const lead = runtime.repository.readLead(leadId);
+      const leadAccess = accessSvc.authorizeLead(actor, lead, {
+        permissions: ['REQUIREMENTS_CREATE', 'LEADS_READ'],
+        hideExistence: true
+      });
+      if (!leadAccess.ok) {
+        sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode);
+        return;
+      }
+      const payload = await runtime.createRequirement(
+        leadId,
+        body.transactionId || body.TransactionID,
+        {
+          ...body,
+          CompanyID: actor.companyId || actor.companyID || null,
+          BrokerageID: actor.brokerageId || actor.brokerageID || null,
+          CreatedBy: actor.userId
+        }
+      );
+      sendJson(res, payload);
+      return;
+    }
+
+    if ((pathname.startsWith('/api/transactions/') || pathname.startsWith('/api/requirements/')) && pathname.endsWith('/matches')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const parts = pathname.split('/').filter(Boolean);
+      const legacyRequirementPath = parts[1] === 'requirements';
+      const requestedId = parts[2];
+      const legacy = legacyRequirementPath ? runtime.repository.readRequirement(requestedId) : null;
+      const transactionId = legacyRequirementPath ? legacy?.TransactionID : requestedId;
+      const transaction = transactionId ? runtime.repository.find('Transactions', 'TransactionID', transactionId) : null;
+      const txnAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['MATCHING_VIEW', 'TRANSACTIONS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!txnAccess.ok) { sendJson(res, { ok: false, error: txnAccess.error }, txnAccess.statusCode); return; }
+      const payload = await runtime.getMatches(transactionId);
+      if (payload.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((row) => {
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if ((pathname.startsWith('/api/transactions/') || pathname.startsWith('/api/requirements/')) && pathname.endsWith('/shortlist')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const parts = pathname.split('/').filter(Boolean);
+      const legacyRequirementPath = parts[1] === 'requirements';
+      const requestedId = parts[2];
+      const legacy = legacyRequirementPath ? runtime.repository.readRequirement(requestedId) : null;
+      const transactionId = legacyRequirementPath ? legacy?.TransactionID : requestedId;
+      const transaction = transactionId ? runtime.repository.find('Transactions', 'TransactionID', transactionId) : null;
+      const txnAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['SHORTLIST_VIEW', 'TRANSACTIONS_READ', 'LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!txnAccess.ok) { sendJson(res, { ok: false, error: txnAccess.error }, txnAccess.statusCode); return; }
+      const status = url.searchParams.get('status') || undefined;
+      const payload = await runtime.listShortlist({ transactionId, status });
+      if (payload.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((row) => {
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname.startsWith('/api/requirements/')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const match = pathname.match(/^\/api\/requirements\/([^/]+)(?:\/archive)?$/);
+      if (!match) {
+        sendJson(res, { ok: false, error: 'Bad requirements path' }, 400);
+        return;
+      }
+
+      const requirementId = match[1];
+      const existing = await runtime.readRequirement(requirementId);
+      const requirementPermission = req.method === 'GET'
+        ? 'REQUIREMENTS_READ'
+        : req.method === 'DELETE'
+          ? 'REQUIREMENTS_DELETE'
+          : 'REQUIREMENTS_UPDATE';
+      const requirementAccess = accessSvc.authorizeRequirement(actor, existing?.data, {
+        permissions: [requirementPermission, 'LEADS_READ'],
+        hideExistence: req.method === 'GET'
+      });
+      if (!requirementAccess.ok) {
+        sendJson(res, { ok: false, error: requirementAccess.error }, requirementAccess.statusCode);
+        return;
+      }
+
+      if (req.method === 'GET') {
+        sendJson(res, existing);
+        return;
+      }
+
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        const payload = await runtime.updateRequirement(requirementId, body);
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === 'DELETE') {
+        const payload = await runtime.deleteRequirement(requirementId);
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === 'POST' && pathname.endsWith('/archive')) {
+        const payload = await runtime.archiveRequirement(requirementId);
+        sendJson(res, payload);
+        return;
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    if (pathname === '/api/forms' || pathname.startsWith('/api/forms/')) {
+      const parts = pathname.split('/').filter(Boolean);
+      const formType = parts[2] || 'residential';
+      const config = await runtime.formConfig(formType);
+      sendJson(res, { ok: true, data: config });
+      return;
+    }
+
+    if (pathname === '/api/requirements' && req.method === 'GET') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      if (!ensurePermissionOrRespond(req, res, url, 'REQUIREMENTS_READ')) return;
+      const payload = await runtime.requirements();
+      if (payload?.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((requirement) => accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['REQUIREMENTS_READ', 'LEADS_READ'],
+          hideExistence: true
+        }).ok);
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/matching/run' && req.method === 'POST') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const body = await readJson(req);
+
+      let transactionId = body.transactionId || body.TransactionID || null;
+      const legacyRequirementId = body.requirementId || body.requirementID || body.RequirementID || null;
+      if (!transactionId && legacyRequirementId) {
+        const legacyRequirement = runtime.repository.readRequirement(legacyRequirementId);
+        transactionId = legacyRequirement?.TransactionID || null;
+      }
+      if (!transactionId) {
+        sendJson(res, { ok: false, error: 'transactionId required' }, 400);
+        return;
+      }
+
+      const transaction = runtime.repository.find('Transactions', 'TransactionID', transactionId);
+      const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ']
+      });
+      if (!transactionAccess.ok) { sendJson(res, { ok: false, error: transactionAccess.error }, transactionAccess.statusCode); return; }
+
+      const payload = await runtime.runMatching(transactionId);
+      if (payload.ok && Array.isArray(payload.data?.matches)) {
+        payload.data.matches = payload.data.matches.filter((row) => {
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/matching') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const requestedTransactionId = url.searchParams.get('transactionId') || url.searchParams.get('TransactionID') || null;
+      const payload = await runtime.matching(requestedTransactionId);
+      if (payload.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((row) => {
+          const transaction = runtime.repository.find('Transactions', 'TransactionID', row.TransactionID);
+          const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+            permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
+            hideExistence: true
+          });
+          if (!transactionAccess.ok) return false;
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname.startsWith('/api/matches/')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const matchId = pathname.split('/').pop();
+      const payload = await runtime.getMatch(matchId);
+      if (payload?.ok && payload.data) {
+        const transaction = runtime.repository.find('Transactions', 'TransactionID', payload.data.TransactionID);
+        const transactionAccess = accessSvc.authorizeTransaction(actor, transaction, {
+          permissions: ['MATCHING_VIEW', 'LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!transactionAccess.ok) { sendJson(res, { ok: false, error: transactionAccess.error }, transactionAccess.statusCode); return; }
+        const property = runtime.repository.find('Inventory', 'PropertyID', payload.data.PropertyID);
+        const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+          permissions: ['MATCHING_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+          hideExistence: true
+        });
+        if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/public' || pathname === '/public/') {
+      const publicProperties = await runtime.listPublicProperties();
+      const publicProjects = await runtime.listPublicProjects();
+      const propertyCards = (publicProperties.data || []).slice(0, 12).map((property) => `
+        <article class="card">
+          <div class="eyebrow">${escapeHtml(property.PropertyType || 'Property')}</div>
+          <h3>${escapeHtml(property.Project || property.PropertyID || 'Property')}</h3>
+          <p>${escapeHtml(property.Location || 'Location unavailable')}</p>
+          <div class="meta">₹${escapeHtml(Number(property.Price || 0).toLocaleString('en-IN'))}</div>
+        </article>
+      `).join('') || '<p class="empty">No public properties yet.</p>';
+
+      const projectCards = (publicProjects.data || []).slice(0, 12).map((project) => `
+        <article class="card">
+          <div class="eyebrow">Project</div>
+          <h3>${escapeHtml(project.ProjectName || project.ProjectID || 'Project')}</h3>
+          <p>${escapeHtml(project.Location || 'Location unavailable')}</p>
+          <div class="meta">${escapeHtml(project.BuilderID || 'Builder information unavailable')}</div>
+        </article>
+      `).join('') || '<p class="empty">No public projects yet.</p>';
+
+      sendHtml(res, `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Signature Properties | Public Portfolio</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #17212f; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 40px 20px 80px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+    .brand { font-size: 2rem; font-weight: 700; }
+    .subtitle { color: #52607a; margin-top: 8px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+    .card { background: #fff; border-radius: 16px; padding: 18px; box-shadow: 0 10px 25px rgba(17,24,39,0.06); }
+    .eyebrow { text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; font-size: 11px; margin-bottom: 8px; }
+    h3 { margin: 0 0 10px; font-size: 1.2rem; }
+    p { margin: 0 0 10px; color: #475569; }
+    .meta { color: #0f172a; font-weight: 600; }
+    .empty { color: #64748b; }
+    .section { margin-top: 36px; }
+    .section h2 { margin: 0 0 18px; font-size: 1.4rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="brand">Signature Properties</div>
+        <div class="subtitle">Public portfolio</div>
+      </div>
+    </div>
+
+    <section class="section">
+      <h2>Public Properties</h2>
+      <div class="grid">${propertyCards}</div>
+    </section>
+
+    <section class="section">
+      <h2>Public Projects</h2>
+      <div class="grid">${projectCards}</div>
+    </section>
+  </div>
+</body>
+</html>`);
+      return;
+    }
+
+    if (pathname === '/api/broker/share') {
+      if (req.method === 'POST') {
+        const body = await readJson(req);
+        const actor = getAuthenticatedActor(req, url);
+        const requirementAccess = accessSvc.authorizeRequirement(actor, runtime.repository.readRequirement(body.requirementId), {
+          permissions: ['BROKER_NETWORK_CREATE', 'REQUIREMENTS_READ', 'LEADS_READ'],
+          hideExistence: true
+        });
+        if (!requirementAccess.ok) {
+          sendJson(res, { ok: false, error: requirementAccess.error }, requirementAccess.statusCode);
+          return;
+        }
+        const payload = await runtime.brokerShare(body.requirementId, body.brokerId);
+        sendJson(res, { ok: true, data: payload });
+      } else {
+        sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      }
+      return;
+    }
+
+    if (pathname === '/api/site-visits' && req.method === 'GET') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const payload = await runtime.listSiteVisits();
+      if (payload.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((row) => {
+          const lead = runtime.repository.readLead(row.LeadID);
+          const leadAccess = accessSvc.authorizeLead(actor, lead, {
+            permissions: ['SITE_VISIT_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
+            hideExistence: true
+          });
+          if (!leadAccess.ok) return false;
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SITE_VISIT_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/site-visits' && req.method === 'POST') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const body = await readJson(req);
+      const lead = runtime.repository.readLead(body.leadId || body.LeadID);
+      const leadAccess = accessSvc.authorizeLead(actor, lead, {
+        permissions: ['SITE_VISIT_VIEW', 'LEADS_EDIT', 'LEADS_UPDATE', 'LEADS_READ']
+      });
+      if (!leadAccess.ok) { sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode); return; }
+      const requirement = runtime.repository.readRequirement(body.requirementId || body.RequirementID);
+      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+        permissions: ['SITE_VISIT_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'REQUIREMENTS_READ']
+      });
+      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      const property = runtime.repository.find('Inventory', 'PropertyID', body.propertyId || body.PropertyID);
+      const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+        permissions: ['SITE_VISIT_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+        hideExistence: true
+      });
+      if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+      const payload = await runtime.createSiteVisit(body);
+      sendJson(res, payload, payload.ok ? 200 : 400);
+      return;
+    }
+
+    if (pathname.startsWith('/api/site-visits/')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const visitId = pathname.split('/').filter(Boolean)[2];
+      if (!visitId) {
+        sendJson(res, { ok: false, error: 'Bad site visits path' }, 400);
+        return;
+      }
+      const currentVisit = runtime.repository.getSiteVisit(visitId);
+      const lead = currentVisit?.ok ? runtime.repository.readLead(currentVisit.data.LeadID) : null;
+      const visitAccess = currentVisit?.ok && lead
+        ? accessSvc.authorizeLead(actor, lead, {
+            permissions: ['SITE_VISIT_VIEW', 'LEADS_VIEW', 'LEADS_READ'],
+            hideExistence: true
+          })
+        : { ok: false, statusCode: 404, error: 'Not found' };
+      if (!visitAccess.ok) { sendJson(res, { ok: false, error: visitAccess.error }, visitAccess.statusCode); return; }
+      const property = runtime.repository.find('Inventory', 'PropertyID', currentVisit.data.PropertyID);
+      const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+        permissions: ['SITE_VISIT_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+        hideExistence: true
+      });
+      if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+
+      if (req.method === 'GET') {
+        sendJson(res, currentVisit, 200);
+        return;
+      }
+
+      if (req.method === 'PATCH' && pathname.endsWith('/confirm')) {
+        const payload = await runtime.confirmSiteVisit(visitId);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'PATCH' && pathname.endsWith('/reschedule')) {
+        const body = await readJson(req);
+        const payload = await runtime.rescheduleSiteVisit(visitId, body);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'PATCH' && pathname.endsWith('/complete')) {
+        const payload = await runtime.completeSiteVisit(visitId);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'PATCH' && pathname.endsWith('/cancel')) {
+        const payload = await runtime.cancelSiteVisit(visitId);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'PATCH' && pathname.endsWith('/no-show')) {
+        const payload = await runtime.markSiteVisitNoShow(visitId);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        const payload = await runtime.updateSiteVisit(visitId, body);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    if (pathname === '/api/shortlist' && req.method === 'GET') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const requirementId = url.searchParams.get('requirementId') || undefined;
+      const leadId = url.searchParams.get('leadId') || undefined;
+      const status = url.searchParams.get('status') || undefined;
+      if (requirementId) {
+        const requirement = runtime.repository.readRequirement(requirementId);
+        const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+          permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      } else if (leadId) {
+        const lead = runtime.repository.readLead(leadId);
+        const leadAccess = accessSvc.authorizeLead(actor, lead, {
+          permissions: ['SHORTLIST_VIEW', 'LEADS_VIEW', 'LEADS_READ']
+        });
+        if (!leadAccess.ok) { sendJson(res, { ok: false, error: leadAccess.error }, leadAccess.statusCode); return; }
+      }
+      const payload = await runtime.listShortlist({ requirementId, leadId, status });
+      if (payload.ok && Array.isArray(payload.data)) {
+        payload.data = payload.data.filter((row) => {
+          const requirement = runtime.repository.readRequirement(row.RequirementID);
+          const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+            permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ'],
+            hideExistence: true
+          });
+          if (!reqAccess.ok) return false;
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, {
+            permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+            hideExistence: true
+          }).ok;
+        });
+      }
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/shortlist' && req.method === 'POST') {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const body = await readJson(req);
+      const requirement = runtime.repository.readRequirement(body.requirementId || body.RequirementID);
+      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+        permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'REQUIREMENTS_READ']
+      });
+      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      const property = runtime.repository.find('Inventory', 'PropertyID', body.propertyId || body.PropertyID);
+      const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+        permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+        hideExistence: true
+      });
+      if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+      const payload = await runtime.addToShortlist(body);
+      sendJson(res, payload, payload.ok ? 200 : 400);
+      return;
+    }
+
+    if (pathname.startsWith('/api/shortlist/')) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const shortlistId = pathname.split('/').filter(Boolean)[2];
+      const shortlist = runtime.repository.getShortlist(shortlistId);
+      const requirement = shortlist ? runtime.repository.readRequirement(shortlist.RequirementID) : null;
+      const reqAccess = accessSvc.authorizeRequirement(actor, requirement, {
+        permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ'],
+        hideExistence: true
+      });
+      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      const property = shortlist ? runtime.repository.find('Inventory', 'PropertyID', shortlist.PropertyID) : null;
+      const propertyAccess = accessSvc.authorizeProperty(actor, property, {
+        permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'],
+        hideExistence: true
+      });
+      if (!propertyAccess.ok) { sendJson(res, { ok: false, error: propertyAccess.error }, propertyAccess.statusCode); return; }
+
+      if (req.method === 'GET') {
+        const payload = await runtime.getShortlist(shortlistId);
+        sendJson(res, payload, payload.ok ? 200 : 404);
+        return;
+      }
+
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        const payload = await runtime.updateShortlist(shortlistId, body);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'POST' && pathname.endsWith('/remove')) {
+        const body = await readJson(req);
+        const payload = await runtime.removeFromShortlist(shortlistId, body.removedBy || body.RemovedBy || 'system');
+        sendJson(res, payload, payload.ok ? 200 : 404);
+        return;
+      }
+
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405);
+      return;
+    }
+
+    if (pathname === '/api/negotiations' && req.method === 'GET') {
+      const payload = await runtime.listNegotiations();
+      sendJson(res, payload);
+      return;
+    }
+
+    if (pathname === '/api/negotiations' && req.method === 'POST') {
+      const body = await readJson(req);
+      const payload = await runtime.createNegotiation(body);
+      sendJson(res, payload, payload.ok ? 200 : 400);
+      return;
+    }
+
+    if (pathname.startsWith('/api/negotiations/')) {
+      const negotiationId = pathname.split('/').filter(Boolean)[2];
+      if (!negotiationId) {
+        sendJson(res, { ok: false, error: 'Bad negotiation path' }, 400);
+        return;
+      }
+      const action = pathname.split('/').filter(Boolean)[3] || null;
+      if (req.method === 'GET') {
+        if (action === 'history') {
+          const payload = await runtime.getNegotiationHistory(negotiationId);
+          sendJson(res, payload, payload.ok ? 200 : 404);
+          return;
+        }
+
+        const payload = await runtime.getNegotiation(negotiationId);
+        sendJson(res, payload, payload.ok ? 200 : 404);
+        return;
+      }
+      if (req.method === 'PATCH') {
+        const body = await readJson(req);
+        const payload = await runtime.updateNegotiation(negotiationId, body);
+        sendJson(res, payload, payload.ok ? 200 : 400);
+        return;
+      }
+
+      if (req.method === 'POST') {
+        const body = await readJson(req);
+
+        if (action === 'offer') {
+          const payload = await runtime.makeNegotiationOffer(negotiationId, body);
+          sendJson(res, payload, payload.ok ? 200 : 400);
+          return;
+        }
+
+        if (action === 'counter') {
+          const payload = await runtime.makeNegotiationCounterOffer(negotiationId, body);
+          sendJson(res, payload, payload.ok ? 200 : 400);
+          return;
+        }
+
+        if (action === 'accept') {
+          const payload = await runtime.acceptNegotiationOffer(negotiationId, body);
+          sendJson(res, payload, payload.ok ? 200 : 400);
+          return;
+        }
+
+        if (action === 'reject') {
+          const payload = await runtime.rejectNegotiationOffer(negotiationId, body);
           sendJson(res, payload, payload.ok ? 200 : 400);
           return;
         }
