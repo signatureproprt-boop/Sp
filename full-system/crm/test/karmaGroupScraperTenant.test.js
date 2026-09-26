@@ -121,3 +121,35 @@ test('Karma scraper exposes media failure examples in the scrape result', async 
   ]);
   assert.equal(project.MediaIngestion.failures[0].error, 'HTTP 403');
 });
+
+
+test('Karma scraper reports the underlying Google Drive upload failure', async () => {
+  const project = {
+    ProjectID: 'BLDP-1',
+    ProjectName: 'Skyline',
+    DriveFolderID: 'drive-root',
+    DriveSubfolders: { 'Project Images': 'drive-images' },
+    Photos: []
+  };
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [project] }), {
+    downloadMediaSafely: async () => ({
+      ok: true,
+      buffer: Buffer.from('image'),
+      contentType: 'image/jpeg'
+    }),
+    driveClient: {
+      uploadBuffer: async () => { throw new Error('403 insufficientFilePermissions'); }
+    }
+  });
+
+  const result = await svc._ingestOneProjectMedia(
+    project,
+    'https://karmagroup.co.in/media/photo.jpg',
+    'Photos',
+    'project_image'
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /403 insufficientFilePermissions/);
+  assert.match(result.error, /GridFS fallback is disabled/);
+});
