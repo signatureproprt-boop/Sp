@@ -104,3 +104,20 @@ test('Karma scraper reuses verified Google Drive media on repeat scrape', async 
   assert.equal(project.Photos.length, 1);
   assert.equal(project.Photos[0].DriveFileID, 'drive-file-1');
 });
+
+
+test('Karma scraper exposes media failure examples in the scrape result', async () => {
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), {
+    downloadMediaSafely: async () => ({ ok: false, error: new Error('HTTP 403') })
+  });
+  const project = { ProjectID: 'BLDP-1', ProjectName: 'Skyline', Photos: [] };
+  const counters = { mediaDiscovered: 0, mediaStored: 0, mediaReused: 0, mediaFailed: 0, mediaBytesStored: 0 };
+
+  await svc._ingestProjectMedia(project, { photoUrls: ['https://karmagroup.co.in/media/photo.jpg'] }, counters);
+
+  assert.equal(counters.mediaFailed, 1);
+  assert.deepEqual(counters.mediaFailureExamples, [
+    { projectName: 'Skyline', mediaType: 'project_image', error: 'HTTP 403' }
+  ]);
+  assert.equal(project.MediaIngestion.failures[0].error, 'HTTP 403');
+});
