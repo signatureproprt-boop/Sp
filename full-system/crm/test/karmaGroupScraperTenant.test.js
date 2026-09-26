@@ -81,6 +81,42 @@ test('scrape failure diagnostics identify the project and processing stage', asy
   KarmaGroupScraperService.__resetForTests();
 });
 
+test('full project-error details go to structured logs while scrape status keeps a small recent preview', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
+  svc._fetchAndParseDetail = async (candidate) => ({
+    ok: false,
+    classification: 'STALE_DETAIL',
+    statusCode: 404,
+    error: `HTTP 404 for ${candidate.projectName}`
+  });
+  const counters = { scanned: 0, failed: 0, staleDetailFailures: 0, errorCount: 0, errors: [] };
+  const logged = [];
+  const originalError = console.error;
+  console.error = (line) => logged.push(JSON.parse(line));
+  try {
+    for (let index = 1; index <= 12; index += 1) {
+      await svc._processCandidate({ BuilderProjects: [] }, {
+        projectName: `Project ${index}`,
+        sourceProjectID: `KARMA-${index}`
+      }, counters, 'test');
+    }
+  } finally {
+    console.error = originalError;
+  }
+
+  const status = KarmaGroupScraperService.getStatus().data;
+  assert.equal(status.errorCount, 12);
+  assert.equal(status.errors.length, 10);
+  assert.equal(status.errors[0].projectName, 'Project 3');
+  assert.equal(status.errors.at(-1).projectName, 'Project 12');
+  assert.equal(logged.length, 12);
+  assert.equal(logged[0].logCategory, 'karma-scrape-project-error');
+  assert.equal(logged[0].sourceProjectId, 'KARMA-1');
+  assert.equal(logged[0].severity, 'ERROR');
+  KarmaGroupScraperService.__resetForTests();
+});
+
 test('Karma scraper does not cross tenant boundary for identical source identity', () => {
   const db = {
     BuilderProjects: [
