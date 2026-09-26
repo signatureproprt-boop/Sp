@@ -25,31 +25,23 @@ test('Karma scraper identity matching is tenant scoped', () => {
   assert.equal(match.ProjectID, 'BLDP-B');
 });
 
-test('full scrape can keep its HTTP request open until the background job completes', async () => {
+test('full scrape start returns accepted immediately while the job continues', async () => {
   KarmaGroupScraperService.__resetForTests();
   let finishJob;
   const jobGate = new Promise((resolve) => { finishJob = resolve; });
   const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
   svc._runFullScrapeJob = async () => jobGate;
 
-  let settled = false;
-  const request = svc.startScrape({ waitForCompletion: true }).then((result) => {
-    settled = true;
-    return result;
-  });
-  await new Promise(setImmediate);
-
-  assert.equal(settled, false);
+  const result = await svc.startScrape();
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.data.status, 'accepted');
   assert.equal(KarmaGroupScraperService.getStatus().data.status, 'running');
-  finishJob();
 
-  const result = await request;
-  assert.equal(result.statusCode, 200);
-  assert.equal(result.data.status, 'completed');
-  assert.equal(settled, true);
+  finishJob();
+  await new Promise(setImmediate);
+  assert.equal(KarmaGroupScraperService.getStatus().data.status, 'completed');
   KarmaGroupScraperService.__resetForTests();
 });
-
 test('scrape status exposes the last saved run as interrupted after a process restart', () => {
   KarmaGroupScraperService.__resetForTests();
   const repo = repoWith({ KarmaScrapeRuns: [{
