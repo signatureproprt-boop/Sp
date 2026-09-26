@@ -50,6 +50,45 @@ test('full scrape can keep its HTTP request open until the background job comple
   KarmaGroupScraperService.__resetForTests();
 });
 
+test('scrape status exposes the last saved run as interrupted after a process restart', () => {
+  KarmaGroupScraperService.__resetForTests();
+  const repo = repoWith({ KarmaScrapeRuns: [{
+    RunID: 'KSR-1', Status: 'running', StartedAt: '2026-09-26T10:00:00.000Z',
+    UpdatedAt: '2026-09-26T10:20:00.000Z', CurrentStage: 'media-storage',
+    CurrentProjectName: 'Sample Tower', Scanned: 18, Discovered: 758,
+    ErrorCount: 1, Errors: [{ stage: 'media-storage', projectName: 'Sample Tower', message: 'Drive upload failed' }]
+  }] });
+
+  const status = KarmaGroupScraperService.getStatus(repo).data;
+  assert.equal(status.status, 'interrupted');
+  assert.equal(status.currentStage, 'media-storage');
+  assert.equal(status.selectedProjectName, 'Sample Tower');
+  assert.equal(status.scanned, 18);
+  assert.equal(status.discoveredCandidates, 758);
+  assert.equal(status.errors[0].message, 'Drive upload failed');
+  KarmaGroupScraperService.__resetForTests();
+});
+
+test('scrape failure diagnostics identify the project and processing stage', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
+  svc._fetchAndParseDetail = async () => ({
+    ok: false, classification: 'STALE_DETAIL', statusCode: 404, error: 'HTTP 404'
+  });
+  const counters = { scanned: 0, failed: 0, staleDetailFailures: 0 };
+  await svc._processCandidate({ BuilderProjects: [] }, {
+    projectName: 'Sample Tower', sourceProjectID: 'KARMA-101'
+  }, counters, 'test');
+
+  const status = KarmaGroupScraperService.getStatus().data;
+  assert.equal(status.errorCount, 1);
+  assert.equal(status.errors[0].projectName, 'Sample Tower');
+  assert.equal(status.errors[0].sourceProjectId, 'KARMA-101');
+  assert.equal(status.errors[0].stage, 'detail-fetch');
+  assert.equal(status.errors[0].statusCode, 404);
+  KarmaGroupScraperService.__resetForTests();
+});
+
 test('Karma scraper does not cross tenant boundary for identical source identity', () => {
   const db = {
     BuilderProjects: [

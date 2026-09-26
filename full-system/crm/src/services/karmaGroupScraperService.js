@@ -12,6 +12,8 @@ const DEFAULT_CONCURRENCY = 2;
 const MAX_CONCURRENCY = 8;
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 1000;
+const MAX_SCRAPE_ERROR_DETAILS = 100;
+const MAX_SCRAPE_RUN_HISTORY = 10;
 const DEFAULT_MAX_PAGES = 12;
 const DEFAULT_MAX_REQUESTS = 40;
 const TRANSIENT_MAX_RETRIES = 2;
@@ -66,6 +68,7 @@ function nowIso() {
 function makeIdleStatus() {
   return {
     status: 'idle',
+    runId: null,
     startedAt: null,
     finishedAt: null,
     selectedProjectID: null,
@@ -80,6 +83,8 @@ function makeIdleStatus() {
     elapsedMs: 0,
     terminalStage: null,
     error: null,
+    errorCount: 0,
+    errors: [],
     classification: null,
     fallbackResolution: null,
     matchDiagnostics: null,
@@ -344,6 +349,57 @@ function sanitizeError(error) {
   return message.replace(/https?:\/\/\S+/gi, '[url-redacted]').slice(0, 300);
 }
 
+function addScrapeError(status, counters, details = {}) {
+  const error = {
+    occurredAt: nowIso(),
+    projectName: details.projectName || status.selectedProjectName || null,
+    projectId: details.projectId || status.selectedProjectID || null,
+    sourceProjectId: details.sourceProjectId || null,
+    stage: details.stage || status.currentStage || 'unknown',
+    mediaType: details.mediaType || null,
+    classification: details.classification || null,
+    statusCode: details.statusCode || null,
+    message: sanitizeError(details.error || 'Unknown error')
+  };
+  counters.errorCount = Number(counters.errorCount || 0) + 1;
+  counters.errors = Array.isArray(counters.errors) ? counters.errors : [];
+  counters.errors.push(error);
+  if (counters.errors.length > MAX_SCRAPE_ERROR_DETAILS) counters.errors.shift();
+  status.errorCount = counters.errorCount;
+  status.errors = counters.errors.slice();
+  if (counters.errorCount <= MAX_SCRAPE_ERROR_DETAILS) {
+    console.error('[karma-scrape] error detail:', JSON.stringify(error));
+  }
+  return error;
+}
+
+function updatePersistedScrapeRun(db, status, counters = {}) {
+  if (!status?.runId) return;
+  db.KarmaScrapeRuns = Array.isArray(db.KarmaScrapeRuns) ? db.KarmaScrapeRuns : [];
+  let run = db.KarmaScrapeRuns.find((item) => item.RunID === status.runId);
+  if (!run) {
+    run = { RunID: status.runId };
+    db.KarmaScrapeRuns.push(run);
+  }
+  Object.assign(run, {
+    Status: status.status,
+    StartedAt: status.startedAt,
+    UpdatedAt: nowIso(),
+    FinishedAt: status.finishedAt || null,
+    CurrentStage: status.currentStage || null,
+    CurrentProjectName: status.selectedProjectName || null,
+    CurrentProjectID: status.selectedProjectID || null,
+    Scanned: Number(counters.scanned || 0),
+    Discovered: Number(counters.discoveredCandidates || 0),
+    ErrorCount: Number(counters.errorCount ?? status.errorCount ?? 0),
+    Errors: (Array.isArray(counters.errors) ? counters.errors : status.errors || []).slice(-MAX_SCRAPE_ERROR_DETAILS),
+    Error: status.error || null,
+    Classification: status.classification || null,
+    Result: status.result || null
+  });
+  db.KarmaScrapeRuns = db.KarmaScrapeRuns.slice(-MAX_SCRAPE_RUN_HISTORY);
+}
+
 function parseListItems(htmlSection) {
   if (!htmlSection) return [];
   const matches = Array.from(String(htmlSection).matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi));
@@ -535,10 +591,39 @@ class KarmaGroupScraperService {
     this.allowProjectCreation = deps.allowProjectCreation === true;
   }
 
-  static getStatus() {
+  static getStatus(repository = null) {
     const base = latestStatus ? { ...latestStatus } : makeIdleStatus();
     if (base.startedAt && base.status === 'running') {
       base.elapsedMs = Date.now() - Date.parse(base.startedAt);
+    }
+    if (base.status === 'idle' && repository) {
+      try {
+        const db = repository.read();
+        const runs = Array.isArray(db.KarmaScrapeRuns) ? db.KarmaScrapeRuns : [];
+        const lastRun = runs[runs.length - 1];
+        if (lastRun) {
+          const interrupted = lastRun.Status === 'running';
+          return { ok: true, data: {
+            status: interrupted ? 'interrupted' : lastRun.Status,
+            runId: lastRun.RunID,
+            startedAt: lastRun.StartedAt || null,
+            finishedAt: lastRun.FinishedAt || null,
+            lastProgressAt: lastRun.UpdatedAt || null,
+            currentStage: lastRun.CurrentStage || null,
+            selectedProjectName: lastRun.CurrentProjectName || null,
+            selectedProjectID: lastRun.CurrentProjectID || null,
+            scanned: Number(lastRun.Scanned || 0),
+            discoveredCandidates: Number(lastRun.Discovered || 0),
+            errorCount: Number(lastRun.ErrorCount || 0),
+            errors: Array.isArray(lastRun.Errors) ? lastRun.Errors : [],
+            error: interrupted ? 'Scrape process stopped before completion. See the last saved project and errors below.' : lastRun.Error || null,
+            classification: lastRun.Classification || null,
+            result: lastRun.Result || null
+          } };
+        }
+      } catch (error) {
+        console.error('[karma-scrape] persisted status read failed:', sanitizeError(error));
+      }
     }
     return { ok: true, data: base };
   }
@@ -558,8 +643,10 @@ class KarmaGroupScraperService {
     }
 
     const safeLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT));
+    const runId = this.repo.createId('KSR');
     latestStatus = {
       ...makeIdleStatus(),
+      runId,
       status: 'running',
       mode: 'full',
       startedAt: nowIso(),
@@ -567,14 +654,23 @@ class KarmaGroupScraperService {
       selectedProjectID: null,
       selectedProjectName: null
     };
+    const initialDb = this.repo.read();
+    updatePersistedScrapeRun(initialDb, latestStatus);
+    this.repo.write(initialDb);
 
     activeJob = this._runFullScrapeJob({ limit: safeLimit, userId, companyId, brokerageId })
       .catch((error) => {
+        const failureStage = latestStatus.currentStage || 'scrape';
         latestStatus.status = 'failed';
         latestStatus.error = sanitizeError(error);
         latestStatus.classification = classificationFromError(error);
         latestStatus.terminalStage = 'error';
         updateStage(latestStatus, 'error');
+        addScrapeError(latestStatus, { errorCount: latestStatus.errorCount, errors: latestStatus.errors }, {
+          stage: failureStage,
+          classification: latestStatus.classification,
+          error
+        });
       })
       .finally(() => {
         latestStatus.finishedAt = nowIso();
@@ -582,6 +678,14 @@ class KarmaGroupScraperService {
           latestStatus.status = 'completed';
           latestStatus.terminalStage = 'complete';
           updateStage(latestStatus, 'complete');
+        }
+        latestStatus.finishedAt = latestStatus.finishedAt || nowIso();
+        try {
+          const terminalDb = this.repo.read();
+          updatePersistedScrapeRun(terminalDb, latestStatus, latestStatus.result || {});
+          this.repo.write(terminalDb);
+        } catch (error) {
+          console.error('[karma-scrape] terminal status persistence failed:', sanitizeError(error));
         }
         activeJob = null;
       });
@@ -1125,6 +1229,7 @@ class KarmaGroupScraperService {
         } else {
           counters.mediaFailed += 1;
           failures.push({ sourceKey: result.sourceKey, mediaType: result.mediaType, error: result.error });
+          addScrapeError(latestStatus, counters, { projectName: project.ProjectName, projectId: project.ProjectID, stage: 'media-storage', mediaType: result.mediaType, error: result.error });
           counters.mediaFailureExamples = Array.isArray(counters.mediaFailureExamples) ? counters.mediaFailureExamples : [];
           if (counters.mediaFailureExamples.length < 5) {
             counters.mediaFailureExamples.push({ projectName: project.ProjectName || null, mediaType: result.mediaType, error: result.error });
@@ -1134,6 +1239,7 @@ class KarmaGroupScraperService {
         counters.mediaFailed += 1;
         const failureMessage = sanitizeError(error);
         failures.push({ sourceKey: mediaSourceKey(item.url), mediaType: item.mediaType, error: failureMessage });
+        addScrapeError(latestStatus, counters, { projectName: project.ProjectName, projectId: project.ProjectID, stage: 'media-storage', mediaType: item.mediaType, error: failureMessage });
         counters.mediaFailureExamples = Array.isArray(counters.mediaFailureExamples) ? counters.mediaFailureExamples : [];
         if (counters.mediaFailureExamples.length < 5) {
           counters.mediaFailureExamples.push({ projectName: project.ProjectName || null, mediaType: item.mediaType, error: failureMessage });
@@ -1262,6 +1368,14 @@ class KarmaGroupScraperService {
       counters.failed += 1;
       if (detailResult.classification === 'TRANSIENT_NETWORK_ERROR') counters.transientFailures += 1;
       if (detailResult.classification === 'STALE_DETAIL') counters.staleDetailFailures += 1;
+      addScrapeError(latestStatus, counters, {
+        projectName: candidate.projectName,
+        sourceProjectId: candidate.sourceProjectID,
+        stage: 'detail-fetch',
+        classification: detailResult.classification,
+        statusCode: detailResult.statusCode,
+        error: detailResult.error
+      });
       return;
     }
 
@@ -1281,6 +1395,7 @@ class KarmaGroupScraperService {
         const brochure = await this._ingestBrochure(existing, parsed.brochureUrl, latestStatus);
         if (!brochure.ok) {
           existing.Notes = mergeUniqueStrings([existing.Notes].filter(Boolean), [`Brochure ingest failed: ${brochure.error}`]).join(' | ').slice(0, 900);
+          addScrapeError(latestStatus, counters, { projectName: existing.ProjectName, projectId: existing.ProjectID, stage: 'brochure-storage', mediaType: 'brochure', error: brochure.error });
         }
       }
       if (changed) counters.updated += 1;
@@ -1301,6 +1416,7 @@ class KarmaGroupScraperService {
       const brochure = await this._ingestBrochure(created, parsed.brochureUrl, latestStatus);
       if (!brochure.ok) {
         created.Notes = mergeUniqueStrings([created.Notes].filter(Boolean), [`Brochure ingest failed: ${brochure.error}`]).join(' | ').slice(0, 900);
+        addScrapeError(latestStatus, counters, { projectName: created.ProjectName, projectId: created.ProjectID, stage: 'brochure-storage', mediaType: 'brochure', error: brochure.error });
       }
     }
     counters.created += 1;
@@ -1324,8 +1440,13 @@ class KarmaGroupScraperService {
       mediaStored: 0,
       mediaReused: 0,
       mediaFailed: 0,
-      mediaBytesStored: 0
+      mediaBytesStored: 0,
+      errorCount: 0,
+      errors: []
     };
+
+    db.KarmaScrapeRuns = Array.isArray(db.KarmaScrapeRuns) ? db.KarmaScrapeRuns : [];
+    updatePersistedScrapeRun(db, latestStatus, counters);
 
     const discovery = await this.discoverCandidates({});
     const selected = discovery.candidates.slice(0, limit);
@@ -1338,10 +1459,25 @@ class KarmaGroupScraperService {
         const classification = classificationFromError(error);
         if (classification === 'TRANSIENT_NETWORK_ERROR') counters.transientFailures += 1;
         if (classification === 'STALE_DETAIL') counters.staleDetailFailures += 1;
+        addScrapeError(latestStatus, counters, {
+          projectName: candidate.projectName,
+          sourceProjectId: candidate.sourceProjectID,
+          stage: 'project-processing',
+          classification,
+          statusCode: error.statusCode,
+          error
+        });
       }
-      if (counters.scanned % 20 === 0) this.repo.write(db);
+      latestStatus.scanned = counters.scanned;
+      latestStatus.discoveredCandidates = discovery.candidates.length;
+      if (counters.scanned % 20 === 0) {
+        counters.discoveredCandidates = discovery.candidates.length;
+        updatePersistedScrapeRun(db, latestStatus, counters);
+        this.repo.write(db);
+      }
     });
 
+    counters.discoveredCandidates = discovery.candidates.length;
     this.repo.write(db);
 
     latestStatus.result = {
@@ -1350,6 +1486,10 @@ class KarmaGroupScraperService {
       visitedPages: discovery.visitedPages,
       requests: discovery.requests
     };
+    latestStatus.errorCount = counters.errorCount;
+    latestStatus.errors = counters.errors.slice();
+    updatePersistedScrapeRun(db, latestStatus, latestStatus.result);
+    this.repo.write(db);
     latestStatus.classification = 'SUCCESS';
     updateStage(latestStatus, 'complete');
   }
