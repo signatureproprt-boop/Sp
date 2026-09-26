@@ -1,5 +1,7 @@
 'use strict';
 
+const pendingProjectFolderEnsures = new Map();
+
 const PROJECT_SUBFOLDERS = [
   'Brochures',
   'Floor Plans',
@@ -32,6 +34,26 @@ class BuilderProjectDriveService {
   }
 
   async ensureProjectFolder(projectId, tenant = {}) {
+    const key = JSON.stringify([
+      String(projectId),
+      tenant.companyId || null,
+      tenant.brokerageId || null
+    ]);
+    const pending = pendingProjectFolderEnsures.get(key);
+    if (pending) return pending;
+
+    const operation = this._ensureProjectFolder(projectId, tenant);
+    pendingProjectFolderEnsures.set(key, operation);
+    try {
+      return await operation;
+    } finally {
+      if (pendingProjectFolderEnsures.get(key) === operation) {
+        pendingProjectFolderEnsures.delete(key);
+      }
+    }
+  }
+
+  async _ensureProjectFolder(projectId, tenant = {}) {
     const db = this.repo.read();
     const project = (db.BuilderProjects || []).find((row) =>
       row.ProjectID === projectId && row.Active !== false && this._sameTenant(row, tenant)
