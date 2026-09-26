@@ -552,7 +552,7 @@ class KarmaGroupScraperService {
     latestStatus = makeIdleStatus();
   }
 
-  async startScrape({ limit = DEFAULT_LIMIT, userId = 'system', companyId = null, brokerageId = null } = {}) {
+  async startScrape({ limit = DEFAULT_LIMIT, userId = 'system', companyId = null, brokerageId = null, waitForCompletion = false } = {}) {
     if (KarmaGroupScraperService.isRunning()) {
       return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
     }
@@ -585,6 +585,14 @@ class KarmaGroupScraperService {
         }
         activeJob = null;
       });
+
+    // Keep the HTTP request active so Cloud Run does not treat the instance as
+    // idle while this in-process scrape is running. The configured request
+    // timeout still bounds how long the scrape can run.
+    if (waitForCompletion) {
+      await activeJob;
+      return { ok: true, statusCode: 200, data: { ...latestStatus } };
+    }
 
     return { ok: true, statusCode: 202, data: { status: 'accepted', startedAt: latestStatus.startedAt, mode: 'full', limit: safeLimit } };
   }

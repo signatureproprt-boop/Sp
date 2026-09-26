@@ -25,6 +25,31 @@ test('Karma scraper identity matching is tenant scoped', () => {
   assert.equal(match.ProjectID, 'BLDP-B');
 });
 
+test('full scrape can keep its HTTP request open until the background job completes', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  let finishJob;
+  const jobGate = new Promise((resolve) => { finishJob = resolve; });
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
+  svc._runFullScrapeJob = async () => jobGate;
+
+  let settled = false;
+  const request = svc.startScrape({ waitForCompletion: true }).then((result) => {
+    settled = true;
+    return result;
+  });
+  await new Promise(setImmediate);
+
+  assert.equal(settled, false);
+  assert.equal(KarmaGroupScraperService.getStatus().data.status, 'running');
+  finishJob();
+
+  const result = await request;
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.data.status, 'completed');
+  assert.equal(settled, true);
+  KarmaGroupScraperService.__resetForTests();
+});
+
 test('Karma scraper does not cross tenant boundary for identical source identity', () => {
   const db = {
     BuilderProjects: [
