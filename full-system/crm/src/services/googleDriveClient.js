@@ -2,6 +2,12 @@
 
 const { google } = require('googleapis');
 
+function createBufferStream(buffer) {
+  const { Readable } = require('stream');
+  const value = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? '');
+  return Readable.from([value]);
+}
+
 function createGoogleDriveClient() {
   const auth = new google.auth.GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/drive']
@@ -25,7 +31,6 @@ function createGoogleDriveClient() {
       };
     },
     async uploadBuffer(filename, buffer, parentId, mimeType = 'application/octet-stream') {
-      const { Readable } = require('stream');
       const res = await drive.files.create({
         requestBody: {
           name: filename,
@@ -33,7 +38,7 @@ function createGoogleDriveClient() {
         },
         media: {
           mimeType,
-          body: Readable.from(buffer)
+          body: createBufferStream(buffer)
         },
         fields: 'id,name,webViewLink,webContentLink,mimeType,size'
       });
@@ -49,4 +54,4 @@ function createGoogleDriveClient() {
   };
 }
 
-module.exports = { createGoogleDriveClient };
+module.exports = { createGoogleDriveClient, createBufferStream };
