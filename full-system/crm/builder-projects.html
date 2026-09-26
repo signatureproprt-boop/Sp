@@ -571,7 +571,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!count && !errors.length) { panel.style.display = 'none'; return; }
     panel.style.display = 'block';
     const title = document.createElement('strong');
-    title.textContent = `Error tracker · ${count} error(s) · last ${errors.length} saved`;
+    title.textContent = `Error tracker · ${count} error(s) · showing ${errors.length} recent · full details in Cloud Logging`;
     panel.appendChild(title);
     const list = document.createElement('div');
     list.style.cssText = 'display:grid;gap:6px;margin-top:8px';
