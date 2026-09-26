@@ -236,6 +236,7 @@ table td,table th{border-color:var(--v2-line)!important}
   </div>
 
   <div id="karma-scrape-status" data-testid="karma-scrape-status" style="display:none;margin-bottom:14px;padding:12px 14px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-gold-soft);font-size:12.5px;color:var(--clr-brown)"></div>
+  <div id="karma-scrape-errors" data-testid="karma-scrape-errors" style="display:none;margin:-6px 0 14px;padding:12px 14px;border:1px solid #f0c9c5;border-radius:8px;background:#fff8f7;color:#57221e;font-size:12px"></div>
 
   <div class="toolbar">
     <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
@@ -561,11 +562,34 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   let karmaScrapePoll = null;
+  function renderKarmaScrapeErrors(data) {
+    const panel = document.getElementById('karma-scrape-errors');
+    const result = data?.result || {};
+    const errors = Array.isArray(data?.errors) ? data.errors : (Array.isArray(result.errors) ? result.errors : []);
+    const count = Number(data?.errorCount ?? result.errorCount ?? errors.length);
+    panel.replaceChildren();
+    if (!count && !errors.length) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    const title = document.createElement('strong');
+    title.textContent = `Error tracker · ${count} error(s) · last ${errors.length} saved`;
+    panel.appendChild(title);
+    const list = document.createElement('div');
+    list.style.cssText = 'display:grid;gap:6px;margin-top:8px';
+    errors.slice(-20).reverse().forEach((item) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:7px 9px;background:#fff;border:1px solid #f4ddda;border-radius:6px';
+      row.textContent = `${item.occurredAt || ''} · ${item.stage || 'unknown step'} · ${item.projectName || item.sourceProjectId || 'Project not identified'}${item.mediaType ? ` · ${item.mediaType}` : ''} · ${item.classification || 'ERROR'} · ${item.message || 'Unknown error'}`;
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+  }
+
   function renderKarmaScrapeStatus(data) {
     const box = document.getElementById('karma-scrape-status');
     const button = document.getElementById('karma-scrape-btn');
     const testButton = document.getElementById('karma-scrape-test-btn');
     const result = data?.result || {};
+    renderKarmaScrapeErrors(data);
     const running = data?.status === 'running';
     box.style.display = 'block';
     button.disabled = running;
@@ -586,6 +610,10 @@ table td,table th{border-color:var(--v2-line)!important}
     }
     if (data?.status === 'failed') {
       box.textContent = `❌ Scrape failed: ${data.error || 'Unknown error'}`;
+      return;
+    }
+    if (data?.status === 'interrupted') {
+      box.textContent = `⚠️ Scrape stopped · Last saved step: ${data.currentStage || 'unknown'}${data.selectedProjectName ? ` · ${data.selectedProjectName}` : ''} · ${data.error || 'Restart detected'}`;
     }
   }
 
