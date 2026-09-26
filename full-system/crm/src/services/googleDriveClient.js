@@ -2,6 +2,26 @@
 
 const { google } = require('googleapis');
 
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+
+function createDriveAuth(env = process.env) {
+  const clientId = String(env.SIG_REALTY_GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = String(env.SIG_REALTY_GOOGLE_CLIENT_SECRET || '').trim();
+  const refreshToken = String(env.SIG_REALTY_GOOGLE_REFRESH_TOKEN || '').trim();
+  const values = [clientId, clientSecret, refreshToken];
+  const configured = values.every(Boolean);
+
+  if (!configured && values.some(Boolean)) {
+    throw new Error('Incomplete Google OAuth configuration: SIG_REALTY_GOOGLE_CLIENT_ID, SIG_REALTY_GOOGLE_CLIENT_SECRET, and SIG_REALTY_GOOGLE_REFRESH_TOKEN must all be set');
+  }
+  if (configured) {
+    const auth = new google.auth.OAuth2(clientId, clientSecret);
+    auth.setCredentials({ refresh_token: refreshToken });
+    return auth;
+  }
+  return new google.auth.GoogleAuth({ scopes: [DRIVE_SCOPE] });
+}
+
 function createBufferStream(buffer) {
   const { Readable } = require('stream');
   const value = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer ?? '');
@@ -9,9 +29,7 @@ function createBufferStream(buffer) {
 }
 
 function createGoogleDriveClient() {
-  const auth = new google.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/drive']
-  });
+  const auth = createDriveAuth();
   const drive = google.drive({ version: 'v3', auth });
 
   return {
@@ -54,4 +72,4 @@ function createGoogleDriveClient() {
   };
 }
 
-module.exports = { createGoogleDriveClient, createBufferStream };
+module.exports = { createGoogleDriveClient, createBufferStream, createDriveAuth };
