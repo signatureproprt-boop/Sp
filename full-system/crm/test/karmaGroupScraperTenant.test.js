@@ -98,8 +98,15 @@ test('full scrape completes one project at a time, checkpoints each, logs failur
   KarmaGroupScraperService.__resetForTests();
   const db = { BuilderProjects: [] };
   const writes = [];
+  const flushedScans = [];
+  const observedFlushBeforeProject = [];
   const repo = repoWith(db);
   repo.write = () => writes.push({ ...db.KarmaScrapeRuns[0] });
+  repo.flush = async () => {
+    await new Promise(setImmediate);
+    flushedScans.push(Number(db.KarmaScrapeRuns[0]?.Scanned || 0));
+    return { lastError: null };
+  };
   const svc = new KarmaGroupScraperService(repo, { concurrency: 4, ingestBrochures: false });
   const candidates = [1, 2, 3].map((id) => ({ projectName: `Project ${id}`, sourceProjectID: String(id) }));
   const sequence = [];
@@ -107,6 +114,7 @@ test('full scrape completes one project at a time, checkpoints each, logs failur
   let maxActive = 0;
   svc.discoverCandidates = async () => ({ candidates, visitedPages: 1, requests: 1 });
   svc._processCandidate = async (_db, candidate, counters) => {
+    observedFlushBeforeProject.push(flushedScans.at(-1));
     active += 1;
     maxActive = Math.max(maxActive, active);
     sequence.push(`start-${candidate.sourceProjectID}`);
@@ -132,6 +140,7 @@ test('full scrape completes one project at a time, checkpoints each, logs failur
   assert.ok(writes.some((run) => run.Scanned === 1));
   assert.ok(writes.some((run) => run.Scanned === 2 && run.ErrorCount === 1));
   assert.ok(writes.some((run) => run.Scanned === 3));
+  assert.deepEqual(observedFlushBeforeProject, [0, 1, 2], 'each project starts only after the prior checkpoint is flushed');
   KarmaGroupScraperService.__resetForTests();
 });
 
