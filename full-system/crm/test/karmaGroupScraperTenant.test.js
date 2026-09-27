@@ -94,6 +94,47 @@ test('resume continues after the persisted scan checkpoint instead of restarting
   KarmaGroupScraperService.__resetForTests();
 });
 
+test('full scrape completes one project at a time, checkpoints each, logs failures, and continues', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  const db = { BuilderProjects: [] };
+  const writes = [];
+  const repo = repoWith(db);
+  repo.write = () => writes.push({ ...db.KarmaScrapeRuns[0] });
+  const svc = new KarmaGroupScraperService(repo, { concurrency: 4, ingestBrochures: false });
+  const candidates = [1, 2, 3].map((id) => ({ projectName: `Project ${id}`, sourceProjectID: String(id) }));
+  const sequence = [];
+  let active = 0;
+  let maxActive = 0;
+  svc.discoverCandidates = async () => ({ candidates, visitedPages: 1, requests: 1 });
+  svc._processCandidate = async (_db, candidate, counters) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    sequence.push(`start-${candidate.sourceProjectID}`);
+    try {
+      await new Promise(setImmediate);
+      if (candidate.sourceProjectID === '2') throw new Error('detail fetch failed');
+      counters.updated += 1;
+    } finally {
+      sequence.push(`complete-${candidate.sourceProjectID}`);
+      active -= 1;
+    }
+  };
+
+  const result = await svc.startScrape({ limit: 3, waitForCompletion: true });
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.data.status, 'completed');
+  assert.equal(maxActive, 1);
+  assert.deepEqual(sequence, ['start-1', 'complete-1', 'start-2', 'complete-2', 'start-3', 'complete-3']);
+  assert.equal(result.data.scanned, 3);
+  assert.equal(result.data.errorCount, 1);
+  assert.equal(result.data.errors[0].projectName, 'Project 2');
+  assert.ok(writes.some((run) => run.Scanned === 1));
+  assert.ok(writes.some((run) => run.Scanned === 2 && run.ErrorCount === 1));
+  assert.ok(writes.some((run) => run.Scanned === 3));
+  KarmaGroupScraperService.__resetForTests();
+});
+
 test('scrape failure diagnostics identify the project and processing stage', async () => {
   KarmaGroupScraperService.__resetForTests();
   const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });

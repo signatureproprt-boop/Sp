@@ -2063,13 +2063,14 @@ async function handleApi(req, res, url) {
           ingestBrochures: String(process.env.KARMA_SCRAPE_INGEST_BROCHURES || '').toLowerCase() === 'true',
           ingestMedia: String(process.env.KARMA_SCRAPE_INGEST_MEDIA || '').toLowerCase() === 'true',
           useCategoryDiscovery: true,
-          concurrency: 4,
+          concurrency: 1,
           mediaConcurrency: 2
         });
         const out = await scraper.resumeScrape({
           userId: actor.userId || 'system',
           companyId: actor.companyId || null,
-          brokerageId: actor.brokerageId || null
+          brokerageId: actor.brokerageId || null,
+          waitForCompletion: true
         });
         sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
         return;
@@ -2083,14 +2084,15 @@ async function handleApi(req, res, url) {
           ingestBrochures: String(process.env.KARMA_SCRAPE_INGEST_BROCHURES || '').toLowerCase() === 'true',
           ingestMedia: String(process.env.KARMA_SCRAPE_INGEST_MEDIA || '').toLowerCase() === 'true',
           useCategoryDiscovery: true,
-          concurrency: 4,
+          concurrency: 1,
           mediaConcurrency: 2
         });
         const out = await scraper.startScrape({
           limit: Number(bodyForV2?.limit) || 1000,
           userId: actor.userId || 'system',
           companyId: actor.companyId || null,
-          brokerageId: actor.brokerageId || null
+          brokerageId: actor.brokerageId || null,
+          waitForCompletion: true
         });
         sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
         return;
