@@ -721,7 +721,7 @@ class KarmaGroupScraperService {
     return { ok: true, statusCode: 202, data: { status: 'accepted', startedAt: latestStatus.startedAt, mode: latestStatus.mode, limit: safeLimit, resumedFrom: resumeOffset } };
   }
 
-  async resumeScrape({ userId = 'system', companyId = null, brokerageId = null } = {}) {
+  async resumeScrape({ userId = 'system', companyId = null, brokerageId = null, waitForCompletion = false } = {}) {
     if (KarmaGroupScraperService.isRunning()) {
       return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
     }
@@ -738,7 +738,8 @@ class KarmaGroupScraperService {
       userId,
       companyId,
       brokerageId,
-      resumeRun: { ...lastRun, Scanned: scanned, Discovered: discovered }
+      resumeRun: { ...lastRun, Scanned: scanned, Discovered: discovered },
+      waitForCompletion
     });
   }
 
@@ -1494,10 +1495,10 @@ class KarmaGroupScraperService {
     const resumeFrom = Math.max(0, Math.min(Number(resumeOffset) || 0, selected.length));
     latestStatus.discoveredCandidates = discovery.candidates.length;
 
-    const checkpointSize = 20;
+    const checkpointSize = 1;
     for (let batchStart = resumeFrom; batchStart < selected.length; batchStart += checkpointSize) {
       const batch = selected.slice(batchStart, batchStart + checkpointSize);
-      await runPool(batch, this.concurrency, async (candidate) => {
+      await runPool(batch, 1, async (candidate) => {
         try {
           await this._processCandidate(db, candidate, counters, userId, { companyId, brokerageId });
         } catch (error) {
