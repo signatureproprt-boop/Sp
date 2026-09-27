@@ -1468,6 +1468,11 @@ class KarmaGroupScraperService {
     const db = this.repo.read();
     db.BuilderProjects = db.BuilderProjects || [];
 
+    // Mongo-backed writes clone and queue full DB snapshots. Drain any pending
+    // startup write before this long-running job begins to avoid retaining a
+    // backlog of large snapshots in memory.
+    await this._flushScrapeWrites();
+
     const counters = {
       scanned: Math.max(0, Number(resumeOffset) || 0),
       created: 0,
@@ -1522,6 +1527,19 @@ class KarmaGroupScraperService {
       latestStatus.discoveredCandidates = discovery.candidates.length;
       updatePersistedScrapeRun(db, latestStatus, counters);
       this.repo.write(db);
+      await this._flushScrapeWrites();
+      if (counters.scanned % 10 === 0 || counters.scanned === selected.length) {
+        const memory = process.memoryUsage();
+        console.log('[karma-scrape] checkpoint:', JSON.stringify({
+          runId: latestStatus.runId,
+          scanned: counters.scanned,
+          total: discovery.candidates.length,
+          projectName: selected[counters.scanned - 1]?.projectName || null,
+          heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024),
+          rssMb: Math.round(memory.rss / 1024 / 1024),
+          externalMb: Math.round(memory.external / 1024 / 1024)
+        }));
+      }
     }
 
     counters.discoveredCandidates = discovery.candidates.length;
@@ -1537,8 +1555,17 @@ class KarmaGroupScraperService {
     latestStatus.errors = counters.errors.slice();
     updatePersistedScrapeRun(db, latestStatus, latestStatus.result);
     this.repo.write(db);
+    await this._flushScrapeWrites();
     latestStatus.classification = 'SUCCESS';
     updateStage(latestStatus, 'complete');
+  }
+
+  async _flushScrapeWrites() {
+    if (typeof this.repo.flush !== 'function') return;
+    const result = await this.repo.flush();
+    if (result?.lastError) {
+      throw new Error(`Scrape checkpoint persistence failed: ${result.lastError}`);
+    }
   }
 
   async _runTargetedScrapeJob({ projectId, sourceUrl, userId, companyId = null, brokerageId = null }) {
