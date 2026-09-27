@@ -12,9 +12,7 @@ const DEFAULT_CONCURRENCY = 2;
 const MAX_CONCURRENCY = 8;
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 1000;
-// Keep only a small recent-error preview in scrape status/snapshot writes.
-// Full structured error events are emitted to Cloud Logging below.
-const MAX_SCRAPE_ERROR_DETAILS = 10;
+const MAX_SCRAPE_ERROR_DETAILS = 100;
 const MAX_SCRAPE_RUN_HISTORY = 10;
 const DEFAULT_MAX_PAGES = 12;
 const DEFAULT_MAX_REQUESTS = 40;
@@ -38,11 +36,11 @@ const KARMA_CATEGORY_FILTERS = [
 const STAGE_ORDER = {
   discovery: 1,
   'detail-fetch': 2,
-  'download-open': 3,
-  'download-stream': 4,
-  'storage-upload': 5,
-  'media-storage': 6,
-  'project-mutation': 7,
+  'project-mutation': 3,
+  'download-open': 4,
+  'download-stream': 5,
+  'storage-upload': 6,
+  'media-storage': 7,
   complete: 8,
   error: 9
 };
@@ -369,15 +367,9 @@ function addScrapeError(status, counters, details = {}) {
   if (counters.errors.length > MAX_SCRAPE_ERROR_DETAILS) counters.errors.shift();
   status.errorCount = counters.errorCount;
   status.errors = counters.errors.slice();
-  // Cloud Run forwards this structured JSON event to Cloud Logging. Keeping
-  // the full history here avoids repeatedly copying every error into the
-  // large Mongo snapshot and returning it on each status poll.
-  console.error(JSON.stringify({
-    severity: 'ERROR',
-    logCategory: 'karma-scrape-project-error',
-    runId: status.runId || null,
-    ...error
-  }));
+  if (counters.errorCount <= MAX_SCRAPE_ERROR_DETAILS) {
+    console.error('[karma-scrape] error detail:', JSON.stringify(error));
+  }
   return error;
 }
 
@@ -623,7 +615,7 @@ class KarmaGroupScraperService {
             scanned: Number(lastRun.Scanned || 0),
             discoveredCandidates: Number(lastRun.Discovered || 0),
             errorCount: Number(lastRun.ErrorCount || 0),
-            errors: Array.isArray(lastRun.Errors) ? lastRun.Errors.slice(-MAX_SCRAPE_ERROR_DETAILS) : [],
+            errors: Array.isArray(lastRun.Errors) ? lastRun.Errors : [],
             error: interrupted ? 'Scrape process stopped before completion. See the last saved project and errors below.' : lastRun.Error || null,
             classification: lastRun.Classification || null,
             result: lastRun.Result || null
@@ -1646,6 +1638,7 @@ module.exports = {
   rankMatches,
   parseProjectDetailHtml,
   classificationFromError,
+  updateStage,
   STALE_STATUS,
   TRANSIENT_CODES
 };
