@@ -383,6 +383,7 @@ function updatePersistedScrapeRun(db, status, counters = {}) {
   }
   Object.assign(run, {
     Status: status.status,
+    Mode: status.mode || 'full',
     StartedAt: status.startedAt,
     UpdatedAt: nowIso(),
     FinishedAt: status.finishedAt || null,
@@ -614,6 +615,7 @@ class KarmaGroupScraperService {
             selectedProjectID: lastRun.CurrentProjectID || null,
             scanned: Number(lastRun.Scanned || 0),
             discoveredCandidates: Number(lastRun.Discovered || 0),
+            mode: lastRun.Mode || 'full',
             errorCount: Number(lastRun.ErrorCount || 0),
             errors: Array.isArray(lastRun.Errors) ? lastRun.Errors : [],
             error: interrupted ? 'Scrape process stopped before completion. See the last saved project and errors below.' : lastRun.Error || null,
@@ -637,28 +639,46 @@ class KarmaGroupScraperService {
     latestStatus = makeIdleStatus();
   }
 
-  async startScrape({ limit = DEFAULT_LIMIT, userId = 'system', companyId = null, brokerageId = null, waitForCompletion = false } = {}) {
+  async startScrape({ limit = DEFAULT_LIMIT, userId = 'system', companyId = null, brokerageId = null, waitForCompletion = false, resumeRun = null } = {}) {
     if (KarmaGroupScraperService.isRunning()) {
       return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
     }
 
     const safeLimit = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT));
-    const runId = this.repo.createId('KSR');
+    const resumeOffset = Math.max(0, Math.min(Number(resumeRun?.Scanned) || 0, safeLimit));
+    const runId = resumeRun?.RunID || this.repo.createId('KSR');
     latestStatus = {
       ...makeIdleStatus(),
       runId,
       status: 'running',
-      mode: 'full',
-      startedAt: nowIso(),
+      mode: resumeRun ? 'resume' : 'full',
+      startedAt: resumeRun?.StartedAt || nowIso(),
       currentStage: 'discovery',
-      selectedProjectID: null,
-      selectedProjectName: null
+      selectedProjectID: resumeRun?.CurrentProjectID || null,
+      selectedProjectName: resumeRun?.CurrentProjectName || null,
+      scanned: resumeOffset,
+      discoveredCandidates: Number(resumeRun?.Discovered || 0),
+      errorCount: Number(resumeRun?.ErrorCount || 0),
+      errors: Array.isArray(resumeRun?.Errors) ? resumeRun.Errors.slice(-MAX_SCRAPE_ERROR_DETAILS) : []
     };
     const initialDb = this.repo.read();
-    updatePersistedScrapeRun(initialDb, latestStatus);
+    updatePersistedScrapeRun(initialDb, latestStatus, {
+      scanned: resumeOffset,
+      discoveredCandidates: latestStatus.discoveredCandidates,
+      errorCount: latestStatus.errorCount,
+      errors: latestStatus.errors
+    });
     this.repo.write(initialDb);
 
-    activeJob = this._runFullScrapeJob({ limit: safeLimit, userId, companyId, brokerageId })
+    activeJob = this._runFullScrapeJob({
+      limit: safeLimit,
+      userId,
+      companyId,
+      brokerageId,
+      resumeOffset,
+      resumeErrors: latestStatus.errors,
+      resumeErrorCount: latestStatus.errorCount
+    })
       .catch((error) => {
         const failureStage = latestStatus.currentStage || 'scrape';
         latestStatus.status = 'failed';
@@ -698,7 +718,28 @@ class KarmaGroupScraperService {
       return { ok: true, statusCode: 200, data: { ...latestStatus } };
     }
 
-    return { ok: true, statusCode: 202, data: { status: 'accepted', startedAt: latestStatus.startedAt, mode: 'full', limit: safeLimit } };
+    return { ok: true, statusCode: 202, data: { status: 'accepted', startedAt: latestStatus.startedAt, mode: latestStatus.mode, limit: safeLimit, resumedFrom: resumeOffset } };
+  }
+
+  async resumeScrape({ userId = 'system', companyId = null, brokerageId = null } = {}) {
+    if (KarmaGroupScraperService.isRunning()) {
+      return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
+    }
+    const db = this.repo.read();
+    const runs = Array.isArray(db.KarmaScrapeRuns) ? db.KarmaScrapeRuns : [];
+    const lastRun = runs[runs.length - 1];
+    if (!lastRun || lastRun.Status !== 'running') {
+      return { ok: false, statusCode: 409, error: 'There is no interrupted Karma scrape to resume.' };
+    }
+    const discovered = Number(lastRun.Discovered) || DEFAULT_LIMIT;
+    const scanned = Math.max(0, Math.min(Number(lastRun.Scanned) || 0, discovered));
+    return this.startScrape({
+      limit: discovered,
+      userId,
+      companyId,
+      brokerageId,
+      resumeRun: { ...lastRun, Scanned: scanned, Discovered: discovered }
+    });
   }
 
   async startTargetedScrape({ projectId = null, sourceUrl = null, userId = 'system', companyId = null, brokerageId = null } = {}) {
@@ -1422,12 +1463,12 @@ class KarmaGroupScraperService {
     counters.created += 1;
   }
 
-  async _runFullScrapeJob({ limit, userId, companyId = null, brokerageId = null }) {
+  async _runFullScrapeJob({ limit, userId, companyId = null, brokerageId = null, resumeOffset = 0, resumeErrors = [], resumeErrorCount = 0 }) {
     const db = this.repo.read();
     db.BuilderProjects = db.BuilderProjects || [];
 
     const counters = {
-      scanned: 0,
+      scanned: Math.max(0, Number(resumeOffset) || 0),
       created: 0,
       updated: 0,
       unchanged: 0,
@@ -1441,8 +1482,8 @@ class KarmaGroupScraperService {
       mediaReused: 0,
       mediaFailed: 0,
       mediaBytesStored: 0,
-      errorCount: 0,
-      errors: []
+      errorCount: Math.max(0, Number(resumeErrorCount) || 0),
+      errors: Array.isArray(resumeErrors) ? resumeErrors.slice(-MAX_SCRAPE_ERROR_DETAILS) : []
     };
 
     db.KarmaScrapeRuns = Array.isArray(db.KarmaScrapeRuns) ? db.KarmaScrapeRuns : [];
@@ -1450,32 +1491,37 @@ class KarmaGroupScraperService {
 
     const discovery = await this.discoverCandidates({});
     const selected = discovery.candidates.slice(0, limit);
+    const resumeFrom = Math.max(0, Math.min(Number(resumeOffset) || 0, selected.length));
+    latestStatus.discoveredCandidates = discovery.candidates.length;
 
-    await runPool(selected, this.concurrency, async (candidate) => {
-      try {
-        await this._processCandidate(db, candidate, counters, userId, { companyId, brokerageId });
-      } catch (error) {
-        counters.failed += 1;
-        const classification = classificationFromError(error);
-        if (classification === 'TRANSIENT_NETWORK_ERROR') counters.transientFailures += 1;
-        if (classification === 'STALE_DETAIL') counters.staleDetailFailures += 1;
-        addScrapeError(latestStatus, counters, {
-          projectName: candidate.projectName,
-          sourceProjectId: candidate.sourceProjectID,
-          stage: 'project-processing',
-          classification,
-          statusCode: error.statusCode,
-          error
-        });
-      }
+    const checkpointSize = 20;
+    for (let batchStart = resumeFrom; batchStart < selected.length; batchStart += checkpointSize) {
+      const batch = selected.slice(batchStart, batchStart + checkpointSize);
+      await runPool(batch, this.concurrency, async (candidate) => {
+        try {
+          await this._processCandidate(db, candidate, counters, userId, { companyId, brokerageId });
+        } catch (error) {
+          counters.failed += 1;
+          const classification = classificationFromError(error);
+          if (classification === 'TRANSIENT_NETWORK_ERROR') counters.transientFailures += 1;
+          if (classification === 'STALE_DETAIL') counters.staleDetailFailures += 1;
+          addScrapeError(latestStatus, counters, {
+            projectName: candidate.projectName,
+            sourceProjectId: candidate.sourceProjectID,
+            stage: 'project-processing',
+            classification,
+            statusCode: error.statusCode,
+            error
+          });
+        }
+      });
+      counters.scanned = batchStart + batch.length;
+      counters.discoveredCandidates = discovery.candidates.length;
       latestStatus.scanned = counters.scanned;
       latestStatus.discoveredCandidates = discovery.candidates.length;
-      if (counters.scanned % 20 === 0) {
-        counters.discoveredCandidates = discovery.candidates.length;
-        updatePersistedScrapeRun(db, latestStatus, counters);
-        this.repo.write(db);
-      }
-    });
+      updatePersistedScrapeRun(db, latestStatus, counters);
+      this.repo.write(db);
+    }
 
     counters.discoveredCandidates = discovery.candidates.length;
     this.repo.write(db);
