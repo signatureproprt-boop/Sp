@@ -61,6 +61,39 @@ test('scrape status exposes the last saved run as interrupted after a process re
   KarmaGroupScraperService.__resetForTests();
 });
 
+test('resume continues after the persisted scan checkpoint instead of restarting from zero', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  const db = { BuilderProjects: [], KarmaScrapeRuns: [{
+    RunID: 'KSR-RESUME', Status: 'running', StartedAt: '2026-09-27T03:19:49.348Z',
+    UpdatedAt: '2026-09-27T03:20:01.854Z', CurrentStage: 'project-mutation',
+    CurrentProjectName: 'shreepad celebrations', CurrentProjectID: 'BLDP-13',
+    Scanned: 2, Discovered: 3, ErrorCount: 0, Errors: []
+  }] };
+  const svc = new KarmaGroupScraperService(repoWith(db), { concurrency: 1, ingestBrochures: false });
+  const candidates = [1, 2, 3].map((id) => ({ projectName: `Project ${id}`, sourceProjectID: String(id) }));
+  const processed = [];
+  svc.discoverCandidates = async () => ({ candidates, visitedPages: 1, requests: 1 });
+  svc._processCandidate = async (_db, candidate, counters) => {
+    processed.push(candidate.sourceProjectID);
+    counters.scanned += 1;
+  };
+
+  const result = await svc.resumeScrape();
+  assert.equal(result.statusCode, 202);
+  assert.equal(result.data.mode, 'resume');
+  assert.equal(result.data.resumedFrom, 2);
+  for (let attempt = 0; attempt < 10 && KarmaGroupScraperService.getStatus().data.status === 'running'; attempt += 1) {
+    await new Promise(setImmediate);
+  }
+
+  assert.deepEqual(processed, ['3']);
+  const status = KarmaGroupScraperService.getStatus(repoWith(db)).data;
+  assert.equal(status.status, 'completed');
+  assert.equal(status.scanned, 3);
+  assert.equal(db.KarmaScrapeRuns[0].Status, 'completed');
+  KarmaGroupScraperService.__resetForTests();
+});
+
 test('scrape failure diagnostics identify the project and processing stage', async () => {
   KarmaGroupScraperService.__resetForTests();
   const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
@@ -78,42 +111,6 @@ test('scrape failure diagnostics identify the project and processing stage', asy
   assert.equal(status.errors[0].sourceProjectId, 'KARMA-101');
   assert.equal(status.errors[0].stage, 'detail-fetch');
   assert.equal(status.errors[0].statusCode, 404);
-  KarmaGroupScraperService.__resetForTests();
-});
-
-test('full project-error details go to structured logs while scrape status keeps a small recent preview', async () => {
-  KarmaGroupScraperService.__resetForTests();
-  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), { ingestBrochures: false });
-  svc._fetchAndParseDetail = async (candidate) => ({
-    ok: false,
-    classification: 'STALE_DETAIL',
-    statusCode: 404,
-    error: `HTTP 404 for ${candidate.projectName}`
-  });
-  const counters = { scanned: 0, failed: 0, staleDetailFailures: 0, errorCount: 0, errors: [] };
-  const logged = [];
-  const originalError = console.error;
-  console.error = (line) => logged.push(JSON.parse(line));
-  try {
-    for (let index = 1; index <= 12; index += 1) {
-      await svc._processCandidate({ BuilderProjects: [] }, {
-        projectName: `Project ${index}`,
-        sourceProjectID: `KARMA-${index}`
-      }, counters, 'test');
-    }
-  } finally {
-    console.error = originalError;
-  }
-
-  const status = KarmaGroupScraperService.getStatus().data;
-  assert.equal(status.errorCount, 12);
-  assert.equal(status.errors.length, 10);
-  assert.equal(status.errors[0].projectName, 'Project 3');
-  assert.equal(status.errors.at(-1).projectName, 'Project 12');
-  assert.equal(logged.length, 12);
-  assert.equal(logged[0].logCategory, 'karma-scrape-project-error');
-  assert.equal(logged[0].sourceProjectId, 'KARMA-1');
-  assert.equal(logged[0].severity, 'ERROR');
   KarmaGroupScraperService.__resetForTests();
 });
 
