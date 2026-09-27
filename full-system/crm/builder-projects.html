@@ -539,6 +539,7 @@ table td,table th{border-color:var(--v2-line)!important}
     setupDrop();
     loadProjects();
     loadHistory();
+    pollKarmaScrape();
   });
 
   async function loadProjects() {
@@ -596,6 +597,10 @@ table td,table th{border-color:var(--v2-line)!important}
     const interrupted = data?.status === 'interrupted';
     const scanned = Math.max(0, Number(data?.scanned) || 0);
     const discovered = Math.max(scanned, Number(data?.discoveredCandidates) || 0);
+    if (!running && !interrupted && !['completed', 'failed'].includes(data?.status)) {
+      box.style.display = 'none';
+      return;
+    }
     box.style.display = 'block';
     button.disabled = running || interrupted;
     testButton.disabled = running || interrupted;
