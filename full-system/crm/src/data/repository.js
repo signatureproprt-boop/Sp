@@ -321,6 +321,13 @@ class JsonRepository {
     fs.renameSync(tempFile, this.dbFile);
   }
 
+  async flush() {
+    if (mongoStore.isEnabled() && mongoStore.isInitialized()) {
+      return mongoStore.flush();
+    }
+    return { lastError: null };
+  }
+
   nextId(prefix, collection) {
     const rows = this.read()[collection] || [];
     const max = rows.reduce((acc, item) => {
