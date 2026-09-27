@@ -2055,6 +2055,26 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (/^\/api\/v2\/builder-projects\/scrape\/resume\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_CREATE')) return;
+        const { KarmaGroupScraperService } = require('./src/services/karmaGroupScraperService');
+        const scraper = new KarmaGroupScraperService(runtime.repository, {
+          ingestBrochures: String(process.env.KARMA_SCRAPE_INGEST_BROCHURES || '').toLowerCase() === 'true',
+          ingestMedia: String(process.env.KARMA_SCRAPE_INGEST_MEDIA || '').toLowerCase() === 'true',
+          useCategoryDiscovery: true,
+          concurrency: 4,
+          mediaConcurrency: 2
+        });
+        const out = await scraper.resumeScrape({
+          userId: actor.userId || 'system',
+          companyId: actor.companyId || null,
+          brokerageId: actor.brokerageId || null
+        });
+        sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
+        return;
+      }
+
       if (/^\/api\/v2\/builder-projects\/scrape\/karma-group\/?$/i.test(pathname)) {
         if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_CREATE')) return;

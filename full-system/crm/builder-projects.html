@@ -225,6 +225,7 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <button class="btn btn-accent" id="karma-scrape-btn" data-testid="karma-scrape-btn" onclick="startKarmaScrape()">🔄 Scrape Karma Group</button>
+      <button class="btn btn-ghost" id="karma-scrape-resume-btn" data-testid="karma-scrape-resume-btn" onclick="resumeKarmaScrape()" style="display:none">▶ Resume saved scrape</button>
       <button class="btn btn-ghost" id="karma-scrape-test-btn" data-testid="karma-scrape-test-btn" onclick="startKarmaScrape(1)">🧪 Test 1 project</button>
       <button class="btn btn-ghost" data-testid="cleanup-builders-btn" onclick="openCleanupModal()">🧹 Clean Names</button>
       <button class="btn btn-ghost" data-testid="fix-unknown-btn" onclick="openUnknownModal()">🏗️ Fix Unknown Builders</button>
@@ -571,7 +572,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!count && !errors.length) { panel.style.display = 'none'; return; }
     panel.style.display = 'block';
     const title = document.createElement('strong');
-    title.textContent = `Error tracker · ${count} error(s) · showing ${errors.length} recent · full details in Cloud Logging`;
+    title.textContent = `Error tracker · ${count} error(s) · last ${errors.length} saved`;
     panel.appendChild(title);
     const list = document.createElement('div');
     list.style.cssText = 'display:grid;gap:6px;margin-top:8px';
@@ -587,13 +588,20 @@ table td,table th{border-color:var(--v2-line)!important}
   function renderKarmaScrapeStatus(data) {
     const box = document.getElementById('karma-scrape-status');
     const button = document.getElementById('karma-scrape-btn');
+    const resumeButton = document.getElementById('karma-scrape-resume-btn');
     const testButton = document.getElementById('karma-scrape-test-btn');
     const result = data?.result || {};
     renderKarmaScrapeErrors(data);
     const running = data?.status === 'running';
+    const interrupted = data?.status === 'interrupted';
+    const scanned = Math.max(0, Number(data?.scanned) || 0);
+    const discovered = Math.max(scanned, Number(data?.discoveredCandidates) || 0);
     box.style.display = 'block';
-    button.disabled = running;
-    testButton.disabled = running;
+    button.disabled = running || interrupted;
+    testButton.disabled = running || interrupted;
+    resumeButton.style.display = interrupted ? 'inline-flex' : 'none';
+    resumeButton.disabled = running;
+    resumeButton.textContent = interrupted ? `▶ Resume after ${scanned}/${discovered}` : '▶ Resume saved scrape';
     button.textContent = running ? '⏳ Scraping Karma Group…' : '🔄 Scrape Karma Group';
     testButton.textContent = running ? '⏳ Scrape running…' : '🧪 Test 1 project';
     if (data?.status === 'running') {
@@ -612,8 +620,8 @@ table td,table th{border-color:var(--v2-line)!important}
       box.textContent = `❌ Scrape failed: ${data.error || 'Unknown error'}`;
       return;
     }
-    if (data?.status === 'interrupted') {
-      box.textContent = `⚠️ Scrape stopped · Last saved step: ${data.currentStage || 'unknown'}${data.selectedProjectName ? ` · ${data.selectedProjectName}` : ''} · ${data.error || 'Restart detected'}`;
+    if (interrupted) {
+      box.textContent = `⚠️ Scrape interrupted · Saved checkpoint ${scanned}/${discovered}${data.selectedProjectName ? ` · Last saved project: ${data.selectedProjectName}` : ''}. Resume continues after this checkpoint.`;
     }
   }
 
@@ -634,6 +642,7 @@ table td,table th{border-color:var(--v2-line)!important}
       karmaScrapePoll = null;
       document.getElementById('karma-scrape-btn').disabled = false;
       document.getElementById('karma-scrape-test-btn').disabled = false;
+      document.getElementById('karma-scrape-resume-btn').disabled = false;
       toast('Scrape status failed: ' + error.message, true);
     }
   }
@@ -668,6 +677,41 @@ table td,table th{border-color:var(--v2-line)!important}
       button.disabled = false;
       button.textContent = testOnly ? '🧪 Test 1 project' : '🔄 Scrape Karma Group';
       toast('Scrape start failed: ' + error.message, true);
+    }
+  }
+
+  async function resumeKarmaScrape() {
+    const button = document.getElementById('karma-scrape-resume-btn');
+    button.disabled = true;
+    try {
+      const statusResponse = await fetch('/api/v2/builder-projects/scrape/status');
+      const statusPayload = await statusResponse.json();
+      if (!statusResponse.ok || !statusPayload.ok) throw new Error(statusPayload.error || `HTTP ${statusResponse.status}`);
+      const status = statusPayload.data || {};
+      if (status.status !== 'interrupted') throw new Error('There is no interrupted scrape to resume. Refresh the page and check its status.');
+      const scanned = Math.max(0, Number(status.scanned) || 0);
+      const discovered = Math.max(scanned, Number(status.discoveredCandidates) || 0);
+      if (!confirm(`Continue from saved checkpoint ${scanned}/${discovered}? The saved projects before this checkpoint will be skipped.`)) {
+        button.disabled = false;
+        return;
+      }
+      button.textContent = '⏳ Resuming…';
+      const resumeRequest = fetch('/api/v2/builder-projects/scrape/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      renderKarmaScrapeStatus({ status: 'running', mode: 'resume', currentStage: 'discovery', scanned, discoveredCandidates: discovered });
+      clearTimeout(karmaScrapePoll);
+      karmaScrapePoll = setTimeout(pollKarmaScrape, 700);
+      const response = await resumeRequest;
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = '▶ Resume saved scrape';
+      toast('Scrape resume failed: ' + error.message, true);
+      pollKarmaScrape();
     }
   }
   function updateBuilderNameOptions() {
