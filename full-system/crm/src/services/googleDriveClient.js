@@ -3,6 +3,8 @@
 const { google } = require('googleapis');
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+const DEFAULT_DRIVE_REQUEST_TIMEOUT_MS = 30000;
+const MAX_DRIVE_REQUEST_TIMEOUT_MS = 120000;
 
 function createDriveAuth(env = process.env) {
   const clientId = String(env.SIG_REALTY_GOOGLE_CLIENT_ID || '').trim();
@@ -28,9 +30,16 @@ function createBufferStream(buffer) {
   return Readable.from([value]);
 }
 
-function createGoogleDriveClient() {
-  const auth = createDriveAuth();
-  const drive = google.drive({ version: 'v3', auth });
+function driveRequestTimeoutMs(env = process.env) {
+  const configured = Number(env.SIG_REALTY_GOOGLE_DRIVE_TIMEOUT_MS);
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_DRIVE_REQUEST_TIMEOUT_MS;
+  return Math.min(MAX_DRIVE_REQUEST_TIMEOUT_MS, Math.max(1000, Math.floor(configured)));
+}
+
+function createGoogleDriveClient({ env = process.env, driveFactory = google.drive } = {}) {
+  const auth = createDriveAuth(env);
+  const drive = driveFactory({ version: 'v3', auth });
+  const requestOptions = { timeout: driveRequestTimeoutMs(env) };
 
   return {
     async createFolder(name, parentId) {
@@ -41,7 +50,7 @@ function createGoogleDriveClient() {
           parents: parentId ? [parentId] : undefined
         },
         fields: 'id,name,webViewLink'
-      });
+      }, requestOptions);
       return {
         id: res.data.id,
         name: res.data.name,
@@ -59,7 +68,7 @@ function createGoogleDriveClient() {
           body: createBufferStream(buffer)
         },
         fields: 'id,name,webViewLink,webContentLink,mimeType,size'
-      });
+      }, requestOptions);
       return {
         id: res.data.id,
         name: res.data.name,
@@ -72,4 +81,10 @@ function createGoogleDriveClient() {
   };
 }
 
-module.exports = { createGoogleDriveClient, createBufferStream, createDriveAuth };
+module.exports = {
+  createGoogleDriveClient,
+  createBufferStream,
+  createDriveAuth,
+  driveRequestTimeoutMs,
+  DEFAULT_DRIVE_REQUEST_TIMEOUT_MS
+};
