@@ -1148,16 +1148,20 @@ class KarmaGroupScraperService {
     const alreadyStored = project.Brochures.find((row) =>
       normalizeUrl(row?.OriginalUrl || row?.SourceUrl || '') === normalizedBrochure &&
       row?.verified === true &&
-      (row?.DriveFileId || row?.DriveFileID || row?.StoragePath)
+      (row?.DriveFileId || row?.DriveFileID)
     );
     if (alreadyStored) {
+      const driveFileId = alreadyStored.DriveFileId || alreadyStored.DriveFileID;
+      // A verified GridFS path alone is not a Drive upload. Older Drive records
+      // can recover their direct link from the saved file ID.
+      alreadyStored.DriveWebViewLink ||= `https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/view`;
       updateStage(statusRef, 'storage-upload', { uploadCompleted: true, uploadedBytes: null });
       return {
         ok: true,
         reused: true,
         storagePath: alreadyStored.StoragePath || null,
-        driveFileId: alreadyStored.DriveFileId || alreadyStored.DriveFileID || null,
-        driveWebViewLink: alreadyStored.DriveWebViewLink || null
+        driveFileId,
+        driveWebViewLink: alreadyStored.DriveWebViewLink
       };
     }
 
@@ -1201,7 +1205,8 @@ class KarmaGroupScraperService {
     }
 
     const driveFileId = upload?.fileId || null;
-    const driveWebViewLink = upload?.webViewLink || null;
+    if (!driveFileId) return { ok: false, error: 'Drive upload did not return a file ID' };
+    const driveWebViewLink = upload?.webViewLink || `https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/view`;
     const driveWebContentLink = upload?.webContentLink || null;
     const now = nowIso();
     const mediaId = this.repo.createId('MED');
