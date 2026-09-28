@@ -392,6 +392,11 @@ function updatePersistedScrapeRun(db, status, counters = {}) {
     CurrentProjectID: status.selectedProjectID || null,
     Scanned: Number(counters.scanned || 0),
     Discovered: Number(counters.discoveredCandidates || 0),
+    Completed: Number((counters.created || 0) + (counters.updated || 0) + (counters.unchanged || 0)),
+    Failed: Number(counters.failed || 0),
+    BrochuresStored: Number(counters.brochuresStored || 0),
+    BrochuresReused: Number(counters.brochuresReused || 0),
+    BrochuresFailed: Number(counters.brochuresFailed || 0),
     ErrorCount: Number(counters.errorCount ?? status.errorCount ?? 0),
     Errors: (Array.isArray(counters.errors) ? counters.errors : status.errors || []).slice(-MAX_SCRAPE_ERROR_DETAILS),
     Error: status.error || null,
@@ -590,6 +595,11 @@ class KarmaGroupScraperService {
     this.useCategoryDiscovery = deps.useCategoryDiscovery === true;
     // Safe by default: recovery scrapes may update matched CRM projects, but must not create duplicates.
     this.allowProjectCreation = deps.allowProjectCreation === true;
+    // Brochures must be stored in Google Drive; never silently fall back to
+    // Mongo/GridFS when Drive is the required destination.
+    this.driveStorageRequired = deps.driveStorageRequired !== false;
+    this.isDriveStorageConfigured = deps.isDriveStorageConfigured ||
+      (() => String(process.env.OBJECT_STORAGE_PROVIDER || '').trim().toUpperCase() === 'GOOGLE_DRIVE');
   }
 
   static getStatus(repository = null) {
@@ -615,6 +625,11 @@ class KarmaGroupScraperService {
             selectedProjectID: lastRun.CurrentProjectID || null,
             scanned: Number(lastRun.Scanned || 0),
             discoveredCandidates: Number(lastRun.Discovered || 0),
+            completed: Number(lastRun.Completed || 0),
+            failed: Number(lastRun.Failed || 0),
+            brochuresStored: Number(lastRun.BrochuresStored || 0),
+            brochuresReused: Number(lastRun.BrochuresReused || 0),
+            brochuresFailed: Number(lastRun.BrochuresFailed || 0),
             mode: lastRun.Mode || 'full',
             errorCount: Number(lastRun.ErrorCount || 0),
             errors: Array.isArray(lastRun.Errors) ? lastRun.Errors : [],
@@ -1120,6 +1135,36 @@ class KarmaGroupScraperService {
       return { ok: false, error: sanitizeError(error) };
     }
 
+    // Brochures are required to land in Google Drive. Never silently fall back
+    // to Mongo/GridFS when Drive is the configured/required destination.
+    if (this.driveStorageRequired && !this.isDriveStorageConfigured()) {
+      return { ok: false, error: 'Google Drive storage is required for brochures (set OBJECT_STORAGE_PROVIDER=GOOGLE_DRIVE); refusing GridFS fallback' };
+    }
+
+    // Retry-safe: if this exact brochure is already stored in Drive for this
+    // project, reuse it instead of re-downloading/re-uploading. This prevents
+    // duplicate Drive files and never drops a previously saved valid link.
+    project.Brochures = Array.isArray(project.Brochures) ? project.Brochures : [];
+    const alreadyStored = project.Brochures.find((row) =>
+      normalizeUrl(row?.OriginalUrl || row?.SourceUrl || '') === normalizedBrochure &&
+      row?.verified === true &&
+      (row?.DriveFileId || row?.DriveFileID)
+    );
+    if (alreadyStored) {
+      const driveFileId = alreadyStored.DriveFileId || alreadyStored.DriveFileID;
+      // A verified GridFS path alone is not a Drive upload. Older Drive records
+      // can recover their direct link from the saved file ID.
+      alreadyStored.DriveWebViewLink ||= `https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/view`;
+      updateStage(statusRef, 'storage-upload', { uploadCompleted: true, uploadedBytes: null });
+      return {
+        ok: true,
+        reused: true,
+        storagePath: alreadyStored.StoragePath || null,
+        driveFileId,
+        driveWebViewLink: alreadyStored.DriveWebViewLink
+      };
+    }
+
     const maxBytes = Math.min(BROCHURE_DEFAULT_MAX_BYTES, BROCHURE_HARD_MAX_BYTES, Number(process.env.BUILDER_PROJECT_BROCHURE_MAX_BYTES || BROCHURE_DEFAULT_MAX_BYTES));
     updateStage(statusRef, 'download-open', {
       contentLength: null,
@@ -1147,29 +1192,60 @@ class KarmaGroupScraperService {
     updateStage(statusRef, 'storage-upload', { uploadedBytes: null });
 
     const storageKey = `builder-projects/${project.ProjectID}/brochures/${safeProjectName(project.ProjectName)}.pdf`;
+    const filename = `${project.ProjectName || project.ProjectID}.pdf`;
     let upload;
     try {
-      upload = await this.objectStorage.putObjectStream(storageKey, streamResult.stream, 'application/pdf', `${project.ProjectName || project.ProjectID}.pdf`);
+      upload = await this.objectStorage.putObjectStream(storageKey, streamResult.stream, 'application/pdf', filename, {
+        metadata: { projectId: String(project.ProjectID), mediaType: 'brochure', originalUrl: normalizedBrochure }
+      });
     } catch (error) {
+      // Upload failed: leave any previously stored brochure record untouched so
+      // a valid saved Drive link is never lost by a failed retry.
       return { ok: false, error: `Upload failed: ${sanitizeError(error)}` };
     }
 
+    const driveFileId = upload?.fileId || null;
+    if (!driveFileId) return { ok: false, error: 'Drive upload did not return a file ID' };
+    const driveWebViewLink = upload?.webViewLink || `https://drive.google.com/file/d/${encodeURIComponent(driveFileId)}/view`;
+    const driveWebContentLink = upload?.webContentLink || null;
+    const now = nowIso();
     const mediaId = this.repo.createId('MED');
-    project.Brochures = Array.isArray(project.Brochures) ? project.Brochures : [];
+    // Replace any prior record for the same source URL in place (no duplicates).
     project.Brochures = project.Brochures.filter((row) => normalizeUrl(row?.OriginalUrl || row?.SourceUrl || '') !== normalizedBrochure);
-    project.Brochures.push({
+    const record = {
       MediaID: mediaId,
-      Filename: `${project.ProjectName || project.ProjectID}.pdf`,
-      StoragePath: upload.path,
-      Url: `/api/v2/builder-projects/media/${mediaId}`,
-      Source: 'KarmaGroupScrape',
+      brochureId: mediaId,
+      projectId: project.ProjectID,
+      Filename: filename,
+      fileName: filename,
+      Url: `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure`,
       OriginalUrl: normalizedBrochure,
-      UploadedAt: nowIso(),
+      originalUrl: normalizedBrochure,
+      SourceUrl: normalizedBrochure,
+      Source: 'KarmaGroupScrape',
+      source: 'KarmaGroupScrape',
+      StoragePath: upload?.path || storageKey,
+      fileId: driveFileId,
+      DriveFileId: driveFileId,
+      DriveFileID: driveFileId,
+      DriveWebViewLink: driveWebViewLink,
+      DriveWebContentLink: driveWebContentLink,
+      mimeType: 'application/pdf',
+      sizeBytes: Number(upload?.size || 0) || null,
+      Size: Number(upload?.size || 0) || null,
+      storageType: 'google-drive',
+      stored: true,
+      verified: true,
+      downloadStatus: 'downloaded',
+      UploadedAt: now,
+      uploadedAt: now,
       UploadedBy: 'system'
-    });
+    };
+    project.Brochures.push(record);
+    project.BrochureUrl = null;
 
-    updateStage(statusRef, 'storage-upload', { uploadCompleted: true, uploadedBytes: null });
-    return { ok: true, storagePath: upload.path };
+    updateStage(statusRef, 'storage-upload', { uploadCompleted: true, uploadedBytes: Number(upload?.size || 0) || null });
+    return { ok: true, reused: false, storagePath: record.StoragePath, driveFileId, driveWebViewLink, driveWebContentLink, record };
   }
 
   async _ingestOneProjectMedia(project, sourceUrl, field, mediaType, tenant = {}) {
@@ -1436,8 +1512,13 @@ class KarmaGroupScraperService {
         existing.BrochureUrl = pickNonEmpty(parsed.brochureUrl, existing.BrochureUrl);
         const brochure = await this._ingestBrochure(existing, parsed.brochureUrl, latestStatus);
         if (!brochure.ok) {
+          counters.brochuresFailed = Number(counters.brochuresFailed || 0) + 1;
           existing.Notes = mergeUniqueStrings([existing.Notes].filter(Boolean), [`Brochure ingest failed: ${brochure.error}`]).join(' | ').slice(0, 900);
           addScrapeError(latestStatus, counters, { projectName: existing.ProjectName, projectId: existing.ProjectID, stage: 'brochure-storage', mediaType: 'brochure', error: brochure.error });
+        } else if (brochure.reused) {
+          counters.brochuresReused = Number(counters.brochuresReused || 0) + 1;
+        } else {
+          counters.brochuresStored = Number(counters.brochuresStored || 0) + 1;
         }
       }
       if (changed) counters.updated += 1;
@@ -1457,8 +1538,13 @@ class KarmaGroupScraperService {
     } else if (parsed.brochureUrl && this.ingestBrochures) {
       const brochure = await this._ingestBrochure(created, parsed.brochureUrl, latestStatus);
       if (!brochure.ok) {
+        counters.brochuresFailed = Number(counters.brochuresFailed || 0) + 1;
         created.Notes = mergeUniqueStrings([created.Notes].filter(Boolean), [`Brochure ingest failed: ${brochure.error}`]).join(' | ').slice(0, 900);
         addScrapeError(latestStatus, counters, { projectName: created.ProjectName, projectId: created.ProjectID, stage: 'brochure-storage', mediaType: 'brochure', error: brochure.error });
+      } else if (brochure.reused) {
+        counters.brochuresReused = Number(counters.brochuresReused || 0) + 1;
+      } else {
+        counters.brochuresStored = Number(counters.brochuresStored || 0) + 1;
       }
     }
     counters.created += 1;
@@ -1488,6 +1574,9 @@ class KarmaGroupScraperService {
       mediaReused: 0,
       mediaFailed: 0,
       mediaBytesStored: 0,
+      brochuresStored: 0,
+      brochuresReused: 0,
+      brochuresFailed: 0,
       errorCount: Math.max(0, Number(resumeErrorCount) || 0),
       errors: Array.isArray(resumeErrors) ? resumeErrors.slice(-MAX_SCRAPE_ERROR_DETAILS) : []
     };

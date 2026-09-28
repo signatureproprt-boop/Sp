@@ -559,11 +559,13 @@ table td,table th{border-color:var(--v2-line)!important}
       render();
       updateBuilderNameOptions();
     } catch (e) {
-      document.getElementById('grid').innerHTML = `<div class="empty-state" style="color:var(--clr-danger)">Failed to load: ${e.message}</div>`;
+      document.getElementById('grid').innerHTML = `<div class="empty-state" style="color:var(--clr-danger)" data-testid="projects-load-error">Failed to load: ${esc(e.message)}<br><button class="btn btn-ghost" style="margin-top:12px" data-testid="projects-retry-btn" onclick="loadProjects()">↻ Retry</button></div>`;
     }
   }
 
   let karmaScrapePoll = null;
+  let karmaPollErrors = 0;
+  let lastKarmaScrapeData = null;
   function renderKarmaScrapeErrors(data) {
     const panel = document.getElementById('karma-scrape-errors');
     const result = data?.result || {};
@@ -618,7 +620,7 @@ table td,table th{border-color:var(--v2-line)!important}
       const mediaFailureNote = mediaFailureExamples.length
         ? ` · Media errors: ${mediaFailureExamples.slice(0, 2).map(item => `${item.mediaType || 'file'}: ${String(item.error || 'Unknown error').slice(0, 120)}`).join(' | ')}`
         : '';
-      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}${mediaFailureNote}`;
+      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Brochures saved ${(result.brochuresStored || 0) + (result.brochuresReused || 0)} (Drive) · Brochure errors ${result.brochuresFailed || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}${mediaFailureNote}`;
       return;
     }
     if (data?.status === 'failed') {
@@ -633,8 +635,10 @@ table td,table th{border-color:var(--v2-line)!important}
   async function pollKarmaScrape() {
     try {
       const response = await fetch('/api/v2/builder-projects/scrape/status');
-      const payload = await response.json();
+      const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      karmaPollErrors = 0;
+      lastKarmaScrapeData = payload.data;
       renderKarmaScrapeStatus(payload.data);
       if (payload.data.status === 'running') {
         karmaScrapePoll = setTimeout(pollKarmaScrape, 1500);
@@ -643,13 +647,35 @@ table td,table th{border-color:var(--v2-line)!important}
         if (payload.data.status === 'completed') await loadProjects();
       }
     } catch (error) {
-      clearTimeout(karmaScrapePoll);
-      karmaScrapePoll = null;
-      document.getElementById('karma-scrape-btn').disabled = false;
-      document.getElementById('karma-scrape-test-btn').disabled = false;
-      document.getElementById('karma-scrape-resume-btn').disabled = false;
-      toast('Scrape status failed: ' + error.message, true);
+      // A transient scrape-status fetch failure must never break the page or
+      // blank the project grid. Keep the last saved progress on screen and
+      // self-heal with backoff; only surface a manual retry after repeated fails.
+      karmaPollErrors += 1;
+      renderKarmaScrapeStatusUnavailable(error.message);
+      if (karmaPollErrors <= 5) {
+        karmaScrapePoll = setTimeout(pollKarmaScrape, Math.min(1500 * karmaPollErrors, 8000));
+      } else {
+        karmaScrapePoll = null;
+        document.getElementById('karma-scrape-btn').disabled = false;
+        document.getElementById('karma-scrape-test-btn').disabled = false;
+        document.getElementById('karma-scrape-resume-btn').disabled = false;
+      }
     }
+  }
+
+  function renderKarmaScrapeStatusUnavailable(message) {
+    const box = document.getElementById('karma-scrape-status');
+    if (!box) return;
+    box.style.display = 'block';
+    const prev = lastKarmaScrapeData;
+    let base = '';
+    if (prev) {
+      const scanned = Math.max(0, Number(prev.scanned) || 0);
+      const discovered = Math.max(scanned, Number(prev.discoveredCandidates) || 0);
+      base = `Last saved progress · ${scanned}/${discovered}${prev.selectedProjectName ? ` · ${esc(prev.selectedProjectName)}` : ''}. `;
+    }
+    box.innerHTML = `⏳ ${base}Scrape status temporarily unavailable — retrying… ` +
+      `<button class="link" data-testid="karma-scrape-status-retry" onclick="karmaPollErrors=0;clearTimeout(karmaScrapePoll);pollKarmaScrape()">Check now</button>`;
   }
 
   async function startKarmaScrape(limit = 1000) {
@@ -829,7 +855,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function isStoredBrochure(brochure) {
     return Boolean(brochure && brochure.verified === true &&
-      (brochure.DriveFileID || brochure.StoragePath));
+      (brochure.DriveFileId || brochure.DriveFileID || brochure.StoragePath));
   }
 
   function preferredPhotoUrl(project, photo) {
@@ -874,6 +900,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const coverPhotoUrl = preferredPhotoUrl(p, coverPhoto);
     const firstBrochure = (p.Brochures || []).find((m) => isStoredBrochure(m)) || (p.Brochures || [])[0];
     const firstBrochureUrl = preferredBrochureUrl(p, firstBrochure);
+    const brochureDriveLink = firstBrochure && isStoredBrochure(firstBrochure) ? (firstBrochure.DriveWebViewLink || '') : '';
     return `<div class="card" data-testid="project-card-${esc(p.ProjectID)}">
       ${coverPhotoUrl ? `<img class="card-cover" src="${esc(coverPhotoUrl)}" alt="${esc(p.ProjectName||'')}" loading="lazy" decoding="async" data-testid="card-cover-${esc(p.ProjectID)}" />` : ''}
       <div class="card-top">
@@ -889,6 +916,7 @@ table td,table th{border-color:var(--v2-line)!important}
           ${p.Photos && p.Photos.length ? `<span class="card-fact">📷 ${p.Photos.length}</span>` : ''}
           ${p.Videos && p.Videos.length ? `<span class="card-fact">🎥 ${p.Videos.length}</span>` : ''}
           ${firstBrochureUrl ? `<a class="card-fact" href="${esc(firstBrochureUrl)}" target="_blank" rel="noopener" data-testid="brochure-link-${esc(p.ProjectID)}">📄 Brochure</a>` : ''}
+          ${brochureDriveLink ? `<a class="card-fact" href="${esc(brochureDriveLink)}" target="_blank" rel="noopener" data-testid="brochure-drive-link-${esc(p.ProjectID)}">🗂 Drive</a>` : ''}
           <span class="card-fact">📄 ${esc(brochureStatusText(p))}</span>
         </div>
         ${p.RERANumber ? `<div class="card-rera">RERA: ${esc(p.RERANumber)}</div>` : ''}
