@@ -119,6 +119,71 @@ test('brochure ingest is retry-safe: an already-stored Drive brochure is reused 
   assert.equal(project.Brochures[0].DriveFileId, 'EXISTING-FILE');
 });
 
+test('a verified GridFS brochure is uploaded to Drive instead of being reused', async () => {
+  const calls = [];
+  const sourceUrl = 'https://karmagroup.co.in/files/alpha.pdf';
+  const project = {
+    ProjectID: 'BLDP-1', ProjectName: 'Alpha',
+    Brochures: [{ OriginalUrl: sourceUrl, verified: true, StoragePath: 'old-gridfs-key' }]
+  };
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [project] }), {
+    ingestBrochures: true,
+    isDriveStorageConfigured: () => true,
+    openPdfStreamSafely: okPdfStream,
+    objectStorage: driveStore(calls)
+  });
+
+  const out = await svc._ingestBrochure(project, sourceUrl);
+
+  assert.equal(out.ok, true);
+  assert.equal(out.reused, false);
+  assert.equal(calls.length, 1);
+  assert.equal(project.Brochures.length, 1);
+  assert.equal(project.Brochures[0].DriveFileId, 'DRIVE-FILE-1');
+  assert.match(project.Brochures[0].DriveWebViewLink, /^https:\/\/drive\.google\.com\//);
+});
+
+test('an older Drive brochure with a file ID gets a direct link on reuse', async () => {
+  const project = {
+    ProjectID: 'BLDP-1', ProjectName: 'Alpha',
+    Brochures: [{
+      OriginalUrl: 'https://karmagroup.co.in/files/alpha.pdf',
+      verified: true,
+      DriveFileId: 'EXISTING-FILE'
+    }]
+  };
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [project] }), {
+    isDriveStorageConfigured: () => true,
+    openPdfStreamSafely: async () => { throw new Error('unexpected download'); }
+  });
+
+  const out = await svc._ingestBrochure(project, 'https://karmagroup.co.in/files/alpha.pdf');
+
+  assert.equal(out.ok, true);
+  assert.equal(out.reused, true);
+  assert.equal(project.Brochures[0].DriveWebViewLink, 'https://drive.google.com/file/d/EXISTING-FILE/view');
+});
+
+test('a storage response without a Drive file ID is not marked verified', async () => {
+  const project = { ProjectID: 'BLDP-1', ProjectName: 'Alpha', Brochures: [] };
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [project] }), {
+    isDriveStorageConfigured: () => true,
+    openPdfStreamSafely: okPdfStream,
+    objectStorage: {
+      putObjectStream: async (_key, stream) => {
+        await drain(stream);
+        return { path: 'builder-projects/BLDP-1/brochures/alpha.pdf' };
+      }
+    }
+  });
+
+  const out = await svc._ingestBrochure(project, 'https://karmagroup.co.in/files/alpha.pdf');
+
+  assert.equal(out.ok, false);
+  assert.match(out.error, /did not return a file ID/);
+  assert.equal(project.Brochures.length, 0);
+});
+
 test('a failed brochure re-upload never loses the existing brochure record', async () => {
   const stale = { OriginalUrl: 'https://karmagroup.co.in/files/alpha.pdf', verified: false, downloadStatus: 'failed' };
   const project = { ProjectID: 'BLDP-1', ProjectName: 'Alpha', Brochures: [stale] };
