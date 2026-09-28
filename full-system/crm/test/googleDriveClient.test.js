@@ -71,6 +71,23 @@ test('Google Drive folder creation and media uploads have a bounded request time
   assert.equal(calls[1].params.media.mimeType, 'image/jpeg');
 });
 
+test('Google Drive folder lookup is scoped to exact parent and name', async () => {
+  const calls = [];
+  const client = createGoogleDriveClient({
+    env: {},
+    driveFactory: () => ({ files: { list: async (params, options) => {
+      calls.push({ params, options });
+      return { data: { files: [{ id: 'existing-folder', name: "Owner's brochure" }] } };
+    } } })
+  });
+  const folder = await client.findFolder("Owner's brochure", 'parent-id');
+  assert.equal(folder.id, 'existing-folder');
+  assert.match(calls[0].params.q, /name = 'Owner\\'s brochure'/);
+  assert.match(calls[0].params.q, /'parent-id' in parents/);
+  assert.equal(calls[0].params.orderBy, 'createdTime asc');
+  assert.equal(calls[0].options.timeout, DEFAULT_DRIVE_REQUEST_TIMEOUT_MS);
+});
+
 test('Google Drive request timeout defaults safely and is capped', () => {
   assert.equal(driveRequestTimeoutMs({}), DEFAULT_DRIVE_REQUEST_TIMEOUT_MS);
   assert.equal(driveRequestTimeoutMs({ SIG_REALTY_GOOGLE_DRIVE_TIMEOUT_MS: 'invalid' }), DEFAULT_DRIVE_REQUEST_TIMEOUT_MS);

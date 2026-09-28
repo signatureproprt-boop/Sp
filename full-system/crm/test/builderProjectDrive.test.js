@@ -27,6 +27,7 @@ test('project Drive folder creation is tenant scoped and persists linkage', asyn
   const repo = makeRepo(db);
   const calls = [];
   const drive = {
+    async findFolder() { return null; },
     async createFolder(name, parentId) {
       calls.push({ name, parentId });
       const id = 'F-' + calls.length;
@@ -51,7 +52,7 @@ test('project Drive folder creation is tenant scoped and persists linkage', asyn
     assert.equal(calls.length, 1 + PROJECT_SUBFOLDERS.length);
     assert.equal(db.BuilderProjects[0].DriveFolderID, 'F-1');
     assert.equal(Object.keys(db.BuilderProjects[0].DriveSubfolders).length, PROJECT_SUBFOLDERS.length);
-    assert.equal(repo.writes(), 1);
+    assert.equal(repo.writes(), 1 + PROJECT_SUBFOLDERS.length);
   } finally {
     if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
     else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
@@ -62,7 +63,8 @@ test('existing Drive linkage is idempotent and creates no duplicate folder', asy
   const db = {
     BuilderProjects: [{
       ProjectID: 'BLDP-A', ProjectName: 'Alpha', CompanyID: 'C-A', BrokerageID: 'B-A',
-      DriveFolderID: 'EXISTING', DriveFolderURL: 'https://drive.google.com/drive/folders/EXISTING', Active: true
+      DriveFolderID: 'EXISTING', DriveFolderURL: 'https://drive.google.com/drive/folders/EXISTING',
+      DriveSubfolders: Object.fromEntries(PROJECT_SUBFOLDERS.map((name) => [name, `F-${name}`])), Active: true
     }]
   };
   const repo = makeRepo(db);
@@ -103,7 +105,10 @@ test('uploadProjectFile stores bytes in the correct Drive subfolder', async () =
       Active: true,
       DriveFolderID: 'ROOT-A',
       DriveFolderURL: 'https://drive.google.com/drive/folders/ROOT-A',
-      DriveSubfolders: { Brochures: 'BROCHURES-A' }
+      DriveSubfolders: {
+        ...Object.fromEntries(PROJECT_SUBFOLDERS.map((name) => [name, `F-${name}`])),
+        Brochures: 'BROCHURES-A'
+      }
     }]
   };
   const repo = makeRepo(db);
@@ -139,6 +144,7 @@ test('concurrent service instances share one project folder creation', async () 
   const repo = makeRepo(db);
   const calls = [];
   const drive = {
+    async findFolder() { return null; },
     async createFolder(name, parentId) {
       calls.push({ name, parentId });
       await new Promise((resolve) => setTimeout(resolve, 2));
@@ -158,7 +164,67 @@ test('concurrent service instances share one project folder creation', async () 
     assert.equal(second.ok, true);
     assert.equal(first.data.DriveFolderID, second.data.DriveFolderID);
     assert.equal(calls.length, 1 + PROJECT_SUBFOLDERS.length);
-    assert.equal(repo.writes(), 1);
+    assert.equal(repo.writes(), 1 + PROJECT_SUBFOLDERS.length);
+  } finally {
+    if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
+  }
+});
+
+test('retry reuses an existing project folder and its existing subfolders', async () => {
+  const db = { BuilderProjects: [{ ProjectID: 'BLDP-A', ProjectName: 'Alpha', Active: true }] };
+  const repo = makeRepo(db);
+  const existing = new Map([['MASTER:BLDP-A Alpha', { id: 'ROOT' }], ['ROOT:Brochures', { id: 'PDFS' }]]);
+  const created = [];
+  const drive = {
+    async findFolder(name, parent) { return existing.get(`${parent}:${name}`) || null; },
+    async createFolder(name, parent) {
+      created.push(name);
+      const folder = { id: `NEW-${name}` };
+      existing.set(`${parent}:${name}`, folder);
+      return folder;
+    }
+  };
+  const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'MASTER';
+  try {
+    const out = await new BuilderProjectDriveService(repo, drive).ensureProjectFolder('BLDP-A');
+    assert.equal(out.ok, true);
+    assert.equal(out.created, false);
+    assert.equal(out.data.DriveFolderID, 'ROOT');
+    assert.equal(out.data.DriveSubfolders.Brochures, 'PDFS');
+    assert.equal(created.length, PROJECT_SUBFOLDERS.length - 1);
+  } finally {
+    if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
+  }
+});
+
+test('failed subfolder creation saves project linkage and retry creates only missing folders', async () => {
+  const db = { BuilderProjects: [{ ProjectID: 'BLDP-A', ProjectName: 'Alpha', Active: true }] };
+  const repo = makeRepo(db);
+  const existing = new Map();
+  let failOnce = true;
+  const drive = {
+    async findFolder(name, parent) { return existing.get(`${parent}:${name}`) || null; },
+    async createFolder(name, parent) {
+      if (name === 'Floor Plans' && failOnce) { failOnce = false; throw new Error('timeout'); }
+      const folder = { id: `ID-${name}` };
+      existing.set(`${parent}:${name}`, folder);
+      return folder;
+    }
+  };
+  const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'MASTER';
+  try {
+    const svc = new BuilderProjectDriveService(repo, drive);
+    await assert.rejects(svc.ensureProjectFolder('BLDP-A'), /timeout/);
+    assert.equal(db.BuilderProjects[0].DriveFolderID, 'ID-BLDP-A Alpha');
+    assert.equal(db.BuilderProjects[0].DriveSubfolders.Brochures, 'ID-Brochures');
+    const retry = await svc.ensureProjectFolder('BLDP-A');
+    assert.equal(retry.ok, true);
+    assert.equal(existing.size, 1 + PROJECT_SUBFOLDERS.length);
+    assert.equal(repo.writes(), 1 + PROJECT_SUBFOLDERS.length);
   } finally {
     if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
     else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;

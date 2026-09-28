@@ -60,7 +60,7 @@ class BuilderProjectDriveService {
     );
     if (!project) return { ok: false, statusCode: 404, error: 'Project not found' };
 
-    if (project.DriveFolderID) {
+    if (project.DriveFolderID && PROJECT_SUBFOLDERS.every((name) => project.DriveSubfolders?.[name])) {
       return { ok: true, created: false, data: project };
     }
 
@@ -73,28 +73,56 @@ class BuilderProjectDriveService {
       return { ok: false, statusCode: 503, error: 'BUILDER_PROJECTS_DRIVE_FOLDER_ID is not configured' };
     }
 
-    const folderName = safeFolderName(`${project.ProjectID} ${project.ProjectName || 'Project'}`);
-    const root = await this.drive.createFolder(folderName, rootFolderId);
-    if (!root?.id) throw new Error('Google Drive project folder creation failed');
+    const findOrCreate = async (name, parentId) => {
+      // A failed lookup must stop the upload: creating blindly makes duplicates.
+      const existing = await this.drive.findFolder(name, parentId);
+      if (existing?.id) return existing;
+      try {
+        return await this.drive.createFolder(name, parentId);
+      } catch (error) {
+        // Drive may have created the folder even when the response timed out.
+        const recovered = await this.drive.findFolder(name, parentId);
+        if (recovered?.id) return recovered;
+        throw error;
+      }
+    };
 
-    const subfolders = {};
-    for (const name of PROJECT_SUBFOLDERS) {
-      const child = await this.drive.createFolder(name, root.id);
-      if (!child?.id) throw new Error(`Google Drive subfolder creation failed: ${name}`);
-      subfolders[name] = child.id;
+    if (typeof this.drive.findFolder !== 'function') {
+      return { ok: false, statusCode: 503, error: 'Google Drive folder lookup is not configured' };
     }
 
-    project.DriveFolderID = root.id;
-    project.DriveFolderURL = root.url || `https://drive.google.com/drive/folders/${root.id}`;
-    project.DriveSubfolders = subfolders;
-    project.UpdatedAt = new Date().toISOString();
-    this.repo.write(db);
+    let created = false;
+    if (!project.DriveFolderID) {
+      const folderName = safeFolderName(`${project.ProjectID} ${project.ProjectName || 'Project'}`);
+      const existing = await this.drive.findFolder(folderName, rootFolderId);
+      const root = existing || await findOrCreate(folderName, rootFolderId);
+      if (!root?.id) throw new Error('Google Drive project folder creation failed');
+      created = !existing;
+      project.DriveFolderID = root.id;
+      project.DriveFolderURL = root.url || `https://drive.google.com/drive/folders/${root.id}`;
+      project.UpdatedAt = new Date().toISOString();
+      this.repo.write(db);
+    }
 
-    return { ok: true, created: true, data: project };
+    project.DriveSubfolders = project.DriveSubfolders || {};
+    for (const name of PROJECT_SUBFOLDERS) {
+      if (project.DriveSubfolders[name]) continue;
+      const child = await findOrCreate(name, project.DriveFolderID);
+      if (!child?.id) throw new Error(`Google Drive subfolder creation failed: ${name}`);
+      project.DriveSubfolders[name] = child.id;
+      project.UpdatedAt = new Date().toISOString();
+      this.repo.write(db);
+    }
+    return { ok: true, created, data: project };
   }
 
   async uploadProjectFile(projectId, category, filename, buffer, mimeType, tenant = {}) {
-    const ensured = await this.ensureProjectFolder(projectId, tenant);
+    const existing = (this.repo.read().BuilderProjects || []).find((row) =>
+      row.ProjectID === projectId && row.Active !== false && this._sameTenant(row, tenant)
+    );
+    const ensured = existing?.DriveFolderID && existing.DriveSubfolders?.[category]
+      ? { ok: true, data: existing }
+      : await this.ensureProjectFolder(projectId, tenant);
     if (!ensured.ok) return ensured;
     const project = ensured.data;
     const folderId = project.DriveSubfolders?.[category];
