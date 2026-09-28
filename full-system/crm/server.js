@@ -2062,6 +2062,7 @@ async function handleApi(req, res, url) {
         const scraper = new KarmaGroupScraperService(runtime.repository, {
           ingestBrochures: String(process.env.KARMA_SCRAPE_INGEST_BROCHURES || '').toLowerCase() === 'true',
           ingestMedia: String(process.env.KARMA_SCRAPE_INGEST_MEDIA || '').toLowerCase() === 'true',
+          allowProjectCreation: String(process.env.KARMA_SCRAPE_ALLOW_CREATE || 'true').toLowerCase() !== 'false',
           useCategoryDiscovery: true,
           concurrency: 1,
           mediaConcurrency: 2
@@ -2070,7 +2071,7 @@ async function handleApi(req, res, url) {
           userId: actor.userId || 'system',
           companyId: actor.companyId || null,
           brokerageId: actor.brokerageId || null,
-          waitForCompletion: true
+          waitForCompletion: false
         });
         sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
         return;
@@ -2083,6 +2084,7 @@ async function handleApi(req, res, url) {
         const scraper = new KarmaGroupScraperService(runtime.repository, {
           ingestBrochures: String(process.env.KARMA_SCRAPE_INGEST_BROCHURES || '').toLowerCase() === 'true',
           ingestMedia: String(process.env.KARMA_SCRAPE_INGEST_MEDIA || '').toLowerCase() === 'true',
+          allowProjectCreation: String(process.env.KARMA_SCRAPE_ALLOW_CREATE || 'true').toLowerCase() !== 'false',
           useCategoryDiscovery: true,
           concurrency: 1,
           mediaConcurrency: 2
@@ -2092,7 +2094,7 @@ async function handleApi(req, res, url) {
           userId: actor.userId || 'system',
           companyId: actor.companyId || null,
           brokerageId: actor.brokerageId || null,
-          waitForCompletion: true
+          waitForCompletion: false
         });
         sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
         return;
