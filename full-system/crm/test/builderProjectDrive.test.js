@@ -20,16 +20,18 @@ test('safeFolderName keeps ProjectID/name usable in Drive', () => {
 test('links only one PDF in the already linked project folder, with dry-run first', async () => {
   const db = { BuilderProjects: [
     { ProjectID: 'BLDP-A', ProjectName: 'Alpha', Active: true, DriveFolderID: 'A',
+      BrochureUrl: 'https://karmagroup.co.in/files/638854364616613620.pdf',
       DriveSubfolders: { Brochures: 'PDF-A' }, Brochures: [] },
     { ProjectID: 'BLDP-B', ProjectName: 'Beta', Active: true, DriveFolderID: 'B',
+      BrochureUrl: 'https://karmagroup.co.in/files/639214468173665709.pdf',
       DriveSubfolders: { Brochures: 'PDF-B' }, Brochures: [] }
   ] };
   const repo = makeRepo(db);
   repo.createId = () => 'MED-1';
   const drive = { listFilesInFolder: async (id) => id === 'PDF-A'
-    ? [{ id: 'F-A', name: 'alpha.pdf', mimeType: 'application/pdf', size: '1234' }]
-    : [{ id: 'F-B1', name: 'one.pdf', mimeType: 'application/pdf' },
-      { id: 'F-B2', name: 'two.pdf', mimeType: 'application/pdf' }] };
+    ? [{ id: 'F-A', name: '638854364616613620.pdf', mimeType: 'application/pdf', size: '1234' }]
+    : [{ id: 'F-B1', name: '639214468173665709.pdf', mimeType: 'application/pdf' },
+      { id: 'F-B2', name: '639214468173665709.pdf', mimeType: 'application/pdf' }] };
   const svc = new BuilderProjectDriveService(repo, drive);
   const preview = await svc.linkExistingBrochures({ limit: 2 });
   assert.equal(preview.data.ready, 1);
@@ -46,7 +48,8 @@ test('links only one PDF in the already linked project folder, with dry-run firs
 });
 
 test('finds an unlinked project folder by exact ProjectID prefix without creating folders', async () => {
-  const db = { BuilderProjects: [{ ProjectID: 'BLDP-3', ProjectName: 'Gamma', Active: true, Brochures: [] }] };
+  const db = { BuilderProjects: [{ ProjectID: 'BLDP-3', ProjectName: 'Gamma', Active: true,
+    BrochureUrl: 'https://karmagroup.co.in/files/638853370465014309.pdf', Brochures: [] }] };
   const repo = makeRepo(db);
   repo.createId = () => 'MED-3';
   const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
@@ -54,7 +57,7 @@ test('finds an unlinked project folder by exact ProjectID prefix without creatin
   const drive = {
     listFilesInFolder: async (id) => id === 'ROOT'
       ? [{ id: 'PROJECT-3', name: 'BLDP-3 Gamma', mimeType: 'application/vnd.google-apps.folder' }]
-      : [{ id: 'PDF-3', name: 'gamma.pdf', mimeType: 'application/pdf' }],
+      : [{ id: 'PDF-3', name: '638853370465014309.pdf', mimeType: 'application/pdf' }],
     findFolder: async (name, parent) => name === 'Brochures' && parent === 'PROJECT-3' ? { id: 'BROCHURES-3' } : null
   };
   try {
@@ -67,6 +70,21 @@ test('finds an unlinked project folder by exact ProjectID prefix without creatin
     if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
     else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
   }
+});
+
+test('refuses a lone PDF with the wrong brochure number', async () => {
+  const project = { ProjectID: 'BLDP-4', ProjectName: 'Delta', Active: true,
+    DriveFolderID: 'PROJECT-4', DriveSubfolders: { Brochures: 'FOLDER-4' },
+    BrochureUrl: 'https://karmagroup.co.in/files/638854364616613620.pdf', Brochures: [] };
+  const repo = makeRepo({ BuilderProjects: [project] });
+  const svc = new BuilderProjectDriveService(repo, {
+    listFilesInFolder: async () => [{ id: 'WRONG', name: '639214468173665709.pdf', mimeType: 'application/pdf' }]
+  });
+  const out = await svc.linkExistingBrochures({ dryRun: false });
+  assert.equal(out.data.unmatched, 1);
+  assert.equal(out.data.linked, 0);
+  assert.equal(repo.writes(), 0);
+  assert.equal(project.Brochures.length, 0);
 });
 
 test('project Drive folder creation is tenant scoped and persists linkage', async () => {

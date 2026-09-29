@@ -687,13 +687,13 @@ table td,table th{border-color:var(--v2-line)!important}
       }
       if (!preview.ready) {
         driveLinkOffset += preview.inspected;
-        toast(`${preview.inspected} projects checked: ${preview.empty} empty, ${preview.ambiguous} need review. Tap again for next batch.`);
+        toast(`${preview.inspected} checked: ${preview.empty} empty, ${preview.unmatched} number mismatch, ${preview.ambiguous} ambiguous. Tap again for next batch.`);
         return;
       }
-      if (!confirm(`${preview.ready} project(s) have one PDF in their Drive Brochures folder. Link them to CRM now?`)) return;
+      if (!confirm(`${preview.ready} project(s) have a PDF filename matching the CRM brochure URL exactly. Link them now?`)) return;
       const applied = await request(false);
       driveLinkOffset += preview.inspected - applied.linked;
-      toast(`${applied.linked} brochure(s) linked. ${applied.ambiguous} need review. Run again for next batch.`);
+      toast(`${applied.linked} linked. ${applied.unmatched} number mismatches, ${applied.ambiguous} ambiguous. Tap again for next batch.`);
       await loadProjects();
     } catch (error) {
       toast(`Drive linking failed: ${error.message}`, true);
