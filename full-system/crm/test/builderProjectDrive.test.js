@@ -87,6 +87,61 @@ test('refuses a lone PDF with the wrong brochure number', async () => {
   assert.equal(project.Brochures.length, 0);
 });
 
+test('links one exact brochure number across duplicate project folders', async () => {
+  const project = { ProjectID: 'BLDP-5', ProjectName: 'Epsilon', Active: true,
+    BrochureUrl: 'https://karmagroup.co.in/files/123456.pdf', Brochures: [] };
+  const repo = makeRepo({ BuilderProjects: [project] });
+  repo.createId = () => 'MED-5';
+  const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'ROOT';
+  const drive = {
+    listFilesInFolder: async (id) => id === 'ROOT'
+      ? ['A', 'B'].map((folder) => ({ id: folder, name: 'BLDP-5 Epsilon', mimeType: 'application/vnd.google-apps.folder' }))
+      : id === 'PDF-A' ? [{ id: 'FILE-A', name: 'wrong.pdf', mimeType: 'application/pdf' }]
+        : [{ id: 'FILE-B', name: '123456.pdf', mimeType: 'application/pdf' }],
+    findFolder: async (name, id) => ({ id: `PDF-${id}` })
+  };
+  try {
+    const preview = await new BuilderProjectDriveService(repo, drive).linkExistingBrochures();
+    assert.equal(preview.data.ready, 1);
+    assert.equal(preview.data.ambiguous, 0);
+    const out = await new BuilderProjectDriveService(repo, drive).linkExistingBrochures({ dryRun: false });
+    assert.equal(out.data.linked, 1);
+    assert.equal(project.Brochures[0].DriveFileID, 'FILE-B');
+    assert.equal(project.DriveFolderID, 'B');
+  } finally {
+    if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
+  }
+});
+
+test('identical Drive checksums allow one link, different or absent checksums remain ambiguous', async () => {
+  const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'ROOT';
+  try {
+    for (const secondChecksum of ['SAME', 'DIFFERENT', undefined]) {
+      const project = { ProjectID: 'BLDP-6', ProjectName: 'Zeta', Active: true,
+        BrochureUrl: 'https://karmagroup.co.in/files/654321.pdf', Brochures: [] };
+      const repo = makeRepo({ BuilderProjects: [project] });
+      repo.createId = () => 'MED-6';
+      const drive = {
+        listFilesInFolder: async (id) => id === 'ROOT'
+          ? ['A', 'B'].map((folder) => ({ id: folder, name: 'BLDP-6 Zeta', mimeType: 'application/vnd.google-apps.folder' }))
+          : [{ id: `FILE-${id}`, name: '654321.pdf', mimeType: 'application/pdf', size: '123',
+            md5Checksum: id === 'PDF-A' ? 'SAME' : secondChecksum }],
+        findFolder: async (name, id) => ({ id: `PDF-${id}` })
+      };
+      const out = await new BuilderProjectDriveService(repo, drive).linkExistingBrochures({ dryRun: false });
+      assert.equal(out.data.linked, secondChecksum === 'SAME' ? 1 : 0);
+      assert.equal(out.data.ambiguous, secondChecksum === 'SAME' ? 0 : 1);
+      assert.equal(project.Brochures.length, secondChecksum === 'SAME' ? 1 : 0);
+    }
+  } finally {
+    if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
+  }
+});
+
 test('project Drive folder creation is tenant scoped and persists linkage', async () => {
   const db = {
     BuilderProjects: [

@@ -50,7 +50,7 @@ function createGoogleDriveClient({ env = process.env, driveFactory = google.driv
       do {
         const res = await drive.files.list({
           q: `trashed = false and '${escape(parentId)}' in parents`,
-          fields: 'nextPageToken,files(id,name,mimeType,size,webViewLink,webContentLink,parents)',
+          fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,webViewLink,webContentLink,parents)',
           pageSize: 100,
           pageToken
         }, requestOptions);
