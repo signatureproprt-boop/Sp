@@ -2077,6 +2077,20 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (/^\/api\/v2\/builder-projects\/scrape\/brochures\/retry\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
+        const { KarmaGroupScraperService } = require('./src/services/karmaGroupScraperService');
+        const scraper = new KarmaGroupScraperService(runtime.repository, { ingestMedia: false });
+        const out = await scraper.startBrochureBackfill({
+          limit: Number(bodyForV2?.limit) || 20,
+          companyId: actor.companyId || null,
+          brokerageId: actor.brokerageId || null
+        });
+        sendJson(res, out, out.statusCode || (out.ok ? 202 : 400));
+        return;
+      }
+
       if (/^\/api\/v2\/builder-projects\/scrape\/karma-group\/?$/i.test(pathname)) {
         if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_CREATE')) return;

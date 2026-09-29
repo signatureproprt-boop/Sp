@@ -2,6 +2,7 @@
 
 const { google } = require('googleapis');
 const { Readable } = require('stream');
+const { createDriveAuth } = require('./googleDriveClient');
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
@@ -16,9 +17,13 @@ function getConfig() {
 function getDrive() {
   if (driveClient) return driveClient;
   getConfig();
-  // Cloud Run ADC uses the service account attached to the revision. Share the
-  // configured Drive folder with that account instead of storing a private key.
-  const auth = new google.auth.GoogleAuth({ scopes: [DRIVE_SCOPE] });
+  // A service account has no storage quota in a user's My Drive. Fail before
+  // uploading unless all user OAuth credentials are configured.
+  const required = ['SIG_REALTY_GOOGLE_CLIENT_ID', 'SIG_REALTY_GOOGLE_CLIENT_SECRET', 'SIG_REALTY_GOOGLE_REFRESH_TOKEN'];
+  if (!required.every((name) => String(process.env[name] || '').trim())) {
+    throw new Error(`Google Drive brochure storage requires user OAuth: ${required.join(', ')}`);
+  }
+  const auth = createDriveAuth(process.env);
   driveClient = google.drive({ version: 'v3', auth });
   return driveClient;
 }
@@ -65,7 +70,6 @@ async function putObject(key, buffer, contentType, filename, options = {}) {
   const { folderId } = getConfig();
   const projectFolder = await ensureFolder(`Project-${projectIdFromKey(key)}`, folderId);
   const existing = await findFilesByKey(key);
-  for (const file of existing) await drive.files.delete({ fileId: file.id });
 
   const metadata = options.metadata && typeof options.metadata === 'object' ? options.metadata : {};
   const created = await drive.files.create({
@@ -85,6 +89,13 @@ async function putObject(key, buffer, contentType, filename, options = {}) {
     fields: 'id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,appProperties,parents'
   });
   const file = created.data;
+  // Do not remove the last valid copy until the replacement exists.
+  for (const old of existing) {
+    if (old.id !== file.id) {
+      try { await drive.files.delete({ fileId: old.id }); }
+      catch (error) { console.error('[drive-storage] obsolete file cleanup failed:', error.message); }
+    }
+  }
   return {
     path: key,
     key,
