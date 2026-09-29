@@ -61,46 +61,52 @@ class BuilderProjectDriveService {
     for (const project of projects) {
       result.inspected += 1;
       try {
-        const matches = project.DriveFolderID ? [] : rootFolders.filter((file) =>
+        const matches = project.DriveFolderID ? [{ id: project.DriveFolderID }] : rootFolders.filter((file) =>
           String(file.name || '').startsWith(`${project.ProjectID} `)
         );
-        if (matches.length > 1) {
-          result.ambiguous += 1;
-          result.examples.push({ projectId: project.ProjectID, reason: `${matches.length} project folders` });
-          continue;
-        }
-        const projectFolderId = project.DriveFolderID || matches[0]?.id;
-        if (!projectFolderId) { result.empty += 1; continue; }
-        let folderId = project.DriveSubfolders?.Brochures;
-        if (!folderId) {
-          const folder = await this.drive.findFolder('Brochures', projectFolderId);
-          folderId = folder?.id;
-        }
-        if (!folderId) { result.empty += 1; continue; }
-        const files = (await this.drive.listFilesInFolder(folderId)).filter((item) =>
-          item.mimeType === 'application/pdf' || /\.pdf$/i.test(item.name || '')
-        );
-        if (files.length === 0) { result.empty += 1; continue; }
+        if (matches.length === 0) { result.empty += 1; continue; }
         const expectedNames = new Set([
           project.BrochureUrl,
           ...(project.Brochures || []).flatMap((row) => [row.OriginalUrl, row.SourceUrl])
         ].map(brochureFilename).filter((name) => name.endsWith('.pdf')));
-        const matching = files.filter((file) => expectedNames.has(String(file.name || '').toLowerCase()));
+        const files = [];
+        const matching = [];
+        for (const folder of matches) {
+          const brochureFolderId = project.DriveFolderID && project.DriveSubfolders?.Brochures
+            ? project.DriveSubfolders.Brochures : (await this.drive.findFolder('Brochures', folder.id))?.id;
+          if (!brochureFolderId) continue;
+          for (const file of await this.drive.listFilesInFolder(brochureFolderId)) {
+            if (file.mimeType !== 'application/pdf' && !/\.pdf$/i.test(file.name || '')) continue;
+            files.push(file);
+            if (expectedNames.has(String(file.name || '').toLowerCase())) {
+              matching.push({ file, folderId: brochureFolderId, projectFolderId: folder.id });
+            }
+          }
+        }
+        if (files.length === 0) { result.empty += 1; continue; }
         if (matching.length === 0) {
           result.unmatched += 1;
           result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName,
             reason: 'PDF filename does not match the CRM brochure URL', filenames: files.slice(0, 3).map((file) => file.name) });
           continue;
         }
-        if (matching.length !== 1) {
+        // Multiple physical copies may be linked only when Drive confirms the bytes
+        // are identical. Filename and size alone do not establish that.
+        const sameBytes = matching.length > 1 && matching.every(({ file }) =>
+          file.md5Checksum && file.md5Checksum === matching[0].file.md5Checksum &&
+          Number(file.size) > 0 && Number(file.size) === Number(matching[0].file.size)
+        );
+        if (matching.length !== 1 && !sameBytes) {
           result.ambiguous += 1;
-          result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName, reason: `${matching.length} PDFs match the CRM brochure number` });
+          result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName,
+            reason: `${matching.length} PDFs match the CRM brochure number; content is not confirmed identical` });
           continue;
         }
-        const file = matching[0];
+        const selected = matching.sort((a, b) => String(a.file.id).localeCompare(String(b.file.id)))[0];
+        const { file, folderId, projectFolderId } = selected;
         result.ready += 1;
         result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName,
-          fileId: file.id, filename: file.name });
+          fileId: file.id, filename: file.name, identicalCopies: matching.length });
         if (dryRun) continue;
         project.Brochures = Array.isArray(project.Brochures) ? project.Brochures : [];
         // The Drive folder is already linked to this exact CRM ProjectID.
