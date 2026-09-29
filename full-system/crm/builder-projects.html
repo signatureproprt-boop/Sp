@@ -230,6 +230,7 @@ table td,table th{border-color:var(--v2-line)!important}
       <button class="btn btn-ghost" data-testid="cleanup-builders-btn" onclick="openCleanupModal()">🧹 Clean Names</button>
       <button class="btn btn-ghost" data-testid="fix-unknown-btn" onclick="openUnknownModal()">🏗️ Fix Unknown Builders</button>
       <button class="btn btn-ghost" data-testid="bulk-brochure-btn" onclick="openBulkBrochureModal()">🤖 Bulk from Brochures</button>
+      <button class="btn btn-ghost" id="link-drive-brochures-btn" onclick="linkDriveBrochures()">🔗 Link Drive Brochures</button>
       <button class="btn btn-ghost" data-testid="csv-brochure-import-btn" onclick="openCsvBrochureModal()">📑 CSV Brochures</button>
       <button class="btn btn-ghost" data-testid="bulk-upload-btn" onclick="openUploadModal()">📤 Bulk Upload</button>
       <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button>
@@ -660,6 +661,45 @@ table td,table th{border-color:var(--v2-line)!important}
         document.getElementById('karma-scrape-test-btn').disabled = false;
         document.getElementById('karma-scrape-resume-btn').disabled = false;
       }
+    }
+  }
+
+  let driveLinkOffset = 0;
+  async function linkDriveBrochures() {
+    const button = document.getElementById('link-drive-brochures-btn');
+    button.disabled = true;
+    button.textContent = '⏳ Checking Drive…';
+    try {
+      const request = async (dryRun) => {
+        const response = await fetch('/api/v2/builder-projects/drive-brochures/link', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dryRun, limit: 20, offset: driveLinkOffset })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        return payload.data;
+      };
+      const preview = await request(true);
+      if (!preview.inspected && driveLinkOffset) {
+        driveLinkOffset = 0;
+        toast('Drive folder check completed. Tap again to recheck from the beginning.');
+        return;
+      }
+      if (!preview.ready) {
+        driveLinkOffset += preview.inspected;
+        toast(`${preview.inspected} projects checked: ${preview.empty} empty, ${preview.ambiguous} need review. Tap again for next batch.`);
+        return;
+      }
+      if (!confirm(`${preview.ready} project(s) have one PDF in their Drive Brochures folder. Link them to CRM now?`)) return;
+      const applied = await request(false);
+      driveLinkOffset += preview.inspected - applied.linked;
+      toast(`${applied.linked} brochure(s) linked. ${applied.ambiguous} need review. Run again for next batch.`);
+      await loadProjects();
+    } catch (error) {
+      toast(`Drive linking failed: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = '🔗 Link Drive Brochures';
     }
   }
 
