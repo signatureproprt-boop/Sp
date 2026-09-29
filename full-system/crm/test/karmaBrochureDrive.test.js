@@ -298,3 +298,28 @@ test('a brochure storage failure is recorded per project and the scrape continue
   assert.match(brochureError.message, /Upload failed/);
   KarmaGroupScraperService.__resetForTests();
 });
+
+test('brochure backfill updates only existing pending projects and can retry a failed upload', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  const pending = { ProjectID: 'BLDP-1', ProjectName: 'Pending', ImportedFrom: 'KarmaGroupScrape',
+    BrochureUrl: 'https://karmagroup.co.in/files/a.pdf', Brochures: [], Active: true };
+  const stored = { ProjectID: 'BLDP-2', ProjectName: 'Stored', ImportedFrom: 'KarmaGroupScrape',
+    BrochureUrl: 'https://karmagroup.co.in/files/b.pdf',
+    Brochures: [{ verified: true, DriveFileId: 'already-saved' }] };
+  const db = { BuilderProjects: [pending, stored], KarmaScrapeRuns: [] };
+  const calls = [];
+  const svc = new KarmaGroupScraperService(repoWith(db), {
+    isDriveStorageConfigured: () => true, objectStorage: driveStore(calls), openPdfStreamSafely: okPdfStream
+  });
+  svc._flushScrapeWrites = async () => {};
+  const accepted = await svc.startBrochureBackfill({ limit: 20 });
+  assert.equal(accepted.statusCode, 202);
+  for (let n = 0; n < 20 && KarmaGroupScraperService.isRunning(); n++) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(db.BuilderProjects.length, 2);
+  assert.equal(calls.length, 1);
+  assert.equal(pending.Brochures[0].DriveFileId, 'DRIVE-FILE-1');
+  assert.equal(pending.BrochureUrl, null);
+  assert.equal(stored.Brochures[0].DriveFileId, 'already-saved');
+  assert.equal(KarmaGroupScraperService.getStatus().data.result.brochuresStored, 1);
+  KarmaGroupScraperService.__resetForTests();
+});

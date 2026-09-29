@@ -758,6 +758,64 @@ class KarmaGroupScraperService {
     });
   }
 
+  async startBrochureBackfill({ limit = 20, companyId = null, brokerageId = null } = {}) {
+    if (KarmaGroupScraperService.isRunning()) return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
+    if (!this.isDriveStorageConfigured()) return { ok: false, statusCode: 503, error: 'Google Drive storage must be configured before brochure retry.' };
+    const oauthKeys = ['SIG_REALTY_GOOGLE_CLIENT_ID', 'SIG_REALTY_GOOGLE_CLIENT_SECRET', 'SIG_REALTY_GOOGLE_REFRESH_TOKEN'];
+    if (this.objectStorage === objectStorage && !oauthKeys.every((key) => String(process.env[key] || '').trim())) {
+      return { ok: false, statusCode: 503, error: 'Google user OAuth credentials must be configured before brochure retry.' };
+    }
+    const safeLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+    const db = this.repo.read();
+    const pending = (db.BuilderProjects || []).filter((project) =>
+      project.Active !== false && project.ImportedFrom === 'KarmaGroupScrape' && project.BrochureUrl &&
+      (!companyId || project.CompanyID === companyId) && (!brokerageId || project.BrokerageID === brokerageId) &&
+      !(project.Brochures || []).some((row) => row.verified === true && (row.DriveFileId || row.DriveFileID))
+    ).slice(0, safeLimit).map((project) => project.ProjectID);
+    if (!pending.length) return { ok: true, statusCode: 200, data: { status: 'no-pending-brochures', selected: 0 } };
+
+    latestStatus = { ...makeIdleStatus(), status: 'running', mode: 'brochure-backfill',
+      runId: this.repo.createId('KBR'), startedAt: nowIso(), currentStage: 'project-mutation',
+      scanned: 0, discoveredCandidates: pending.length };
+    activeJob = (async () => {
+      const counters = { scanned: 0, discoveredCandidates: pending.length, brochuresStored: 0,
+        brochuresReused: 0, brochuresFailed: 0, errorCount: 0, errors: [] };
+      for (const id of pending) {
+        const project = (db.BuilderProjects || []).find((row) => row.ProjectID === id);
+        latestStatus.selectedProjectID = id;
+        latestStatus.selectedProjectName = project.ProjectName;
+        try {
+          const result = await this._ingestBrochure(project, project.BrochureUrl, latestStatus);
+          if (!result.ok) throw new Error(result.error);
+          if (result.reused) counters.brochuresReused += 1;
+          else counters.brochuresStored += 1;
+          project.UpdatedAt = nowIso();
+        } catch (error) {
+          counters.brochuresFailed += 1;
+          addScrapeError(latestStatus, counters, { projectName: project.ProjectName,
+            projectId: id, stage: 'brochure-storage', mediaType: 'brochure', error });
+        }
+        counters.scanned += 1;
+        latestStatus.scanned = counters.scanned;
+        updatePersistedScrapeRun(db, latestStatus, counters);
+        this.repo.write(db);
+        await this._flushScrapeWrites();
+      }
+      latestStatus.result = counters;
+    })().catch((error) => {
+      latestStatus.status = 'failed';
+      latestStatus.error = sanitizeError(error);
+    }).finally(() => {
+      latestStatus.finishedAt = nowIso();
+      if (latestStatus.status === 'running') latestStatus.status = 'completed';
+      latestStatus.currentStage = latestStatus.status === 'completed' ? 'complete' : 'error';
+      try { updatePersistedScrapeRun(db, latestStatus, latestStatus.result || {}); this.repo.write(db); }
+      catch (error) { console.error('[karma-backfill] status persistence failed:', sanitizeError(error)); }
+      activeJob = null;
+    });
+    return { ok: true, statusCode: 202, data: { status: 'accepted', mode: 'brochure-backfill', selected: pending.length } };
+  }
+
   async startTargetedScrape({ projectId = null, sourceUrl = null, userId = 'system', companyId = null, brokerageId = null } = {}) {
     if (KarmaGroupScraperService.isRunning()) {
       return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
@@ -1165,7 +1223,7 @@ class KarmaGroupScraperService {
       };
     }
 
-    const maxBytes = Math.min(BROCHURE_DEFAULT_MAX_BYTES, BROCHURE_HARD_MAX_BYTES, Number(process.env.BUILDER_PROJECT_BROCHURE_MAX_BYTES || BROCHURE_DEFAULT_MAX_BYTES));
+    const maxBytes = Math.min(BROCHURE_HARD_MAX_BYTES, Math.max(1, Number(process.env.BUILDER_PROJECT_BROCHURE_MAX_BYTES || BROCHURE_DEFAULT_MAX_BYTES)));
     updateStage(statusRef, 'download-open', {
       contentLength: null,
       downloadedBytes: 0,
