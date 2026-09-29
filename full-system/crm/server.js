@@ -2091,6 +2091,24 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (/^\/api\/v2\/builder-projects\/drive-brochures\/link\/?$/i.test(pathname)) {
+        if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
+        const { BuilderProjectDriveService } = require('./src/services/builderProjectDriveService');
+        const { createGoogleDriveClient } = require('./src/services/googleDriveClient');
+        // Existing project folders were shared with the Cloud Run service account;
+        // listing metadata does not require the user OAuth upload credential.
+        const driveSvc = new BuilderProjectDriveService(runtime.repository, createGoogleDriveClient({ env: {} }));
+        const out = await driveSvc.linkExistingBrochures({
+          dryRun: bodyForV2?.dryRun !== false,
+          limit: bodyForV2?.limit,
+          offset: bodyForV2?.offset,
+          tenant: { companyId: actor.companyId || null, brokerageId: actor.brokerageId || null }
+        });
+        sendJson(res, out, out.statusCode || 200);
+        return;
+      }
+
       if (/^\/api\/v2\/builder-projects\/scrape\/karma-group\/?$/i.test(pathname)) {
         if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_CREATE')) return;

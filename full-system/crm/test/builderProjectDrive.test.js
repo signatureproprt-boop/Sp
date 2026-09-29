@@ -17,6 +17,34 @@ test('safeFolderName keeps ProjectID/name usable in Drive', () => {
   assert.equal(safeFolderName('BLDP-1 A/B: Tower?'), 'BLDP-1 A-B- Tower-');
 });
 
+test('links only one PDF in the already linked project folder, with dry-run first', async () => {
+  const db = { BuilderProjects: [
+    { ProjectID: 'BLDP-A', ProjectName: 'Alpha', Active: true, DriveFolderID: 'A',
+      DriveSubfolders: { Brochures: 'PDF-A' }, Brochures: [] },
+    { ProjectID: 'BLDP-B', ProjectName: 'Beta', Active: true, DriveFolderID: 'B',
+      DriveSubfolders: { Brochures: 'PDF-B' }, Brochures: [] }
+  ] };
+  const repo = makeRepo(db);
+  repo.createId = () => 'MED-1';
+  const drive = { listFilesInFolder: async (id) => id === 'PDF-A'
+    ? [{ id: 'F-A', name: 'alpha.pdf', mimeType: 'application/pdf', size: '1234' }]
+    : [{ id: 'F-B1', name: 'one.pdf', mimeType: 'application/pdf' },
+      { id: 'F-B2', name: 'two.pdf', mimeType: 'application/pdf' }] };
+  const svc = new BuilderProjectDriveService(repo, drive);
+  const preview = await svc.linkExistingBrochures({ limit: 2 });
+  assert.equal(preview.data.ready, 1);
+  assert.equal(preview.data.ambiguous, 1);
+  assert.equal(repo.writes(), 0);
+  const applied = await svc.linkExistingBrochures({ dryRun: false, limit: 2 });
+  assert.equal(applied.data.linked, 1);
+  assert.equal(repo.writes(), 1);
+  assert.equal(db.BuilderProjects[0].Brochures[0].DriveFileID, 'F-A');
+  assert.equal(db.BuilderProjects[0].Brochures[0].verified, true);
+  assert.equal(db.BuilderProjects[1].Brochures.length, 0);
+  const repeated = await svc.linkExistingBrochures({ dryRun: false, limit: 2 });
+  assert.equal(repeated.data.linked, 0);
+});
+
 test('project Drive folder creation is tenant scoped and persists linkage', async () => {
   const db = {
     BuilderProjects: [
