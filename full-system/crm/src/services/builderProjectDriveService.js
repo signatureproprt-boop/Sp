@@ -39,19 +39,34 @@ class BuilderProjectDriveService {
     }
     const db = this.repo.read();
     const candidates = (db.BuilderProjects || []).filter((row) =>
-      row.Active !== false && this._sameTenant(row, tenant) && row.DriveFolderID &&
+      row.Active !== false && this._sameTenant(row, tenant) &&
       !(row.Brochures || []).some((item) => item.verified === true && (item.DriveFileID || item.DriveFileId))
     );
     const start = Math.max(0, Number(offset) || 0);
     const projects = candidates.slice(start, start + Math.max(1, Math.min(100, Number(limit) || 20)));
+    const missingFolderIds = projects.some((project) => !project.DriveFolderID);
+    const rootId = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    const rootFolders = missingFolderIds && rootId ? (await this.drive.listFilesInFolder(rootId)).filter((file) =>
+      file.mimeType === 'application/vnd.google-apps.folder'
+    ) : [];
     const result = { totalCandidates: candidates.length, offset: start, inspected: 0, linked: 0,
       ready: 0, empty: 0, ambiguous: 0, errors: [], examples: [] };
     for (const project of projects) {
       result.inspected += 1;
       try {
+        const matches = project.DriveFolderID ? [] : rootFolders.filter((file) =>
+          String(file.name || '').startsWith(`${project.ProjectID} `)
+        );
+        if (matches.length > 1) {
+          result.ambiguous += 1;
+          result.examples.push({ projectId: project.ProjectID, reason: `${matches.length} project folders` });
+          continue;
+        }
+        const projectFolderId = project.DriveFolderID || matches[0]?.id;
+        if (!projectFolderId) { result.empty += 1; continue; }
         let folderId = project.DriveSubfolders?.Brochures;
         if (!folderId) {
-          const folder = await this.drive.findFolder('Brochures', project.DriveFolderID);
+          const folder = await this.drive.findFolder('Brochures', projectFolderId);
           folderId = folder?.id;
         }
         if (!folderId) { result.empty += 1; continue; }
@@ -85,6 +100,8 @@ class BuilderProjectDriveService {
           downloadStatus: 'downloaded', Source: 'ExistingProjectDriveFolder', UploadedAt: new Date().toISOString()
         });
         project.DriveSubfolders = { ...(project.DriveSubfolders || {}), Brochures: folderId };
+        project.DriveFolderID ||= projectFolderId;
+        project.DriveFolderURL ||= `https://drive.google.com/drive/folders/${encodeURIComponent(projectFolderId)}`;
         project.UpdatedAt = new Date().toISOString();
         this.repo.write(db);
         result.linked += 1;

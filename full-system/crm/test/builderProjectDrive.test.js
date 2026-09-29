@@ -45,6 +45,30 @@ test('links only one PDF in the already linked project folder, with dry-run firs
   assert.equal(repeated.data.linked, 0);
 });
 
+test('finds an unlinked project folder by exact ProjectID prefix without creating folders', async () => {
+  const db = { BuilderProjects: [{ ProjectID: 'BLDP-3', ProjectName: 'Gamma', Active: true, Brochures: [] }] };
+  const repo = makeRepo(db);
+  repo.createId = () => 'MED-3';
+  const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'ROOT';
+  const drive = {
+    listFilesInFolder: async (id) => id === 'ROOT'
+      ? [{ id: 'PROJECT-3', name: 'BLDP-3 Gamma', mimeType: 'application/vnd.google-apps.folder' }]
+      : [{ id: 'PDF-3', name: 'gamma.pdf', mimeType: 'application/pdf' }],
+    findFolder: async (name, parent) => name === 'Brochures' && parent === 'PROJECT-3' ? { id: 'BROCHURES-3' } : null
+  };
+  try {
+    const svc = new BuilderProjectDriveService(repo, drive);
+    const out = await svc.linkExistingBrochures({ dryRun: false });
+    assert.equal(out.data.linked, 1);
+    assert.equal(db.BuilderProjects[0].DriveFolderID, 'PROJECT-3');
+    assert.equal(db.BuilderProjects[0].Brochures[0].DriveFileID, 'PDF-3');
+  } finally {
+    if (oldRoot === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = oldRoot;
+  }
+});
+
 test('project Drive folder creation is tenant scoped and persists linkage', async () => {
   const db = {
     BuilderProjects: [
