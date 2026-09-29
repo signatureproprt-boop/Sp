@@ -33,6 +33,68 @@ class BuilderProjectDriveService {
     return true;
   }
 
+  async linkExistingBrochures({ dryRun = true, limit = 20, offset = 0, tenant = {} } = {}) {
+    if (!this.drive || typeof this.drive.listFilesInFolder !== 'function') {
+      return { ok: false, statusCode: 503, error: 'Google Drive file listing is unavailable' };
+    }
+    const db = this.repo.read();
+    const candidates = (db.BuilderProjects || []).filter((row) =>
+      row.Active !== false && this._sameTenant(row, tenant) && row.DriveFolderID &&
+      !(row.Brochures || []).some((item) => item.verified === true && (item.DriveFileID || item.DriveFileId))
+    );
+    const start = Math.max(0, Number(offset) || 0);
+    const projects = candidates.slice(start, start + Math.max(1, Math.min(100, Number(limit) || 20)));
+    const result = { totalCandidates: candidates.length, offset: start, inspected: 0, linked: 0,
+      ready: 0, empty: 0, ambiguous: 0, errors: [], examples: [] };
+    for (const project of projects) {
+      result.inspected += 1;
+      try {
+        let folderId = project.DriveSubfolders?.Brochures;
+        if (!folderId) {
+          const folder = await this.drive.findFolder('Brochures', project.DriveFolderID);
+          folderId = folder?.id;
+        }
+        if (!folderId) { result.empty += 1; continue; }
+        const files = (await this.drive.listFilesInFolder(folderId)).filter((item) =>
+          item.mimeType === 'application/pdf' || /\.pdf$/i.test(item.name || '')
+        );
+        if (files.length === 0) { result.empty += 1; continue; }
+        if (files.length !== 1) {
+          result.ambiguous += 1;
+          result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName, reason: `${files.length} PDFs in Brochures` });
+          continue;
+        }
+        const file = files[0];
+        result.ready += 1;
+        result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName,
+          fileId: file.id, filename: file.name });
+        if (dryRun) continue;
+        project.Brochures = Array.isArray(project.Brochures) ? project.Brochures : [];
+        // The Drive folder is already linked to this exact CRM ProjectID.
+        // Never add a second record for a file already present in the project.
+        if (project.Brochures.some((row) => row.DriveFileID === file.id || row.DriveFileId === file.id)) continue;
+        project.Brochures.push({
+          MediaID: this.repo.createId('MED'),
+          Filename: file.name, fileName: file.name,
+          DriveFileID: file.id, DriveFileId: file.id,
+          DriveWebViewLink: file.webViewLink || `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/view`,
+          DriveWebContentLink: file.webContentLink || null,
+          Url: `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure`,
+          mimeType: 'application/pdf', sizeBytes: Number(file.size || 0) || null,
+          storageType: 'google-drive', stored: true, verified: true,
+          downloadStatus: 'downloaded', Source: 'ExistingProjectDriveFolder', UploadedAt: new Date().toISOString()
+        });
+        project.DriveSubfolders = { ...(project.DriveSubfolders || {}), Brochures: folderId };
+        project.UpdatedAt = new Date().toISOString();
+        this.repo.write(db);
+        result.linked += 1;
+      } catch (error) {
+        result.errors.push({ projectId: project.ProjectID, error: String(error.message || error).slice(0, 200) });
+      }
+    }
+    return { ok: true, data: { dryRun, ...result } };
+  }
+
   async ensureProjectFolder(projectId, tenant = {}) {
     const key = JSON.stringify([
       String(projectId),
