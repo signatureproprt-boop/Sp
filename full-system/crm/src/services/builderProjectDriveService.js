@@ -21,6 +21,13 @@ function safeFolderName(value) {
     .slice(0, 180);
 }
 
+function brochureFilename(value) {
+  try {
+    const pathname = new URL(String(value), 'https://example.invalid').pathname;
+    return decodeURIComponent(pathname.split('/').pop() || '').toLowerCase();
+  } catch (_) { return ''; }
+}
+
 class BuilderProjectDriveService {
   constructor(repository, driveClient) {
     this.repo = repository;
@@ -50,7 +57,7 @@ class BuilderProjectDriveService {
       file.mimeType === 'application/vnd.google-apps.folder'
     ) : [];
     const result = { totalCandidates: candidates.length, offset: start, inspected: 0, linked: 0,
-      ready: 0, empty: 0, ambiguous: 0, errors: [], examples: [] };
+      ready: 0, empty: 0, unmatched: 0, ambiguous: 0, errors: [], examples: [] };
     for (const project of projects) {
       result.inspected += 1;
       try {
@@ -74,12 +81,23 @@ class BuilderProjectDriveService {
           item.mimeType === 'application/pdf' || /\.pdf$/i.test(item.name || '')
         );
         if (files.length === 0) { result.empty += 1; continue; }
-        if (files.length !== 1) {
-          result.ambiguous += 1;
-          result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName, reason: `${files.length} PDFs in Brochures` });
+        const expectedNames = new Set([
+          project.BrochureUrl,
+          ...(project.Brochures || []).flatMap((row) => [row.OriginalUrl, row.SourceUrl])
+        ].map(brochureFilename).filter((name) => name.endsWith('.pdf')));
+        const matching = files.filter((file) => expectedNames.has(String(file.name || '').toLowerCase()));
+        if (matching.length === 0) {
+          result.unmatched += 1;
+          result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName,
+            reason: 'PDF filename does not match the CRM brochure URL', filenames: files.slice(0, 3).map((file) => file.name) });
           continue;
         }
-        const file = files[0];
+        if (matching.length !== 1) {
+          result.ambiguous += 1;
+          result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName, reason: `${matching.length} PDFs match the CRM brochure number` });
+          continue;
+        }
+        const file = matching[0];
         result.ready += 1;
         result.examples.push({ projectId: project.ProjectID, projectName: project.ProjectName,
           fileId: file.id, filename: file.name });
@@ -94,6 +112,7 @@ class BuilderProjectDriveService {
           DriveFileID: file.id, DriveFileId: file.id,
           DriveWebViewLink: file.webViewLink || `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/view`,
           DriveWebContentLink: file.webContentLink || null,
+          OriginalUrl: project.BrochureUrl || null,
           Url: `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure`,
           mimeType: 'application/pdf', sizeBytes: Number(file.size || 0) || null,
           storageType: 'google-drive', stored: true, verified: true,
