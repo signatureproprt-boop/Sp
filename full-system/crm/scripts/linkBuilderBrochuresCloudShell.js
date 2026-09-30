@@ -7,6 +7,8 @@ const recoveryFolders = require('./builderBrochureRecoveryFolders.json');
 const { JsonRepository } = require('../src/data/repository');
 const { BuilderProjectDriveService } = require('../src/services/builderProjectDriveService');
 const { createGoogleDriveClient } = require('../src/services/googleDriveClient');
+const { brochureStatusReport, reportCsv } = require('../src/services/builderBrochureStatusReport');
+const fs = require('node:fs');
 
 async function main() {
   const apply = process.argv.includes('--apply');
@@ -18,6 +20,28 @@ async function main() {
   let summary;
   try {
     const repo = new JsonRepository();
+    if (process.argv.includes('--audit-errors')) {
+      const db = repo.read();
+      const report = brochureStatusReport(db.BuilderProjects || []);
+      const runs = (db.KarmaScrapeRuns || []).map((run) => ({
+        runId: run.RunID, startedAt: run.StartedAt, mode: run.Mode,
+        brochuresFailed: Number(run.BrochuresFailed || 0), recordedErrorDetails: (run.Errors || []).length
+      }));
+      const reasons = new Map();
+      for (const row of report.rows.filter((row) => row.status === 'Failed')) {
+        const reason = row.failureReason || 'Unknown';
+        reasons.set(reason, (reasons.get(reason) || 0) + 1);
+      }
+      const filename = 'builder-brochure-errors.csv';
+      fs.writeFileSync(filename, reportCsv(report));
+      summary = { counts: report.counts, recentRuns: runs,
+        topReasons: [...reasons].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([reason, projects]) => ({ reason, projects })),
+        note: 'BrochuresFailed counts attempts per run; project rows reflect current CRM state. Only recent error details are retained.',
+        report: filename };
+      await mongoStore.close();
+      await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary)}\n`, resolve));
+      process.exit(0);
+    }
     const inspectArg = process.argv.find((arg) => arg.startsWith('--inspect-projects='));
     if (inspectArg) {
       const ids = inspectArg.slice('--inspect-projects='.length).split(',').filter(Boolean);
