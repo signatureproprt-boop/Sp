@@ -114,21 +114,25 @@ class BuilderProjectDriveService {
           fileId: file.id, filename: file.name, identicalCopies: matching.length });
         if (dryRun) continue;
         project.Brochures = Array.isArray(project.Brochures) ? project.Brochures : [];
-        // The Drive folder is already linked to this exact CRM ProjectID.
-        // Never add a second record for a file already present in the project.
-        if (project.Brochures.some((row) => row.DriveFileID === file.id || row.DriveFileId === file.id)) continue;
-        project.Brochures.push({
-          MediaID: this.repo.createId('MED'),
+        // A matching file ID may already exist in an unverified legacy row.
+        // Complete that record instead of leaving it unusable or adding a duplicate.
+        const existing = project.Brochures.find((row) => row.DriveFileID === file.id || row.DriveFileId === file.id);
+        const linkedRecord = {
+          ...(existing || {}),
+          MediaID: existing?.MediaID || this.repo.createId('MED'),
           Filename: file.name, fileName: file.name,
           DriveFileID: file.id, DriveFileId: file.id,
           DriveWebViewLink: file.webViewLink || `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/view`,
           DriveWebContentLink: file.webContentLink || null,
-          OriginalUrl: project.BrochureUrl || null,
+          OriginalUrl: existing?.OriginalUrl || project.BrochureUrl || null,
           Url: `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure`,
           mimeType: 'application/pdf', sizeBytes: Number(file.size || 0) || null,
           storageType: 'google-drive', stored: true, verified: true,
-          downloadStatus: 'downloaded', Source: 'ExistingProjectDriveFolder', UploadedAt: new Date().toISOString()
-        });
+          downloadStatus: 'downloaded', Source: 'ExistingProjectDriveFolder',
+          UploadedAt: existing?.UploadedAt || new Date().toISOString()
+        };
+        if (existing) Object.assign(existing, linkedRecord);
+        else project.Brochures.push(linkedRecord);
         // Other media may already depend on the saved project folder. Change
         // only the brochure reference when the PDF is in a duplicate folder.
         project.DriveSubfolders = { ...(project.DriveSubfolders || {}), Brochures: folderId };
