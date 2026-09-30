@@ -115,6 +115,34 @@ test('links one exact brochure number across duplicate project folders', async (
   }
 });
 
+test('finds brochure in a duplicate Project-prefixed folder and updates its folder link', async () => {
+  const project = { ProjectID: 'BLDP-7', ProjectName: 'Eta', Active: true,
+    DriveFolderID: 'EMPTY', DriveSubfolders: { Brochures: 'EMPTY-PDF', Videos: 'OLD-VIDEOS' },
+    BrochureUrl: 'https://example.com/777.pdf', Brochures: [] };
+  const repo = makeRepo({ BuilderProjects: [project] });
+  repo.createId = () => 'MED-7';
+  const previous = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'ROOT';
+  const drive = {
+    listFilesInFolder: async (id) => id === 'ROOT'
+      ? [{ id: 'REAL', name: 'Project-BLDP-7 Eta', mimeType: 'application/vnd.google-apps.folder' }]
+      : id === 'REAL-PDF'
+        ? [{ id: 'FILE-7', name: '777.pdf', mimeType: 'application/pdf', size: '77' }]
+        : [],
+    findFolder: async (name, id) => name === 'Brochures' && id === 'REAL' ? { id: 'REAL-PDF' } : null
+  };
+  try {
+    const result = await new BuilderProjectDriveService(repo, drive).linkExistingBrochures({ dryRun: false });
+    assert.equal(result.data.linked, 1);
+    assert.equal(project.DriveFolderID, 'REAL');
+    assert.deepEqual(project.DriveSubfolders, { Brochures: 'REAL-PDF' });
+    assert.equal(project.Brochures[0].DriveFileID, 'FILE-7');
+  } finally {
+    if (previous === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = previous;
+  }
+});
+
 test('identical Drive checksums allow one link, different or absent checksums remain ambiguous', async () => {
   const oldRoot = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
   process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'ROOT';
