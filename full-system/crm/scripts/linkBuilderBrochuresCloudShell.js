@@ -17,14 +17,18 @@ async function main() {
   let summary;
   try {
     const repo = new JsonRepository();
-    if (process.argv.includes('--list')) {
+    if (process.argv.includes('--list') || process.argv.includes('--list-all')) {
+      const all = process.argv.includes('--list-all');
       const linked = (repo.read().BuilderProjects || []).flatMap((project) =>
-        (project.Brochures || []).filter((row) => row.Source === 'ExistingProjectDriveFolder' &&
-          (row.DriveFileID || row.DriveFileId)).map((row) => ({
+        (project.Brochures || []).filter((row) => (all || row.Source === 'ExistingProjectDriveFolder') &&
+          (row.DriveFileID || row.DriveFileId) &&
+          (!all || /\.pdf$/i.test(row.Filename || row.fileName || row.OriginalUrl || '') || row.mimeType === 'application/pdf')).map((row) => ({
           projectId: project.ProjectID,
           projectName: project.ProjectName,
           filename: row.Filename || row.fileName,
-          driveFileId: row.DriveFileID || row.DriveFileId
+          driveFileId: row.DriveFileID || row.DriveFileId,
+          source: row.Source || null,
+          verified: row.verified === true
         }))
       );
       summary = { linkedCount: linked.length, linked };
