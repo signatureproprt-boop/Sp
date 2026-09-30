@@ -42,6 +42,12 @@ function createGoogleDriveClient({ env = process.env, driveFactory = google.driv
   const requestOptions = { timeout: driveRequestTimeoutMs(env) };
 
   return {
+    async getFileMetadata(fileId) {
+      const res = await drive.files.get({ fileId,
+        fields: 'id,name,mimeType,parents,trashed,size,md5Checksum,webViewLink,webContentLink'
+      }, requestOptions);
+      return res.data;
+    },
     async listFilesInFolder(parentId) {
       if (!parentId) throw new Error('A parent folder is required for Drive file listing');
       const escape = (value) => String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
