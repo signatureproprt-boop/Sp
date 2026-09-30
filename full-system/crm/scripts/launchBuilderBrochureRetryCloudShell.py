@@ -10,17 +10,29 @@ REGION = "asia-south1"
 SERVICE = "signature-realty-crm"
 JOB = "builder-brochure-retry"
 IMAGE_BASE = f"{REGION}-docker.pkg.dev/{PROJECT}/signature-realty/signature-realty-crm"
+OAUTH_SECRETS = {
+    "SIG_REALTY_GOOGLE_CLIENT_ID": "signature-realty-google-client-id",
+    "SIG_REALTY_GOOGLE_CLIENT_SECRET": "signature-realty-google-client-secret",
+    "SIG_REALTY_GOOGLE_REFRESH_TOKEN": "signature-realty-google-refresh-token",
+}
 
 
 def output(args):
     return subprocess.check_output(args, text=True)
 
 
-def secret_ref(env, name):
+def secret_ref(env, name, fallback=None):
     ref = env.get(name, {}).get("valueFrom", {}).get("secretKeyRef", {})
-    if not ref.get("name"):
+    if ref.get("name"):
+        return f"{name}={ref['name']}:{ref.get('key', 'latest')}"
+    if fallback:
+        state = output(["gcloud", "secrets", "versions", "describe", "latest", "--secret", fallback,
+                        "--project", PROJECT, "--format=value(state)"]).strip()
+        if state != "ENABLED":
+            raise RuntimeError(f"{fallback}: latest secret version is not enabled")
+        return f"{name}={fallback}:latest"
+    else:
         raise RuntimeError(f"{name} must be a Cloud Run Secret Manager reference; secret values are never put in job arguments")
-    return f"{name}={ref['name']}:{ref.get('key', 'latest')}"
 
 
 def main():
@@ -37,17 +49,17 @@ def main():
     mongo_db = env.get("MONGO_DB", {}).get("value", "signature_properties")
     if "," in mongo_db:
         raise RuntimeError("Invalid Mongo database name")
-    secrets = [secret_ref(env, name) for name in (
-        "MONGO_URL", "SIG_REALTY_GOOGLE_CLIENT_ID", "SIG_REALTY_GOOGLE_CLIENT_SECRET", "SIG_REALTY_GOOGLE_REFRESH_TOKEN")]
+    secrets = [secret_ref(env, "MONGO_URL")]
+    secrets.extend(secret_ref(env, name, fallback) for name, fallback in OAUTH_SECRETS.items())
 
-    existing = subprocess.run(["gcloud", "run", "jobs", "executions", "list", "--job", JOB,
-                               "--project", PROJECT, "--region", REGION, "--format=json"],
-                              text=True, capture_output=True)
-    if existing.returncode != 0:
-        raise RuntimeError("Cannot verify whether another brochure Job is running; no execution started")
-    if any(not item.get("status", {}).get("completionTime")
-           for item in json.loads(existing.stdout or "[]")):
-        raise RuntimeError("Brochure recovery Job is already running; no second execution started")
+    jobs = json.loads(output(["gcloud", "run", "jobs", "list", "--project", PROJECT,
+                              "--region", REGION, "--format=json"]))
+    if any(item.get("metadata", {}).get("name") == JOB or item.get("name", "").endswith("/" + JOB)
+           for item in jobs):
+        existing = json.loads(output(["gcloud", "run", "jobs", "executions", "list", "--job", JOB,
+                                      "--project", PROJECT, "--region", REGION, "--format=json"]))
+        if any(not item.get("status", {}).get("completionTime") for item in existing):
+            raise RuntimeError("Brochure recovery Job is already running; no second execution started")
 
     revision = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=crm, text=True).strip()
     image = f"{IMAGE_BASE}:brochure-retry-{revision}"
