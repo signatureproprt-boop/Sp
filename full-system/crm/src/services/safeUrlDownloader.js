@@ -285,7 +285,9 @@ function createPdfValidationStream(maxBytes, observer) {
 
 async function openPdfStreamSafely(rawUrl, opts = {}) {
   const timeoutMs = Math.min(Number(opts.timeoutMs) || DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
-  const maxBytes = Math.min(Number(opts.maxBytes) || DEFAULT_MAX_BYTES, HARD_MAX_BYTES);
+  // Infinity explicitly enables uncapped streaming for brochures. Buffered
+  // download APIs below retain their size limits.
+  const maxBytes = opts.maxBytes === Infinity ? Infinity : Math.min(Number(opts.maxBytes) || DEFAULT_MAX_BYTES, HARD_MAX_BYTES);
   const allowPrivateNetworks = opts.allowPrivateNetworks === true;
   const observer = typeof opts.observer === 'function' ? opts.observer : null;
   observer?.({ stage: 'download-open-start' });

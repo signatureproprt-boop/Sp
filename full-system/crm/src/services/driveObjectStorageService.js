@@ -66,6 +66,10 @@ function projectIdFromKey(key) {
 }
 
 async function putObject(key, buffer, contentType, filename, options = {}) {
+  return putObjectStream(key, Readable.from(buffer), contentType, filename, { ...options, size: buffer.length });
+}
+
+async function putObjectStream(key, readable, contentType, filename, options = {}) {
   const drive = getDrive();
   const { folderId } = getConfig();
   const projectFolder = await ensureFolder(`Project-${projectIdFromKey(key)}`, folderId);
@@ -85,7 +89,7 @@ async function putObject(key, buffer, contentType, filename, options = {}) {
       },
       description: JSON.stringify({ key, metadata })
     },
-    media: { mimeType: contentType || 'application/octet-stream', body: Readable.from(buffer) },
+    media: { mimeType: contentType || 'application/octet-stream', body: readable },
     fields: 'id,name,mimeType,size,createdTime,modifiedTime,webViewLink,webContentLink,appProperties,parents'
   });
   const file = created.data;
@@ -99,7 +103,7 @@ async function putObject(key, buffer, contentType, filename, options = {}) {
   return {
     path: key,
     key,
-    size: Number(file.size || buffer.length),
+    size: Number(file.size || options.size || 0),
     contentType: contentType || 'application/octet-stream',
     fileId: file.id,
     webViewLink: file.webViewLink || null,
@@ -176,6 +180,7 @@ function resetForTests() { driveClient = null; }
 
 module.exports = {
   putObject,
+  putObjectStream,
   getObject,
   getObjectStream,
   getObjectInfo,
