@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Build the current CRM, deploy its 404 fix, and start durable brochure linking.
+"""Start durable brochure linking in a Cloud Run Job.
 
 Run in Cloud Shell from the CRM directory. No Mongo secret is printed or copied
 to local files: the Cloud Run Job receives the same Secret Manager reference as
 the existing service. The job continues independently of Cloud Shell.
 """
+import argparse
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +26,9 @@ def run(args, *, capture=False, cwd=None):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--image", help="Previously built image to reuse (full Artifact Registry URI)")
+    args = parser.parse_args()
     crm = Path(__file__).resolve().parent.parent
     if not (crm / "Dockerfile").exists() or not (crm / "scripts/linkBuilderBrochuresCloudShell.js").exists():
         raise RuntimeError("Run from the updated CRM checkout")
@@ -51,13 +54,12 @@ def main():
         raise RuntimeError("MONGO_DB is invalid")
     service_account = spec.get("serviceAccountName")
     revision = run(["git", "rev-parse", "--short", "HEAD"], capture=True, cwd=crm).strip()
-    image = f"{IMAGE_BASE}:builder-link-{revision}"
-
-    run(["gcloud", "builds", "submit", str(crm), "--project", PROJECT,
-         "--tag", image, "--quiet"])
-    # Deploying the same image to the service makes the DriveFileId 404 fix live.
-    run(["gcloud", "run", "deploy", SERVICE, "--project", PROJECT,
-         "--region", REGION, "--image", image, "--quiet"])
+    image = args.image or f"{IMAGE_BASE}:builder-link-{revision}"
+    if args.image and not args.image.startswith(IMAGE_BASE + ":"):
+        raise RuntimeError("--image must be a CRM image in this project")
+    if not args.image:
+        run(["gcloud", "builds", "submit", str(crm), "--project", PROJECT,
+             "--tag", image, "--quiet"])
 
     job_args = ["gcloud", "run", "jobs", "deploy", JOB, "--project", PROJECT,
                 "--region", REGION, "--image", image,
