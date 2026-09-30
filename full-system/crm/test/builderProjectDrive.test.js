@@ -115,7 +115,7 @@ test('links one exact brochure number across duplicate project folders', async (
   }
 });
 
-test('finds brochure in a duplicate Project-prefixed folder and updates its folder link', async () => {
+test('finds brochure in a duplicate Project-prefixed folder without disturbing other media folders', async () => {
   const project = { ProjectID: 'BLDP-7', ProjectName: 'Eta', Active: true,
     DriveFolderID: 'EMPTY', DriveSubfolders: { Brochures: 'EMPTY-PDF', Videos: 'OLD-VIDEOS' },
     BrochureUrl: 'https://example.com/777.pdf', Brochures: [] };
@@ -134,8 +134,8 @@ test('finds brochure in a duplicate Project-prefixed folder and updates its fold
   try {
     const result = await new BuilderProjectDriveService(repo, drive).linkExistingBrochures({ dryRun: false });
     assert.equal(result.data.linked, 1);
-    assert.equal(project.DriveFolderID, 'REAL');
-    assert.deepEqual(project.DriveSubfolders, { Brochures: 'REAL-PDF' });
+    assert.equal(project.DriveFolderID, 'EMPTY');
+    assert.deepEqual(project.DriveSubfolders, { Brochures: 'REAL-PDF', Videos: 'OLD-VIDEOS' });
     assert.equal(project.Brochures[0].DriveFileID, 'FILE-7');
   } finally {
     if (previous === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
