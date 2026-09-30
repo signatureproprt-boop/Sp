@@ -117,18 +117,33 @@ async function main() {
     // Re-read the snapshot just before each trash operation to protect new links.
     console.error(`DEDUPE_PROGRESS=candidates:${actions.length}`);
     let trashed = 0;
-    if (apply) for (const action of actions) {
-      const fresh = await client.db(process.env.MONGO_DB || 'signature_properties')
-        .collection('db_snapshot').findOne({ _id: 'singleton' }, { maxTimeMS: 30000 });
-      if (!Array.isArray(fresh?.payload?.BuilderProjects) ||
-          referencedIds(fresh.payload).has(action.fileId) ||
-          JSON.stringify(fresh.payload).includes(action.fileId)) continue;
-      await drive.files.update({ fileId: action.fileId, requestBody: { trashed: true }, supportsAllDrives: true });
+    let skipped = 0;
+    let currentReferences = ids;
+    let currentSnapshotText = snapshotText;
+    if (apply) for (let index = 0; index < actions.length; index++) {
+      // Recheck links at the start of every small batch. An absent snapshot
+      // aborts the run before the next Drive write.
+      if (index % 25 === 0) {
+        const fresh = await client.db(process.env.MONGO_DB || 'signature_properties')
+          .collection('db_snapshot').findOne({ _id: 'singleton' }, { maxTimeMS: 30000 });
+        if (!Array.isArray(fresh?.payload?.BuilderProjects)) throw new Error('CRM snapshot unavailable during apply');
+        currentReferences = referencedIds(fresh.payload);
+        currentSnapshotText = JSON.stringify(fresh.payload);
+      }
+      const action = actions[index];
+      if (currentReferences.has(action.fileId) || currentSnapshotText.includes(action.fileId)) {
+        skipped++;
+        continue;
+      }
+      await drive.files.update({ fileId: action.fileId, requestBody: { trashed: true }, supportsAllDrives: true },
+        { timeout: 60000 });
       trashed++;
+      if (trashed % 25 === 0) console.error(`DEDUPE_PROGRESS=trashed:${trashed},remaining:${actions.length - index - 1}`);
     }
     fs.writeFileSync('builder-drive-dedupe-report.json', JSON.stringify({ dryRun: !apply, actions }, null, 2));
     console.log(JSON.stringify({ dryRun: !apply, scannedProjectFolders: rootFolders.length,
-      candidateCopies: actions.length, trashed, report: 'builder-drive-dedupe-report.json', examples: actions.slice(0, 5) }));
+      candidateCopies: actions.length, trashed, skipped,
+      report: 'builder-drive-dedupe-report.json', examples: actions.slice(0, 5) }));
   } finally { await client.close(); }
 }
 
