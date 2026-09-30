@@ -129,12 +129,11 @@ class BuilderProjectDriveService {
           storageType: 'google-drive', stored: true, verified: true,
           downloadStatus: 'downloaded', Source: 'ExistingProjectDriveFolder', UploadedAt: new Date().toISOString()
         });
-        // Keep the folder and subfolder references consistent with the PDF.
-        project.DriveSubfolders = project.DriveFolderID === projectFolderId
-          ? { ...(project.DriveSubfolders || {}), Brochures: folderId }
-          : { Brochures: folderId };
-        project.DriveFolderID = projectFolderId;
-        project.DriveFolderURL = `https://drive.google.com/drive/folders/${encodeURIComponent(projectFolderId)}`;
+        // Other media may already depend on the saved project folder. Change
+        // only the brochure reference when the PDF is in a duplicate folder.
+        project.DriveSubfolders = { ...(project.DriveSubfolders || {}), Brochures: folderId };
+        project.DriveFolderID ||= projectFolderId;
+        project.DriveFolderURL ||= `https://drive.google.com/drive/folders/${encodeURIComponent(projectFolderId)}`;
         project.UpdatedAt = new Date().toISOString();
         this.repo.write(db);
         result.linked += 1;
