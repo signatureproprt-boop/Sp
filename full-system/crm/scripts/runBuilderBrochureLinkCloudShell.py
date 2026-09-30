@@ -46,6 +46,8 @@ def main():
         command.append("--list")
     if "--recover-six" in sys.argv[1:]:
         command.append("--recover-six")
+    if "--audit-errors" in sys.argv[1:]:
+        command.append("--audit-errors")
     if "--apply" in sys.argv[1:]:
         command.append("--apply")
     process = subprocess.Popen(command, env=env, text=True,

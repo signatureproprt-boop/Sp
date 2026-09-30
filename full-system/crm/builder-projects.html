@@ -248,12 +248,12 @@ table td,table th{border-color:var(--v2-line)!important}
         <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Live CRM status for every active builder project. “Drive linked” means a verified Drive file is recorded against that project.</p>
         <div id="brochure-status-summary" style="margin-bottom:12px">Loading…</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          <select id="brochure-status-filter" onchange="renderBrochureStatus()" aria-label="Filter brochure status" class="btn"><option value="">All projects</option><option>Drive linked</option><option>Stored outside Drive</option><option>Pending</option><option>No brochure source</option></select>
+          <select id="brochure-status-filter" onchange="renderBrochureStatus()" aria-label="Filter brochure status" class="btn"><option value="">All projects</option><option>Drive linked</option><option>Stored outside Drive</option><option>Failed</option><option>Pending</option><option>No brochure source</option></select>
           <input id="brochure-status-search" class="search-input" style="min-width:160px" placeholder="Search project or builder…" oninput="renderBrochureStatus()">
           <a class="btn btn-primary" href="/api/v2/builder-projects/brochure-status.csv" download>Download CSV log</a>
           <button class="btn btn-ghost" onclick="loadBrochureStatus()">↻ Refresh</button>
         </div>
-        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
+        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID / Error</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
       </div>
     </div>
   </div>
@@ -567,7 +567,7 @@ table td,table th{border-color:var(--v2-line)!important}
       if (!response.ok || !report.ok) throw new Error(report.error || 'Unable to load brochure log');
       brochureStatusRows = report.rows;
       const c = report.counts;
-      document.getElementById('brochure-status-summary').textContent = `${c.totalProjects} active projects · ${c.driveLinked} Drive linked projects (${c.linkedFiles} PDFs) · ${c.storedOutsideDrive} stored elsewhere · ${c.pending} pending · ${c.noBrochureSource} without brochure source · Updated ${new Date(report.generatedAt).toLocaleString()}`;
+      document.getElementById('brochure-status-summary').textContent = `${c.totalProjects} active projects · ${c.driveLinked} Drive linked projects (${c.linkedFiles} PDFs) · ${c.failed} failed · ${c.storedOutsideDrive} stored elsewhere · ${c.pending} pending · ${c.noBrochureSource} without brochure source · Updated ${new Date(report.generatedAt).toLocaleString()}`;
       renderBrochureStatus();
     } catch (error) {
       document.getElementById('brochure-status-summary').textContent = `Could not load: ${error.message}`;
@@ -578,7 +578,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const filter = document.getElementById('brochure-status-filter').value;
     const query = document.getElementById('brochure-status-search').value.trim().toLowerCase();
     const rows = brochureStatusRows.filter((row) => (!filter || row.status === filter) && (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query)));
-    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}</td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds)}</small></td></tr>`).join('') || '<tr><td colspan="4">No matching projects</td></tr>';
+    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}</td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds || row.failureReason)}</small></td></tr>`).join('') || '<tr><td colspan="4">No matching projects</td></tr>';
   }
 
   window.addEventListener('DOMContentLoaded', () => {
