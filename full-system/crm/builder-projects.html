@@ -231,6 +231,7 @@ table td,table th{border-color:var(--v2-line)!important}
       <button class="btn btn-ghost" data-testid="fix-unknown-btn" onclick="openUnknownModal()">🏗️ Fix Unknown Builders</button>
       <button class="btn btn-ghost" data-testid="bulk-brochure-btn" onclick="openBulkBrochureModal()">🤖 Bulk from Brochures</button>
       <button class="btn btn-ghost" id="link-drive-brochures-btn" onclick="linkDriveBrochures()">🔗 Link Drive Brochures</button>
+      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Brochure Log</button>
       <button class="btn btn-ghost" data-testid="csv-brochure-import-btn" onclick="openCsvBrochureModal()">📑 CSV Brochures</button>
       <button class="btn btn-ghost" data-testid="bulk-upload-btn" onclick="openUploadModal()">📤 Bulk Upload</button>
       <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button>
@@ -239,6 +240,23 @@ table td,table th{border-color:var(--v2-line)!important}
 
   <div id="karma-scrape-status" data-testid="karma-scrape-status" style="display:none;margin-bottom:14px;padding:12px 14px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-gold-soft);font-size:12.5px;color:var(--clr-brown)"></div>
   <div id="karma-scrape-errors" data-testid="karma-scrape-errors" style="display:none;margin:-6px 0 14px;padding:12px 14px;border:1px solid #f0c9c5;border-radius:8px;background:#fff8f7;color:#57221e;font-size:12px"></div>
+
+  <div class="modal-overlay hidden" id="brochure-status-modal">
+    <div class="modal" style="max-width:1000px">
+      <div class="modal-header"><div class="modal-title">📋 Builder brochure log</div><button class="modal-close" onclick="document.getElementById('brochure-status-modal').classList.add('hidden')" aria-label="Close">×</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Live CRM status for every active builder project. “Drive linked” means a verified Drive file is recorded against that project.</p>
+        <div id="brochure-status-summary" style="margin-bottom:12px">Loading…</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <select id="brochure-status-filter" onchange="renderBrochureStatus()" aria-label="Filter brochure status" class="btn"><option value="">All projects</option><option>Drive linked</option><option>Stored outside Drive</option><option>Pending</option><option>No brochure source</option></select>
+          <input id="brochure-status-search" class="search-input" style="min-width:160px" placeholder="Search project or builder…" oninput="renderBrochureStatus()">
+          <a class="btn btn-primary" href="/api/v2/builder-projects/brochure-status.csv" download>Download CSV log</a>
+          <button class="btn btn-ghost" onclick="loadBrochureStatus()">↻ Refresh</button>
+        </div>
+        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
+      </div>
+    </div>
+  </div>
 
   <div class="toolbar">
     <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
@@ -534,6 +552,34 @@ table td,table th{border-color:var(--v2-line)!important}
   let brochureCsvResult = null;
   let lastPreview = null;
   let mediaBusy = false;
+  let brochureStatusRows = [];
+
+  function openBrochureStatus() {
+    document.getElementById('brochure-status-modal').classList.remove('hidden');
+    loadBrochureStatus();
+  }
+
+  async function loadBrochureStatus() {
+    document.getElementById('brochure-status-summary').textContent = 'Loading live project records…';
+    try {
+      const response = await fetch('/api/v2/builder-projects/brochure-status', { cache: 'no-store' });
+      const report = await response.json();
+      if (!response.ok || !report.ok) throw new Error(report.error || 'Unable to load brochure log');
+      brochureStatusRows = report.rows;
+      const c = report.counts;
+      document.getElementById('brochure-status-summary').textContent = `${c.totalProjects} active projects · ${c.driveLinked} Drive linked projects (${c.linkedFiles} PDFs) · ${c.storedOutsideDrive} stored elsewhere · ${c.pending} pending · ${c.noBrochureSource} without brochure source · Updated ${new Date(report.generatedAt).toLocaleString()}`;
+      renderBrochureStatus();
+    } catch (error) {
+      document.getElementById('brochure-status-summary').textContent = `Could not load: ${error.message}`;
+    }
+  }
+
+  function renderBrochureStatus() {
+    const filter = document.getElementById('brochure-status-filter').value;
+    const query = document.getElementById('brochure-status-search').value.trim().toLowerCase();
+    const rows = brochureStatusRows.filter((row) => (!filter || row.status === filter) && (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query)));
+    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}</td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds)}</small></td></tr>`).join('') || '<tr><td colspan="4">No matching projects</td></tr>';
+  }
 
   window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('dl-surat-areas').innerHTML = SURAT_AREAS.map(a => `<option value="${a}">`).join('');
