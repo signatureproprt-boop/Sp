@@ -625,9 +625,10 @@ class ProjectMediaCanaryMigrationService {
   }
 
   async _readVerifiedMedia(row, contentType, maxBytes) {
-    if (row.DriveFileID) {
+    const driveFileId = row.DriveFileID || row.DriveFileId;
+    if (driveFileId) {
       const response = await this.drive.files.get(
-        { fileId: row.DriveFileID, alt: 'media' },
+        { fileId: driveFileId, alt: 'media' },
         { responseType: 'arraybuffer' }
       );
       const buffer = Buffer.from(response.data);
@@ -643,7 +644,7 @@ class ProjectMediaCanaryMigrationService {
     const project = this._findProject(db, projectId);
     if (!project) return { ok: false, statusCode: 404, error: 'Project not found' };
     const brochure = (project.Brochures || []).find((row) =>
-      (row.DriveFileID || row.StoragePath) &&
+      (row.DriveFileID || row.DriveFileId || row.StoragePath) &&
       row.verified === true &&
       String(row.downloadStatus || '').toLowerCase() === 'downloaded'
     );
