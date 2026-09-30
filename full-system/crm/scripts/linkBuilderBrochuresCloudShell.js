@@ -36,7 +36,7 @@ async function main() {
         } : { projectId: id, missingFromCrm: true };
       }) };
       await mongoStore.close();
-      await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary)}\\n`, resolve));
+      await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary)}\n`, resolve));
       process.exit(0);
     }
     if (process.argv.includes('--list') || process.argv.includes('--list-all')) {
