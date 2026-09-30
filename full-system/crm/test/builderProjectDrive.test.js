@@ -190,6 +190,40 @@ test('identical Drive checksums allow one link, different or absent checksums re
   }
 });
 
+test('scoped folder hint requires exact project ancestry and brochure filename', async () => {
+  const project = { ProjectID: 'BLDP-8', ProjectName: 'Sky', Active: true,
+    BrochureUrl: 'https://example.com/123.pdf', Brochures: [] };
+  const repo = makeRepo({ BuilderProjects: [project] });
+  repo.createId = () => 'MED-8';
+  const previous = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+  process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = 'ROOT';
+  let parent = 'ROOT';
+  const drive = {
+    async getFileMetadata() { return { id: 'PROJECT-8', name: 'BLDP-8 Sky',
+      mimeType: 'application/vnd.google-apps.folder', parents: [parent] }; },
+    async listFilesInFolder(id) { return id === 'BROCHURES-8'
+      ? [{ id: 'PDF-8', name: '123.pdf', mimeType: 'application/pdf' }] : []; },
+    async findFolder(name, id) { return name === 'Brochures' && id === 'PROJECT-8'
+      ? { id: 'BROCHURES-8' } : null; }
+  };
+  try {
+    const svc = new BuilderProjectDriveService(repo, drive);
+    const options = { projectIds: ['BLDP-8'], folderHints: { 'BLDP-8': 'PROJECT-8' } };
+    parent = 'WRONG-ROOT';
+    const refused = await svc.linkExistingBrochures({ dryRun: false, ...options });
+    assert.equal(refused.data.linked, 0);
+    assert.equal(refused.data.errors.length, 1);
+    parent = 'ROOT';
+    const applied = await svc.linkExistingBrochures({ dryRun: false, ...options });
+    assert.equal(applied.data.linked, 1);
+    assert.equal(project.Brochures[0].DriveFileID, 'PDF-8');
+    assert.equal(project.DriveFolderID, 'PROJECT-8');
+  } finally {
+    if (previous === undefined) delete process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
+    else process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID = previous;
+  }
+});
+
 test('project Drive folder creation is tenant scoped and persists linkage', async () => {
   const db = {
     BuilderProjects: [
