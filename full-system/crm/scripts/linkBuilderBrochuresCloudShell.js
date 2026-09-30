@@ -17,6 +17,28 @@ async function main() {
   let summary;
   try {
     const repo = new JsonRepository();
+    const inspectArg = process.argv.find((arg) => arg.startsWith('--inspect-projects='));
+    if (inspectArg) {
+      const ids = inspectArg.slice('--inspect-projects='.length).split(',').filter(Boolean);
+      const projects = (repo.read().BuilderProjects || []);
+      summary = { projects: ids.map((id) => {
+        const project = projects.find((row) => String(row.ProjectID) === id);
+        return project ? {
+          projectId: id, projectName: project.ProjectName, active: project.Active !== false,
+          brochureUrl: project.BrochureUrl || null, driveFolderId: project.DriveFolderID || null,
+          brochureFolderId: project.DriveSubfolders?.Brochures || null,
+          brochures: (project.Brochures || []).map((row) => ({
+            filename: row.Filename || row.fileName || null,
+            originalUrl: row.OriginalUrl || row.SourceUrl || null,
+            driveFileId: row.DriveFileID || row.DriveFileId || null,
+            verified: row.verified === true, source: row.Source || null
+          }))
+        } : { projectId: id, missingFromCrm: true };
+      }) };
+      await mongoStore.close();
+      await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary)}\n`, resolve));
+      process.exit(0);
+    }
     if (process.argv.includes('--list') || process.argv.includes('--list-all')) {
       const all = process.argv.includes('--list-all');
       const linked = (repo.read().BuilderProjects || []).flatMap((project) =>
