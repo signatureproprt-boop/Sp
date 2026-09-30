@@ -71,6 +71,21 @@ test('brochure ingest saves the Drive file id and web-view/web-content links on 
   assert.equal(rec.Source, 'KarmaGroupScrape');
 });
 
+test('brochure ingest requests uncapped streaming while preserving Drive upload', async () => {
+  let requestedMax;
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), {
+    isDriveStorageConfigured: () => true,
+    openPdfStreamSafely: async (_url, options) => {
+      requestedMax = options.maxBytes;
+      return okPdfStream();
+    },
+    objectStorage: driveStore([])
+  });
+  const out = await svc._ingestBrochure({ ProjectID: 'BLDP-2', ProjectName: 'Large', Brochures: [] }, 'https://karmagroup.co.in/large.pdf');
+  assert.equal(out.ok, true);
+  assert.equal(requestedMax, Infinity);
+});
+
 test('brochure ingest refuses GridFS fallback when Drive is not the configured provider', async () => {
   let touched = false;
   const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), {

@@ -80,9 +80,7 @@ async function putObject(key, buffer, contentType, filename, options = {}) {
 
 async function putObjectStream(key, readable, contentType, filename, options = {}) {
   if (useGoogleDrive()) {
-    const chunks = [];
-    for await (const chunk of readable) chunks.push(chunk);
-    return driveStorage().putObject(key, Buffer.concat(chunks), contentType, filename, options);
+    return driveStorage().putObjectStream(key, readable, contentType, filename, options);
   }
   const b = getBucket();
   const existing = await findByKey(key);

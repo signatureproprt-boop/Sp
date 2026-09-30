@@ -17,8 +17,6 @@ const MAX_SCRAPE_RUN_HISTORY = 10;
 const DEFAULT_MAX_PAGES = 12;
 const DEFAULT_MAX_REQUESTS = 40;
 const TRANSIENT_MAX_RETRIES = 2;
-const BROCHURE_DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
-const BROCHURE_HARD_MAX_BYTES = 300 * 1024 * 1024;
 const IMAGE_MAX_BYTES = 30 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
 const KARMA_PROJECT_LIST_URL = 'https://karmagroup.co.in/Projects/ProjectList';
@@ -1223,7 +1221,7 @@ class KarmaGroupScraperService {
       };
     }
 
-    const maxBytes = Math.min(BROCHURE_HARD_MAX_BYTES, Math.max(1, Number(process.env.BUILDER_PROJECT_BROCHURE_MAX_BYTES || BROCHURE_DEFAULT_MAX_BYTES)));
+    // Brochure PDFs are streamed to Drive; no application-level file-size cap.
     updateStage(statusRef, 'download-open', {
       contentLength: null,
       downloadedBytes: 0,
@@ -1233,7 +1231,7 @@ class KarmaGroupScraperService {
 
     const streamResult = await this.openPdfStreamSafely(normalizedBrochure, {
       timeoutMs: this.timeoutMs,
-      maxBytes,
+      maxBytes: Infinity,
       observer: (event) => {
         if (event?.stage === 'download-response-start') {
           updateStage(statusRef, 'download-open', { contentLength: event.contentLength || null });
@@ -1318,7 +1316,7 @@ class KarmaGroupScraperService {
     const downloaded = await this.downloadMediaSafely(sourceUrl, {
       kind: mediaType === 'brochure' ? 'pdf' : (mediaType === 'video' ? 'binary' : 'image'),
       timeoutMs: Math.max(this.timeoutMs, 30000),
-      maxBytes: mediaType === 'brochure' ? BROCHURE_HARD_MAX_BYTES : (mediaType === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES),
+      maxBytes: mediaType === 'video' ? VIDEO_MAX_BYTES : IMAGE_MAX_BYTES,
       allowImageHeaderMismatch: mediaType !== 'brochure' && mediaType !== 'video'
     });
     if (!downloaded.ok) return { ok: false, sourceKey, mediaType, error: sanitizeError(downloaded.error) };
@@ -1392,18 +1390,26 @@ class KarmaGroupScraperService {
     project.FloorPlans = (Array.isArray(project.FloorPlans) ? project.FloorPlans : []).filter(isStoredMedia);
     project.Brochures = (Array.isArray(project.Brochures) ? project.Brochures : []).filter(isStoredMedia);
     project.Videos = (Array.isArray(project.Videos) ? project.Videos : []).filter(isStoredMedia);
-    project.BrochureUrl = null;
+    project.BrochureUrl = parsed.brochureUrl || null;
     const failures = [];
     await runPool(queue, this.mediaConcurrency, async (item) => {
       try {
         updateStage(latestStatus, 'media-storage', { selectedProjectID: project.ProjectID, selectedProjectName: project.ProjectName });
-        const result = await this._ingestOneProjectMedia(project, item.url, item.field, item.mediaType, tenant);
+        // Brochures use the PDF-validated streaming path; general media is
+        // buffered and intentionally retains its image/video size limits.
+        const result = item.mediaType === 'brochure'
+          ? await this._ingestBrochure(project, item.url, latestStatus)
+          : await this._ingestOneProjectMedia(project, item.url, item.field, item.mediaType, tenant);
         if (result.ok) {
           if (result.reused) counters.mediaReused += 1;
           else counters.mediaStored += 1;
           counters.mediaBytesStored += Number(result.bytesStored || 0);
         } else {
           counters.mediaFailed += 1;
+          if (item.mediaType === 'brochure') {
+            counters.brochuresFailed = Number(counters.brochuresFailed || 0) + 1;
+            project.Notes = mergeUniqueStrings([project.Notes].filter(Boolean), [`Brochure ingest failed: ${result.error}`]).join(' | ').slice(0, 900);
+          }
           failures.push({ sourceKey: result.sourceKey, mediaType: result.mediaType, error: result.error });
           addScrapeError(latestStatus, counters, { projectName: project.ProjectName, projectId: project.ProjectID, stage: 'media-storage', mediaType: result.mediaType, error: result.error });
           counters.mediaFailureExamples = Array.isArray(counters.mediaFailureExamples) ? counters.mediaFailureExamples : [];
@@ -1414,6 +1420,10 @@ class KarmaGroupScraperService {
       } catch (error) {
         counters.mediaFailed += 1;
         const failureMessage = sanitizeError(error);
+        if (item.mediaType === 'brochure') {
+          counters.brochuresFailed = Number(counters.brochuresFailed || 0) + 1;
+          project.Notes = mergeUniqueStrings([project.Notes].filter(Boolean), [`Brochure ingest failed: ${failureMessage}`]).join(' | ').slice(0, 900);
+        }
         failures.push({ sourceKey: mediaSourceKey(item.url), mediaType: item.mediaType, error: failureMessage });
         addScrapeError(latestStatus, counters, { projectName: project.ProjectName, projectId: project.ProjectID, stage: 'media-storage', mediaType: item.mediaType, error: failureMessage });
         counters.mediaFailureExamples = Array.isArray(counters.mediaFailureExamples) ? counters.mediaFailureExamples : [];
