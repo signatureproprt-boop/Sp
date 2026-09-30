@@ -2156,6 +2156,21 @@ async function handleApi(req, res, url) {
             : 'BUILDER_PROJECTS_CREATE';
       if (!ensurePermissionOrRespond(req, res, url, builderPermission)) return;
 
+      if (/^\/api\/v2\/builder-projects\/brochure-status(?:\.csv)?\/?$/i.test(pathname)) {
+        if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const { brochureStatusReport, reportCsv } = require('./src/services/builderBrochureStatusReport');
+        const report = brochureStatusReport(runtime.repository.list('BuilderProjects'), (row) => tenantCheck(row, actor).ok);
+        if (/\.csv\/?$/i.test(pathname)) {
+          res.writeHead(200, withSecurityHeaders({
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': `attachment; filename="builder-brochure-status-${report.generatedAt.slice(0, 10)}.csv"`,
+            'Cache-Control': 'no-store'
+          }));
+          res.end(reportCsv(report));
+        } else sendJson(res, report);
+        return;
+      }
+
       const brochureByProjectMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/brochure\/?$/i);
       if (brochureByProjectMatch) {
         if (req.method !== 'GET' && req.method !== 'HEAD') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
