@@ -51,9 +51,10 @@ class BuilderProjectDriveService {
     );
     const start = Math.max(0, Number(offset) || 0);
     const projects = candidates.slice(start, start + Math.max(1, Math.min(100, Number(limit) || 20)));
-    const missingFolderIds = projects.some((project) => !project.DriveFolderID);
     const rootId = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
-    const rootFolders = missingFolderIds && rootId ? (await this.drive.listFilesInFolder(rootId)).filter((file) =>
+    // A saved folder can be an empty duplicate while the PDF lives in another
+    // folder for the same ProjectID. Inspect all exact project folders.
+    const rootFolders = rootId ? (await this.drive.listFilesInFolder(rootId)).filter((file) =>
       file.mimeType === 'application/vnd.google-apps.folder'
     ) : [];
     const result = { totalCandidates: candidates.length, offset: start, inspected: 0, linked: 0,
@@ -61,9 +62,13 @@ class BuilderProjectDriveService {
     for (const project of projects) {
       result.inspected += 1;
       try {
-        const matches = project.DriveFolderID ? [{ id: project.DriveFolderID }] : rootFolders.filter((file) =>
-          String(file.name || '').startsWith(`${project.ProjectID} `)
-        );
+        const projectId = String(project.ProjectID);
+        const matches = [
+          ...(project.DriveFolderID ? [{ id: project.DriveFolderID }] : []),
+          ...rootFolders.filter((file) => [projectId, `Project-${projectId}`].some((prefix) =>
+            file.name === prefix || String(file.name || '').startsWith(`${prefix} `)
+          ))
+        ].filter((file, index, all) => all.findIndex((item) => item.id === file.id) === index);
         if (matches.length === 0) { result.empty += 1; continue; }
         const expectedNames = new Set([
           project.BrochureUrl,
@@ -72,7 +77,7 @@ class BuilderProjectDriveService {
         const files = [];
         const matching = [];
         for (const folder of matches) {
-          const brochureFolderId = project.DriveFolderID && project.DriveSubfolders?.Brochures
+          const brochureFolderId = project.DriveFolderID === folder.id && project.DriveSubfolders?.Brochures
             ? project.DriveSubfolders.Brochures : (await this.drive.findFolder('Brochures', folder.id))?.id;
           if (!brochureFolderId) continue;
           for (const file of await this.drive.listFilesInFolder(brochureFolderId)) {
@@ -124,9 +129,12 @@ class BuilderProjectDriveService {
           storageType: 'google-drive', stored: true, verified: true,
           downloadStatus: 'downloaded', Source: 'ExistingProjectDriveFolder', UploadedAt: new Date().toISOString()
         });
-        project.DriveSubfolders = { ...(project.DriveSubfolders || {}), Brochures: folderId };
-        project.DriveFolderID ||= projectFolderId;
-        project.DriveFolderURL ||= `https://drive.google.com/drive/folders/${encodeURIComponent(projectFolderId)}`;
+        // Keep the folder and subfolder references consistent with the PDF.
+        project.DriveSubfolders = project.DriveFolderID === projectFolderId
+          ? { ...(project.DriveSubfolders || {}), Brochures: folderId }
+          : { Brochures: folderId };
+        project.DriveFolderID = projectFolderId;
+        project.DriveFolderURL = `https://drive.google.com/drive/folders/${encodeURIComponent(projectFolderId)}`;
         project.UpdatedAt = new Date().toISOString();
         this.repo.write(db);
         result.linked += 1;
