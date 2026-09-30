@@ -38,6 +38,7 @@ def main():
         else:
             env[name] = item.get("value", "")
     command = ["node", "scripts/linkBuilderBrochuresCloudShell.js"]
+    command.extend(arg for arg in sys.argv[1:] if arg.startswith("--inspect-projects="))
     if "--list-all" in sys.argv[1:]:
         command.append("--list-all")
     elif "--list" in sys.argv[1:]:
