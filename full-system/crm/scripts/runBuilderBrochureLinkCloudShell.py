@@ -43,6 +43,8 @@ def main():
         command.append("--list-all")
     elif "--list" in sys.argv[1:]:
         command.append("--list")
+    if "--recover-six" in sys.argv[1:]:
+        command.append("--recover-six")
     if "--apply" in sys.argv[1:]:
         command.append("--apply")
     process = subprocess.Popen(command, env=env, text=True,

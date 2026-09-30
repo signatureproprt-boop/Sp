@@ -40,13 +40,14 @@ class BuilderProjectDriveService {
     return true;
   }
 
-  async linkExistingBrochures({ dryRun = true, limit = 20, offset = 0, tenant = {} } = {}) {
+  async linkExistingBrochures({ dryRun = true, limit = 20, offset = 0, tenant = {}, projectIds = null, folderHints = {} } = {}) {
     if (!this.drive || typeof this.drive.listFilesInFolder !== 'function') {
       return { ok: false, statusCode: 503, error: 'Google Drive file listing is unavailable' };
     }
     const db = this.repo.read();
     const candidates = (db.BuilderProjects || []).filter((row) =>
       row.Active !== false && this._sameTenant(row, tenant) &&
+      (!projectIds || projectIds.includes(String(row.ProjectID))) &&
       !(row.Brochures || []).some((item) => item.verified === true && (item.DriveFileID || item.DriveFileId))
     );
     const start = Math.max(0, Number(offset) || 0);
@@ -63,7 +64,21 @@ class BuilderProjectDriveService {
       result.inspected += 1;
       try {
         const projectId = String(project.ProjectID);
+        let hinted = null;
+        if (folderHints[projectId]) {
+          if (!rootId || typeof this.drive.getFileMetadata !== 'function') {
+            throw new Error('Drive folder verification is unavailable');
+          }
+          hinted = await this.drive.getFileMetadata(folderHints[projectId]);
+          if (hinted.trashed || hinted.mimeType !== 'application/vnd.google-apps.folder' ||
+              !hinted.parents?.includes(rootId) ||
+              ![projectId, `Project-${projectId}`].some((prefix) =>
+                hinted.name === prefix || String(hinted.name || '').startsWith(`${prefix} `))) {
+            throw new Error('Hinted folder does not belong to this project under the configured Drive root');
+          }
+        }
         const matches = [
+          ...(hinted ? [hinted] : []),
           ...(project.DriveFolderID ? [{ id: project.DriveFolderID }] : []),
           ...rootFolders.filter((file) => [projectId, `Project-${projectId}`].some((prefix) =>
             file.name === prefix || String(file.name || '').startsWith(`${prefix} `)
