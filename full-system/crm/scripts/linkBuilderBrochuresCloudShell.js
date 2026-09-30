@@ -17,6 +17,21 @@ async function main() {
   let summary;
   try {
     const repo = new JsonRepository();
+    if (process.argv.includes('--list')) {
+      const linked = (repo.read().BuilderProjects || []).flatMap((project) =>
+        (project.Brochures || []).filter((row) => row.Source === 'ExistingProjectDriveFolder' &&
+          (row.DriveFileID || row.DriveFileId)).map((row) => ({
+          projectId: project.ProjectID,
+          projectName: project.ProjectName,
+          filename: row.Filename || row.fileName,
+          driveFileId: row.DriveFileID || row.DriveFileId
+        }))
+      );
+      summary = { linkedCount: linked.length, linked };
+      await mongoStore.close();
+      await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary)}\n`, resolve));
+      process.exit(0);
+    }
     const rootId = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
     const drive = createGoogleDriveClient({ env: {} });
     // The project root does not change during linking; avoid listing it for
