@@ -7,14 +7,15 @@ import sys
 
 SERVICE = "signature-realty-crm"
 REGION = "asia-south1"
+PROJECT = "signature-509218"
 
 def output(args):
-    return subprocess.check_output(args, stderr=subprocess.DEVNULL)
+    return subprocess.check_output(args)
 
 def main():
     service = json.loads(output([
         "gcloud", "run", "services", "describe", SERVICE,
-        "--region=" + REGION, "--format=json"
+        "--region=" + REGION, "--project=" + PROJECT, "--format=json"
     ]))
     items = {
         item["name"]: item
@@ -33,7 +34,7 @@ def main():
         if ref:
             env[name] = output([
                 "gcloud", "secrets", "versions", "access",
-                str(ref.get("key", "latest")), "--secret", ref["name"]
+                str(ref.get("key", "latest")), "--secret", ref["name"], "--project=" + PROJECT
             ]).decode().strip()
         else:
             env[name] = item.get("value", "")
