@@ -28,6 +28,7 @@ def run(args, *, capture=False, cwd=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", help="Previously built image to reuse (full Artifact Registry URI)")
+    parser.add_argument("--recover-six", action="store_true", help="Run scoped recovery for the six verified brochure folders")
     args = parser.parse_args()
     crm = Path(__file__).resolve().parent.parent
     if not (crm / "Dockerfile").exists() or not (crm / "scripts/linkBuilderBrochuresCloudShell.js").exists():
@@ -61,9 +62,11 @@ def main():
         run(["gcloud", "builds", "submit", str(crm), "--project", PROJECT,
              "--tag", image, "--quiet"])
 
-    job_args = ["gcloud", "run", "jobs", "deploy", JOB, "--project", PROJECT,
+    job = "builder-brochure-recover-six" if args.recover_six else JOB
+    script_args = "scripts/linkBuilderBrochuresCloudShell.js,--recover-six,--apply" if args.recover_six else "scripts/linkBuilderBrochuresCloudShell.js,--apply"
+    job_args = ["gcloud", "run", "jobs", "deploy", job, "--project", PROJECT,
                 "--region", REGION, "--image", image,
-                "--command=node", "--args=scripts/linkBuilderBrochuresCloudShell.js,--apply",
+                "--command=node", "--args=" + script_args,
                 "--tasks=1", "--parallelism=1", "--max-retries=0",
                 "--task-timeout=14400s", "--cpu=1", "--memory=1Gi",
                 "--set-env-vars=" + f"STORAGE_MODE=mongo,MONGO_DB={mongo_db},BUILDER_PROJECTS_DRIVE_FOLDER_ID={root}",
@@ -72,10 +75,10 @@ def main():
     if service_account:
         job_args.append("--service-account=" + service_account)
     run(job_args)
-    run(["gcloud", "run", "jobs", "execute", JOB,
+    run(["gcloud", "run", "jobs", "execute", job,
          "--project", PROJECT, "--region", REGION, "--async", "--quiet"])
-    print("BACKEND_STARTED=" + JOB, flush=True)
-    print("STATUS_COMMAND=gcloud run jobs executions list --job " + JOB +
+    print("BACKEND_STARTED=" + job, flush=True)
+    print("STATUS_COMMAND=gcloud run jobs executions list --job " + job +
           " --project " + PROJECT + " --region " + REGION, flush=True)
 
 
