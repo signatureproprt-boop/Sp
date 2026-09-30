@@ -1221,43 +1221,51 @@ class KarmaGroupScraperService {
       };
     }
 
-    // Brochure PDFs are streamed to Drive; no application-level file-size cap.
-    updateStage(statusRef, 'download-open', {
-      contentLength: null,
-      downloadedBytes: 0,
-      uploadedBytes: null,
-      uploadCompleted: false
-    });
-
-    const streamResult = await this.openPdfStreamSafely(normalizedBrochure, {
-      timeoutMs: this.timeoutMs,
-      maxBytes: Infinity,
-      observer: (event) => {
-        if (event?.stage === 'download-response-start') {
-          updateStage(statusRef, 'download-open', { contentLength: event.contentLength || null });
-        } else if (event?.stage === 'download-first-byte' || event?.stage === 'download-progress') {
-          updateStage(statusRef, 'download-stream', {
-            downloadedBytes: typeof event.downloadedBytes === 'number' ? event.downloadedBytes : statusRef.downloadedBytes
-          });
-        }
-      }
-    });
-
-    if (!streamResult.ok) return { ok: false, error: sanitizeError(streamResult.error) };
-
-    updateStage(statusRef, 'storage-upload', { uploadedBytes: null });
-
     const storageKey = `builder-projects/${project.ProjectID}/brochures/${safeProjectName(project.ProjectName)}.pdf`;
     const filename = `${project.ProjectName || project.ProjectID}.pdf`;
     let upload;
     try {
-      upload = await this.objectStorage.putObjectStream(storageKey, streamResult.stream, 'application/pdf', filename, {
-        metadata: { projectId: String(project.ProjectID), mediaType: 'brochure', originalUrl: normalizedBrochure }
-      });
+      upload = await this.objectStorage.findExistingBrochure?.(storageKey, normalizedBrochure);
     } catch (error) {
-      // Upload failed: leave any previously stored brochure record untouched so
-      // a valid saved Drive link is never lost by a failed retry.
-      return { ok: false, error: `Upload failed: ${sanitizeError(error)}` };
+      return { ok: false, error: `Drive lookup failed: ${sanitizeError(error)}` };
+    }
+
+    if (!upload) {
+      // Brochure PDFs are streamed to Drive; no application-level file-size cap.
+      updateStage(statusRef, 'download-open', {
+        contentLength: null,
+        downloadedBytes: 0,
+        uploadedBytes: null,
+        uploadCompleted: false
+      });
+
+      const streamResult = await this.openPdfStreamSafely(normalizedBrochure, {
+        timeoutMs: this.timeoutMs,
+        maxBytes: Infinity,
+        observer: (event) => {
+          if (event?.stage === 'download-response-start') {
+            updateStage(statusRef, 'download-open', { contentLength: event.contentLength || null });
+          } else if (event?.stage === 'download-first-byte' || event?.stage === 'download-progress') {
+            updateStage(statusRef, 'download-stream', {
+              downloadedBytes: typeof event.downloadedBytes === 'number' ? event.downloadedBytes : statusRef.downloadedBytes
+            });
+          }
+        }
+      });
+
+      if (!streamResult.ok) return { ok: false, error: sanitizeError(streamResult.error) };
+
+      updateStage(statusRef, 'storage-upload', { uploadedBytes: null });
+
+      try {
+        upload = await this.objectStorage.putObjectStream(storageKey, streamResult.stream, 'application/pdf', filename, {
+          metadata: { projectId: String(project.ProjectID), projectFolderId: project.DriveFolderID || null,
+            mediaType: 'brochure', originalUrl: normalizedBrochure }
+        });
+      } catch (error) {
+        // Upload failed: leave any previously stored brochure record untouched.
+        return { ok: false, error: `Upload failed: ${sanitizeError(error)}` };
+      }
     }
 
     const driveFileId = upload?.fileId || null;
@@ -1298,10 +1306,12 @@ class KarmaGroupScraperService {
       UploadedBy: 'system'
     };
     project.Brochures.push(record);
+    if (upload.projectFolderId) project.DriveFolderID ||= upload.projectFolderId;
+    if (upload.brochureFolderId) project.DriveSubfolders = { ...(project.DriveSubfolders || {}), Brochures: upload.brochureFolderId };
     project.BrochureUrl = null;
 
     updateStage(statusRef, 'storage-upload', { uploadCompleted: true, uploadedBytes: Number(upload?.size || 0) || null });
-    return { ok: true, reused: false, storagePath: record.StoragePath, driveFileId, driveWebViewLink, driveWebContentLink, record };
+    return { ok: true, reused: Boolean(upload?.recovered), storagePath: record.StoragePath, driveFileId, driveWebViewLink, driveWebContentLink, record };
   }
 
   async _ingestOneProjectMedia(project, sourceUrl, field, mediaType, tenant = {}) {

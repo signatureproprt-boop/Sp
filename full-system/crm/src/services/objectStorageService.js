@@ -180,6 +180,11 @@ async function objectExists(key) {
   return files.length > 0;
 }
 
+async function findExistingBrochure(key, originalUrl) {
+  if (!useGoogleDrive()) return null;
+  return driveStorage().findExistingBrochure(key, originalUrl);
+}
+
 async function deleteObject(key) {
   if (useGoogleDrive()) return driveStorage().deleteObject(key);
   const b = getBucket();
@@ -206,6 +211,7 @@ module.exports = {
   getObjectInfo,
   findLatestObjectByMetadata,
   objectExists,
+  findExistingBrochure,
   deleteObject,
   APP_NAME,
   BUCKET_NAME,
