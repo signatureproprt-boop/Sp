@@ -14,6 +14,7 @@ async function main() {
   }
   process.env.STORAGE_MODE = 'mongo';
   await mongoStore.initMongo();
+  let summary;
   try {
     const repo = new JsonRepository();
     const rootId = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID;
@@ -31,7 +32,7 @@ async function main() {
     const first = await svc.linkExistingBrochures({ dryRun: true, limit: 1 });
     if (!first.ok) throw new Error(first.error);
     const total = first.data.totalCandidates;
-    const summary = { dryRun: !apply, candidates: total, inspected: 0, ready: 0,
+    summary = { dryRun: !apply, candidates: total, inspected: 0, ready: 0,
       linked: 0, empty: 0, unmatched: 0, ambiguous: 0, errors: [] };
     // Iterate backwards: successfully linked projects leave the candidates
     // list, but lower offsets remain stable.
@@ -51,13 +52,17 @@ async function main() {
         console.error(`LINK_PROGRESS=inspected:${summary.inspected},ready:${summary.ready},linked:${summary.linked},errors:${summary.errors.length}`);
       }
     }
-    console.log(JSON.stringify(summary));
   } finally {
     await mongoStore.close();
   }
+  // A polling callback that was already in flight can race with close() and
+  // open another Mongo connection. Flush the result before ending the CLI.
+  await new Promise((resolve) => process.stdout.write(`${JSON.stringify(summary)}\n`, resolve));
+  process.exit(0);
 }
 
-main().catch((error) => {
-  console.error(`LINK_FAILED=${String(error.message || error).slice(0, 300)}`);
-  process.exitCode = 1;
+main().catch(async (error) => {
+  await new Promise((resolve) => process.stderr.write(
+    `LINK_FAILED=${String(error.message || error).slice(0, 300)}\n`, resolve));
+  process.exit(1);
 });
