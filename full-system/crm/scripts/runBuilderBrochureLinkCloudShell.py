@@ -38,6 +38,8 @@ def main():
         else:
             env[name] = item.get("value", "")
     command = ["node", "scripts/linkBuilderBrochuresCloudShell.js"]
+    if "--list" in sys.argv[1:]:
+        command.append("--list")
     if "--apply" in sys.argv[1:]:
         command.append("--apply")
     process = subprocess.Popen(command, env=env, text=True,
