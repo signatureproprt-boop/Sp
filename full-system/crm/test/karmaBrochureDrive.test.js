@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Readable } = require('stream');
 const { KarmaGroupScraperService } = require('../src/services/karmaGroupScraperService');
+const { resolveProjectFolder } = require('../src/services/driveObjectStorageService');
 
 function repoWith(db) {
   let seq = 0;
@@ -48,7 +49,7 @@ test('brochure ingest saves the Drive file id and web-view/web-content links on 
     openPdfStreamSafely: okPdfStream,
     objectStorage: driveStore(calls)
   });
-  const project = { ProjectID: 'BLDP-1', ProjectName: 'Alpha', Brochures: [] };
+  const project = { ProjectID: 'BLDP-1', ProjectName: 'Alpha', DriveFolderID: 'existing-project-folder', Brochures: [] };
 
   const out = await svc._ingestBrochure(project, 'https://karmagroup.co.in/files/alpha.pdf');
 
@@ -58,6 +59,7 @@ test('brochure ingest saves the Drive file id and web-view/web-content links on 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].key, 'builder-projects/BLDP-1/brochures/alpha.pdf');
   assert.equal(calls[0].options.metadata.mediaType, 'brochure');
+  assert.equal(calls[0].options.metadata.projectFolderId, 'existing-project-folder');
 
   const rec = project.Brochures[0];
   assert.equal(rec.DriveFileId, 'DRIVE-FILE-1');
@@ -84,6 +86,43 @@ test('brochure ingest requests uncapped streaming while preserving Drive upload'
   const out = await svc._ingestBrochure({ ProjectID: 'BLDP-2', ProjectName: 'Large', Brochures: [] }, 'https://karmagroup.co.in/large.pdf');
   assert.equal(out.ok, true);
   assert.equal(requestedMax, Infinity);
+});
+
+test('recovers an already uploaded Drive brochure after CRM save was interrupted', async () => {
+  let downloads = 0;
+  let uploads = 0;
+  const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), {
+    isDriveStorageConfigured: () => true,
+    openPdfStreamSafely: async () => { downloads++; return okPdfStream(); },
+    objectStorage: {
+      findExistingBrochure: async (key, source) => {
+        assert.match(key, /^builder-projects\/BLDP-RECOVER\/brochures\//);
+        assert.equal(source, 'https://karmagroup.co.in/recover.pdf');
+        return { fileId: 'PREVIOUS-UPLOAD', path: key, size: 123, recovered: true };
+      },
+      putObjectStream: async () => { uploads++; throw new Error('Unexpected duplicate upload'); }
+    }
+  });
+  const project = { ProjectID: 'BLDP-RECOVER', ProjectName: 'Recover', BrochureUrl: 'https://karmagroup.co.in/recover.pdf', Brochures: [] };
+  const out = await svc._ingestBrochure(project, project.BrochureUrl);
+  assert.equal(out.ok, true);
+  assert.equal(out.reused, true);
+  assert.equal(out.driveFileId, 'PREVIOUS-UPLOAD');
+  assert.equal(project.Brochures[0].verified, true);
+  assert.equal(project.BrochureUrl, null);
+  assert.equal(downloads, 0);
+  assert.equal(uploads, 0);
+});
+
+test('Drive upload reuses the exact project folder and rejects ambiguous duplicates', async () => {
+  const files = [{ id: 'folder-1', name: 'BLDP-1 Alpha' }];
+  const drive = { files: {
+    list: async () => ({ data: { files } }),
+    create: async () => { throw new Error('Unexpected duplicate project folder'); }
+  } };
+  assert.equal(await resolveProjectFolder(drive, 'root', 'BLDP-1', null), 'folder-1');
+  files.push({ id: 'folder-2', name: 'Project-BLDP-1 Alpha' });
+  await assert.rejects(resolveProjectFolder(drive, 'root', 'BLDP-1', null), /Multiple project folders/);
 });
 
 test('brochure ingest refuses GridFS fallback when Drive is not the configured provider', async () => {
