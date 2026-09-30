@@ -40,11 +40,13 @@ def main():
     command = ["node", "scripts/dedupeBuilderDriveFiles.js"]
     if "--apply" in sys.argv[1:]:
         command.append("--apply")
-    result = subprocess.run(command, env=env, text=True, capture_output=True)
-    if result.returncode:
-        print("DEDUPE_FAILED=" + result.stderr.replace(env["MONGO_URL"], "[redacted]")[-800:], file=sys.stderr)
-        raise SystemExit(result.returncode)
-    print(result.stdout.strip())
+    process = subprocess.Popen(command, env=env, text=True,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               bufsize=1)
+    for line in process.stdout:
+        print(line.replace(env["MONGO_URL"], "[redacted]"), end="", flush=True)
+    if process.wait():
+        raise SystemExit(process.returncode)
 
 if __name__ == "__main__":
     main()
