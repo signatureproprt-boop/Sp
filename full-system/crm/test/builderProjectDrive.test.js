@@ -47,6 +47,26 @@ test('links only one PDF in the already linked project folder, with dry-run firs
   assert.equal(repeated.data.linked, 0);
 });
 
+test('completes an existing unverified Drive brochure record without duplicating it', async () => {
+  const brochure = { MediaID: 'MED-OLD', DriveFileId: 'F-OLD', verified: false,
+    downloadStatus: 'pending', OriginalUrl: 'https://example.com/123.pdf' };
+  const project = { ProjectID: 'BLDP-OLD', DriveFolderID: 'P-OLD',
+    DriveSubfolders: { Brochures: 'B-OLD' }, Brochures: [brochure] };
+  const repo = makeRepo({ BuilderProjects: [project] });
+  repo.createId = () => { throw new Error('must retain the existing media ID'); };
+  const svc = new BuilderProjectDriveService(repo, {
+    listFilesInFolder: async () => [{ id: 'F-OLD', name: '123.pdf', mimeType: 'application/pdf', size: '321' }]
+  });
+  const result = await svc.linkExistingBrochures({ dryRun: false });
+  assert.equal(result.data.ready, 1);
+  assert.equal(result.data.linked, 1);
+  assert.equal(repo.writes(), 1);
+  assert.equal(project.Brochures.length, 1);
+  assert.equal(project.Brochures[0].MediaID, 'MED-OLD');
+  assert.equal(project.Brochures[0].verified, true);
+  assert.equal(project.Brochures[0].downloadStatus, 'downloaded');
+});
+
 test('finds an unlinked project folder by exact ProjectID prefix without creating folders', async () => {
   const db = { BuilderProjects: [{ ProjectID: 'BLDP-3', ProjectName: 'Gamma', Active: true,
     BrochureUrl: 'https://karmagroup.co.in/files/638853370465014309.pdf', Brochures: [] }] };
