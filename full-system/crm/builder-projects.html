@@ -673,9 +673,14 @@ table td,table th{border-color:var(--v2-line)!important}
       const request = async (dryRun) => {
         const response = await fetch('/api/v2/builder-projects/drive-brochures/link', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dryRun, limit: 20, offset: driveLinkOffset })
+          body: JSON.stringify({ dryRun, limit: 1, offset: driveLinkOffset })
         });
-        const payload = await response.json();
+        const responseText = await response.text();
+        let payload;
+        try { payload = JSON.parse(responseText); }
+        catch (_) {
+          throw new Error(`Server returned HTTP ${response.status} instead of JSON. Check the CRM service logs and retry this same project; progress has not advanced.`);
+        }
         if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         return payload.data;
       };
