@@ -5,6 +5,9 @@
 const { MongoClient } = require('mongodb');
 const { google } = require('googleapis');
 const fs = require('node:fs');
+const checkpointPath = process.argv.includes('--apply')
+  ? 'builder-drive-apply-scan-checkpoint.json'
+  : 'builder-drive-scan-checkpoint.json';
 
 const apply = process.argv.includes('--apply');
 const rootId = process.env.BUILDER_PROJECTS_DRIVE_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID;
@@ -12,19 +15,37 @@ const mongoUrl = process.env.MONGO_URL;
 if (!rootId || !mongoUrl) throw new Error('Drive root ID and MONGO_URL are required');
 
 async function listAll(drive) {
-  const result = [];
-  let pageToken;
-  let pages = 0;
+  let checkpoint;
+  try { checkpoint = JSON.parse(fs.readFileSync(checkpointPath, 'utf8')); } catch (_) {}
+  const result = Array.isArray(checkpoint?.files) ? checkpoint.files : [];
+  let pageToken = checkpoint?.nextPageToken;
+  let pages = Number(checkpoint?.pages || 0);
+  if (checkpoint?.complete) {
+    console.error(`DEDUPE_PROGRESS=using_complete_checkpoint,items:${result.length}`);
+    return result;
+  }
   do {
-    const response = await drive.files.list({
-      q: 'trashed = false',
-      fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,parents)',
-      pageSize: 1000, pageToken, supportsAllDrives: true, includeItemsFromAllDrives: true
-    }, { timeout: 30000 });
+    let response;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        response = await drive.files.list({
+          q: 'trashed = false',
+          fields: 'nextPageToken,files(id,name,mimeType,size,md5Checksum,parents)',
+          pageSize: 1000, pageToken, supportsAllDrives: true, includeItemsFromAllDrives: true
+        }, { timeout: 60000 });
+        break;
+      } catch (error) {
+        console.error(`DEDUPE_PROGRESS=drive_retry,page:${pages + 1},attempt:${attempt}`);
+        if (attempt === 4) throw error;
+      }
+    }
     result.push(...(response.data.files || []));
     pageToken = response.data.nextPageToken;
     pages++;
     console.error(`DEDUPE_PROGRESS=drive_pages:${pages},items:${result.length}`);
+    const saved = { files: result, nextPageToken: pageToken || null, pages, complete: !pageToken };
+    fs.writeFileSync(checkpointPath + '.tmp', JSON.stringify(saved));
+    fs.renameSync(checkpointPath + '.tmp', checkpointPath);
   } while (pageToken);
   return result;
 }
@@ -61,6 +82,8 @@ async function main() {
     }) });
     console.error(`DEDUPE_PROGRESS=listing_drive,projects:${validProjects.size}`);
     const allFiles = await listAll(drive);
+    // An interrupted apply must re-scan after any files were trashed.
+    if (apply) fs.unlinkSync(checkpointPath);
     const byId = new Map(allFiles.map(file => [file.id, file]));
     const rootFolders = allFiles.filter(f => f.mimeType === 'application/vnd.google-apps.folder' &&
       (f.parents || []).includes(rootId));
