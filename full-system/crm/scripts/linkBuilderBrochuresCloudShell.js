@@ -3,6 +3,7 @@
 // Link matching brochure PDFs from existing project folders to CRM records.
 // Run from Cloud Shell through runBuilderBrochureLinkCloudShell.py.
 const mongoStore = require('../src/data/mongoStore');
+const recoveryFolders = require('./builderBrochureRecoveryFolders.json');
 const { JsonRepository } = require('../src/data/repository');
 const { BuilderProjectDriveService } = require('../src/services/builderProjectDriveService');
 const { createGoogleDriveClient } = require('../src/services/googleDriveClient');
@@ -70,7 +71,9 @@ async function main() {
       return rootFolders;
     };
     const svc = new BuilderProjectDriveService(repo, drive);
-    const first = await svc.linkExistingBrochures({ dryRun: true, limit: 1 });
+    const recovery = process.argv.includes('--recover-six');
+    const scope = recovery ? { projectIds: Object.keys(recoveryFolders), folderHints: recoveryFolders } : {};
+    const first = await svc.linkExistingBrochures({ dryRun: true, limit: 1, ...scope });
     if (!first.ok) throw new Error(first.error);
     const total = first.data.totalCandidates;
     summary = { dryRun: !apply, candidates: total, inspected: 0, ready: 0,
@@ -78,7 +81,7 @@ async function main() {
     // Iterate backwards: successfully linked projects leave the candidates
     // list, but lower offsets remain stable.
     for (let offset = total - 1; offset >= 0; offset--) {
-      const result = await svc.linkExistingBrochures({ dryRun: !apply, limit: 1, offset });
+      const result = await svc.linkExistingBrochures({ dryRun: !apply, limit: 1, offset, ...scope });
       if (!result.ok) throw new Error(result.error);
       const data = result.data;
       for (const key of ['inspected', 'ready', 'linked', 'empty', 'unmatched', 'ambiguous']) {
