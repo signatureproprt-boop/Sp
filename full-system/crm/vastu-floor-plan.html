@@ -26,6 +26,14 @@
     .canvas-wrap { overflow: auto; }
     #message { min-height: 20px; color: #8b371e; margin-top: 12px; font-size: 14px; }
     .print-heading { display: none; }
+    .region-fields { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; }
+    .region-fields input { width:100%; padding:8px; border:1px solid #bcae9c; border-radius:6px; }
+    #report { display:none; }
+    #report.active { display:block; margin-top:20px; }
+    .report-page { background:white; padding:20px; margin:14px 0; border:1px solid #e7d9c5; break-after:page; }
+    .report-page img { max-width:100%; max-height:180mm; object-fit:contain; display:block; margin:auto; }
+    .report-page table { border-collapse:collapse; width:100%; margin-top:12px; }
+    .report-page td,.report-page th { text-align:left; border:1px solid #ddd; padding:7px; }
     @media(max-width: 760px) { .layout { grid-template-columns: 1fr; } main { padding: 12px; } }
     @media print {
       :root { background: white; }
@@ -35,6 +43,9 @@
       .canvas-wrap { border: 0; padding: 0; overflow: visible; }
       canvas { border: 0; width: auto !important; height: auto; max-width: 100%; max-height: 277mm; margin: 0 auto; }
       .print-heading { display: block; font-weight: 700; margin-bottom: 6mm; }
+      body.report-print .layout { display:none !important; }
+      body.report-print #report { display:block !important; margin:0; }
+      .report-page { border:0; margin:0; padding:0; }
     }
   </style>
 </head>
@@ -42,7 +53,7 @@
   <header><strong>Signature Properties</strong><a href="/builder-projects">← Builder Projects</a></header>
   <main>
     <h1>16-direction Vastu compass</h1>
-    <p class="muted">Brochure par printed compass ho to uske center aur N arrow par tap karein; North angle calculate hoga. Phir layout crop karke overlay center auto-set hoga. Printed compass na ho to North angle manually set karein.</p>
+    <p class="muted">Printed brochure compass ke center aur N arrow ko mark karein. North usi se lock hoga. Har layout ko alag select karke rooms mark karein; original brochure unchanged rahega.</p>
     <div class="layout">
       <section class="panel" aria-label="Vastu controls">
         <strong id="project-name">Floor plan</strong>
@@ -53,7 +64,17 @@
         <label for="brochure-page">Select layout plan page</label>
         <select id="brochure-page" disabled><option value="">First open a brochure</option></select>
         <button id="crop" class="secondary" type="button" disabled style="margin-top:10px">Crop layout from page</button>
-        <p class="muted">Page par multiple plans hon to apne layout ke around drag karke crop karein. Crop ke baad compass layout ke center mein align hoga.</p>
+        <p class="muted">North mark karne ke baad page par har layout ke around drag karein. 1, 2 ya 4 layouts alag add kar sakte hain. Boundary fields se correct karein.</p>
+        <label for="layout-select">Layouts on this page</label>
+        <button id="suggest-layouts" class="secondary" type="button" disabled>Suggest layout boundaries</button>
+        <select id="layout-select"><option value="">Full brochure page</option></select>
+        <div class="region-fields" id="region-fields" hidden>
+          <label>X %<input id="region-x" type="number" min="0" max="99" step="0.1"></label>
+          <label>Y %<input id="region-y" type="number" min="0" max="99" step="0.1"></label>
+          <label>Width %<input id="region-w" type="number" min="1" max="100" step="0.1"></label>
+          <label>Height %<input id="region-h" type="number" min="1" max="100" step="0.1"></label>
+        </div>
+        <div class="actions"><button id="layout-confirm" class="secondary" disabled>Confirm layout</button><button id="layout-delete" class="secondary" disabled>Remove layout</button></div>
         <label for="project-plans">Project floor plan</label>
         <select id="project-plans"><option value="">Select a project plan</option></select>
         <label for="local-plan">Or upload JPG / PNG / WebP</label>
@@ -63,7 +84,10 @@
         <label for="preview-zoom">Preview zoom: <output id="zoom-value">100%</output></label>
         <input id="preview-zoom" type="range" min="100" max="300" step="25" value="100" />
         <label for="north-angle">North direction: <output id="north-value">0° (up)</output></label>
-        <input id="north-angle" type="range" min="0" max="359" value="0" />
+        <input id="north-angle" type="range" min="0" max="359" value="0" disabled />
+        <label for="room-type">Mark room on selected layout</label>
+        <select id="room-type"><option value="">Select a room, then tap its center</option><option>Entrance</option><option>Kitchen</option><option>Master bedroom</option><option>Bedroom</option><option>Puja</option><option>Living room</option><option>Toilet</option><option>Balcony</option></select>
+        <div id="room-list" class="muted"></div>
         <label for="compass-size">Compass radius: <output id="size-value">40%</output></label>
         <input id="compass-size" type="range" min="15" max="70" value="40" />
         <label for="opacity">Overlay opacity: <output id="opacity-value">70%</output></label>
@@ -72,12 +96,13 @@
         <select id="paper-size"><option value="A4">A4</option><option value="A3">A3</option></select>
         <label for="paper-orientation">Orientation</label>
         <select id="paper-orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
-        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="print" class="secondary" disabled>Print / Save PDF</button><button id="reset" class="secondary">Reset center</button></div>
-        <p class="muted">0° means North is at the top of the image. Angle increases clockwise. Compass center is the marked dot; tap the plan to move it.</p>
+        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="print" class="secondary" disabled>Print plan</button><button id="report-button" class="secondary" disabled>Print all layout reports</button><button id="reset" class="secondary">Reset center</button></div>
+        <p class="muted">North angle brochure ke printed compass se hi set hota hai. Room label select karne ke baad layout par tap karein. Report mein sirf confirmed layouts/rooms jayenge.</p>
         <div id="message" role="status"></div>
       </section>
       <section class="panel canvas-wrap"><div class="print-heading" id="print-heading">Signature Properties — Vastu Floor Plan</div><canvas id="plan" width="900" height="600" aria-label="Floor plan with Vastu compass"></canvas></section>
     </div>
+    <div id="report" aria-label="Vastu layout reports"></div>
   </main>
   <script>
     'use strict';
@@ -91,6 +116,85 @@
     let image = null, objectUrl = null, center = { x: .5, y: .5 };
     let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, sourceVersion = 0;
     let alignMode = null, northOrigin = null;
+    let sourceImage = null, regions = [], selectedRegion = -1, northLocked = false;
+    const byId = (id) => document.getElementById(id);
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+    function currentRegion() { return regions[selectedRegion]; }
+    function selectRegion(index) {
+      selectedRegion = index; const region = currentRegion();
+      byId('layout-select').value = index < 0 ? '' : String(index);
+      byId('region-fields').hidden = !region;
+      byId('layout-confirm').disabled = byId('layout-delete').disabled = !region;
+      if (region) {
+        for (const key of ['x','y','w','h']) byId('region-' + key).value = +(region[key] * 100).toFixed(1);
+        const crop = document.createElement('canvas');
+        crop.width = Math.max(1, Math.round(region.w * sourceImage.width));
+        crop.height = Math.max(1, Math.round(region.h * sourceImage.height));
+        crop.getContext('2d').drawImage(sourceImage, region.x * sourceImage.width, region.y * sourceImage.height,
+          region.w * sourceImage.width, region.h * sourceImage.height, 0, 0, crop.width, crop.height);
+        image = crop;
+      } else image = sourceImage;
+      if (image) { canvas.width = image.width; canvas.height = image.height; }
+      center = { x: .5, y: .5 }; renderRooms(); draw();
+    }
+    function renderRegionSelect() {
+      byId('layout-select').replaceChildren(new Option('Full brochure page', ''));
+      regions.forEach((region, i) => byId('layout-select').add(new Option(`Layout ${i + 1}${region.confirmed ? ' ✓' : ' — confirm boundary'}`, String(i))));
+      byId('report-button').disabled = !northLocked || !regions.some((r) => r.confirmed);
+    }
+    function resetRegions(source) {
+      sourceImage = source; regions = []; selectedRegion = -1; northLocked = false;
+      renderRegionSelect(); selectRegion(-1);
+    }
+    function suggestRegions(source) {
+      const scan = document.createElement('canvas'); scan.width = 120; scan.height = Math.max(40, Math.round(120 * source.height / source.width));
+      const context = scan.getContext('2d', { willReadFrequently: true });
+      context.fillStyle = '#fff'; context.fillRect(0, 0, scan.width, scan.height);
+      context.drawImage(source, 0, 0, scan.width, scan.height);
+      const pixels = context.getImageData(0, 0, scan.width, scan.height).data;
+      const cols = [], rows = [];
+      for (let x = 0; x < scan.width; x++) {
+        let ink = 0; for (let y = 0; y < scan.height; y++) {
+          const p = (y * scan.width + x) * 4;
+          if (Math.min(pixels[p], pixels[p+1], pixels[p+2]) < 205) ink++;
+        } cols.push(ink / scan.height);
+      }
+      for (let y = 0; y < scan.height; y++) {
+        let ink = 0; for (let x = 0; x < scan.width; x++) {
+          const p = (y * scan.width + x) * 4;
+          if (Math.min(pixels[p], pixels[p+1], pixels[p+2]) < 205) ink++;
+        } rows.push(ink / scan.width);
+      }
+      const split = (values) => {
+        const left = Math.floor(values.length * .32), right = Math.ceil(values.length * .68);
+        let best = left; for (let i = left; i < right; i++) if (values[i] < values[best]) best = i;
+        const baseline = values.reduce((a,b) => a+b, 0) / values.length;
+        return values[best] < Math.min(.035, baseline * .3) ? best / values.length : null;
+      };
+      const sx = split(cols), sy = split(rows);
+      const xs = sx == null ? [[.02,.96]] : [[.02,sx-.025],[sx+.025,.975-sx]];
+      const ys = sy == null ? [[.02,.96]] : [[.02,sy-.025],[sy+.025,.975-sy]];
+      return ys.flatMap(([y,h]) => xs.map(([x,w]) => ({ x,y,w,h,confirmed:false,rooms:[] })))
+        .filter((r) => r.w > .15 && r.h > .15).slice(0,4);
+    }
+    function renderRooms() {
+      const box = byId('room-list'); box.replaceChildren();
+      const region = currentRegion(); if (!region) return;
+      region.rooms.forEach((room, i) => {
+        const line = document.createElement('div');
+        line.textContent = `${room.type}: ${roomDirection(room)} `;
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary';
+        remove.textContent = '×'; remove.setAttribute('aria-label', `Remove ${room.type}`);
+        remove.addEventListener('click', () => { region.rooms.splice(i, 1); renderRooms(); draw(); });
+        line.append(remove); box.append(line);
+      });
+    }
+    function roomDirection(room) {
+      const dx = (room.x - center.x) * canvas.width, dy = (room.y - center.y) * canvas.height;
+      if (Math.hypot(dx, dy) < Math.min(canvas.width, canvas.height) * .08) return 'Center';
+      const bearing = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
+      return directions[Math.round(((bearing - Number(controls.angle.value) + 360) % 360) / 22.5) % 16];
+    }
     const message = (value) => { document.getElementById('message').textContent = value; };
     function setPreviewZoom() {
       const zoom = Number(document.getElementById('preview-zoom').value);
@@ -101,7 +205,7 @@
     document.getElementById('preview-zoom').addEventListener('input', setPreviewZoom);
     window.addEventListener('resize', setPreviewZoom);
     function resetNorth() {
-      alignMode = null; northOrigin = null; controls.angle.value = '0';
+      alignMode = null; northOrigin = null; northLocked = false; controls.angle.value = '0';
       document.getElementById('north-value').textContent = '0° (up)';
       document.getElementById('north-source').textContent = 'North reference not set';
       document.getElementById('align-north').textContent = '🧭 Align North from brochure';
@@ -144,6 +248,14 @@
       }
       ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fillStyle = '#a32212'; ctx.fill();
       ctx.restore();
+      const region = currentRegion();
+      if (region) region.rooms.forEach((room) => {
+        const px = room.x * canvas.width, py = room.y * canvas.height;
+        ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fillStyle = '#a32212'; ctx.fill();
+        ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'white'; ctx.strokeText(`${room.type} · ${roomDirection(room)}`, px + 10, py);
+        ctx.fillStyle = '#2e190e'; ctx.fillText(`${room.type} · ${roomDirection(room)}`, px + 10, py);
+      });
     }
     function showImage(src, local = false) {
       const version = ++sourceVersion;
@@ -156,10 +268,11 @@
         const scale = Math.min(1, 1400 / next.naturalWidth, 1400 / next.naturalHeight);
         canvas.width = Math.round(next.naturalWidth * scale);
         canvas.height = Math.round(next.naturalHeight * scale);
-        center = { x: .5, y: .5 }; resetNorth(); draw(); message('Tap the plan center and set North direction.');
+        center = { x: .5, y: .5 }; resetNorth(); resetRegions(next); draw(); message('Printed compass center aur N tip mark karein.');
         document.getElementById('download').disabled = false;
         document.getElementById('print').disabled = false;
         document.getElementById('align-north').disabled = false;
+        byId('suggest-layouts').disabled = false;
       };
       next.onerror = () => message('Project image could not be opened. Upload the floor plan file instead.');
       next.src = src;
@@ -199,12 +312,13 @@
         await page.render({ canvasContext: bitmap.getContext('2d'), viewport, canvas: bitmap }).promise;
         if (version !== sourceVersion) return;
         image = bitmap; canvas.width = bitmap.width; canvas.height = bitmap.height;
-        center = { x: .5, y: .5 }; cropMode = false; resetNorth();
+        center = { x: .5, y: .5 }; cropMode = false; resetNorth(); resetRegions(bitmap);
         document.getElementById('crop').disabled = false;
         document.getElementById('crop').textContent = 'Crop layout from page';
         document.getElementById('download').disabled = false;
         document.getElementById('print').disabled = false;
         document.getElementById('align-north').disabled = false;
+        byId('suggest-layouts').disabled = false;
         draw(); message(`Page ${pageNumber} ready. Select the layout area if needed, then set North.`);
       } catch (error) { message(`Page could not be rendered: ${error.message}`); }
     }
@@ -226,10 +340,18 @@
       await openBrochure(await file.arrayBuffer());
     });
     document.getElementById('crop').addEventListener('click', () => {
+      if (!northLocked) { message('Pehle printed brochure compass se North lock karein.'); return; }
+      if (selectedRegion >= 0) selectRegion(-1);
       cropMode = !cropMode; cropStart = null; cropEnd = null;
       if (cropMode) { alignMode = null; northOrigin = null; document.getElementById('align-north').textContent = '🧭 Align North from brochure'; }
       document.getElementById('crop').textContent = cropMode ? 'Cancel crop' : 'Crop layout from page';
       message(cropMode ? 'Drag from one corner of the layout to the opposite corner.' : 'Crop cancelled.'); draw();
+    });
+    byId('suggest-layouts').addEventListener('click', () => {
+      if (!northLocked || !sourceImage) { message('Pehle printed compass se North lock karein.'); return; }
+      if (regions.some((r) => r.confirmed || r.rooms.length)) { message('Confirmed layouts hain. Naye page par suggestions use karein, ya manual crop add karein.'); return; }
+      regions = suggestRegions(sourceImage); renderRegionSelect(); selectRegion(0);
+      message(`${regions.length} possible layout boundary/boundaries suggested. Har boundary check, correct aur Confirm layout karein.`);
     });
     const pointerPosition = (event) => {
       const rect = canvas.getBoundingClientRect();
@@ -244,7 +366,26 @@
       objectUrl = URL.createObjectURL(file); controls.plans.value = ''; showImage(objectUrl, true);
     });
     controls.plans.addEventListener('change', () => { if (controls.plans.value) showImage(controls.plans.value); });
+    byId('layout-select').addEventListener('change', () => selectRegion(byId('layout-select').value === '' ? -1 : Number(byId('layout-select').value)));
+    for (const key of ['x','y','w','h']) byId('region-' + key).addEventListener('change', () => {
+      const region = currentRegion(); if (!region) return;
+      const values = Object.fromEntries(['x','y','w','h'].map((k) => [k, Number(byId('region-' + k).value) / 100]));
+      if (!Object.values(values).every(Number.isFinite) || values.w < .03 || values.h < .03 || values.x < 0 || values.y < 0 || values.x + values.w > 1 || values.y + values.h > 1) {
+        message('Boundary 0–100% page ke andar honi chahiye; width/height at least 3%.'); selectRegion(selectedRegion); return;
+      }
+      Object.assign(region, values, { confirmed: false, rooms: [] }); renderRegionSelect(); selectRegion(selectedRegion);
+      message('Boundary updated. Confirm layout again and mark rooms.');
+    });
+    byId('layout-confirm').addEventListener('click', () => {
+      const region = currentRegion(); if (!region || !northLocked) return;
+      region.confirmed = true; renderRegionSelect(); message('Layout boundary confirmed. Rooms mark karein.');
+    });
+    byId('layout-delete').addEventListener('click', () => {
+      if (selectedRegion < 0) return; regions.splice(selectedRegion, 1); renderRegionSelect(); selectRegion(-1);
+    });
     document.getElementById('align-north').addEventListener('click', () => {
+      if (northLocked) { message('North locked from printed compass. Page/source dobara load karne par hi reset hoga.'); return; }
+      if (selectedRegion >= 0) selectRegion(-1);
       alignMode = alignMode ? null : 'center'; northOrigin = null;
       document.getElementById('align-north').textContent = alignMode ? 'Cancel North alignment' : '🧭 Align North from brochure';
       message(alignMode ? 'Printed compass ke center par tap karein, phir N arrow/tip par tap karein.' : 'North alignment cancelled.'); draw();
@@ -265,10 +406,19 @@
         controls.angle.value = String(degrees);
         document.getElementById('north-value').textContent = degrees + '°' + (degrees === 0 ? ' (up)' : '');
         document.getElementById('north-source').textContent = 'North angle calculated from marked brochure compass';
+        northLocked = true; renderRegionSelect();
         alignMode = null; northOrigin = null;
         document.getElementById('align-north').textContent = '🧭 Align North from brochure';
-        draw(); message(`North ${degrees}° set. Ab layout crop karein; compass uske center par aa jayega.`); return;
+        draw(); message(`Brochure North ${degrees}° locked. Har layout ke around drag karein.`); return;
       }
+      const region = currentRegion();
+      if (region && byId('room-type').value) {
+        if (!region.confirmed || !northLocked) { message('Pehle layout boundary aur brochure North confirm karein.'); return; }
+        region.rooms.push({ type: byId('room-type').value, ...pointerPosition(event) });
+        renderRooms(); draw(); return;
+      }
+      if (!northLocked) { message('Printed compass ka center aur N tip mark karein.'); return; }
+      if (region) { message('Layout center fixed hai. Room type select karke tap karein.'); return; }
       center = pointerPosition(event); draw();
     });
     canvas.addEventListener('pointermove', (event) => {
@@ -287,13 +437,13 @@
       const h = Math.round(Math.abs(cropStart.y - cropEnd.y) * canvas.height);
       cropStart = null; cropMode = false; document.getElementById('crop').textContent = 'Crop layout from page';
       if (w < 30 || h < 30) { message('Crop too small. Drag around the full layout.'); draw(); return; }
-      const cropped = document.createElement('canvas'); cropped.width = w; cropped.height = h;
-      cropped.getContext('2d').drawImage(image, x, y, w, h, 0, 0, w, h);
-      image = cropped; canvas.width = w; canvas.height = h; center = { x: .5, y: .5 }; draw();
-      message('Layout cropped. Compass layout center par align hai. North angle check karein.');
+      if (regions.length >= 4) { message('Ek page par maximum 4 layouts. Dusra brochure page select karein.'); draw(); return; }
+      regions.push({ x: x / sourceImage.width, y: y / sourceImage.height, w: w / sourceImage.width, h: h / sourceImage.height, confirmed: false, rooms: [] });
+      renderRegionSelect(); selectRegion(regions.length - 1);
+      message('Layout boundary check karke Confirm layout dabayein. Phir full page par next layout add karein.');
     });
-    for (const [key, output, suffix] of [['angle','north-value','°'],['size','size-value','%'],['opacity','opacity-value','%']]) {
-      controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix + (key === 'angle' && controls[key].value === '0' ? ' (up)' : ''); if (key === 'angle') document.getElementById('north-source').textContent = 'North angle set manually'; draw(); });
+    for (const [key, output, suffix] of [['size','size-value','%'],['opacity','opacity-value','%']]) {
+      controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix; draw(); });
     }
     document.getElementById('reset').addEventListener('click', () => { center = { x: .5, y: .5 }; draw(); });
     document.getElementById('download').addEventListener('click', () => {
@@ -311,6 +461,60 @@
       style.textContent = `@page { size: ${paper} ${orientation}; margin: 10mm; } @media print { canvas { max-height: ${heightMm}mm; } }`;
       draw(); window.print();
     });
+    const guidance = {
+      'Kitchen': { good: ['SE','ESE','SSE'], text: 'Traditional placement: South-East is commonly preferred; North-West may be considered as an alternative.' },
+      'Master bedroom': { good: ['SW','SSW','WSW'], text: 'Traditional placement: South-West is commonly preferred for the master bedroom.' },
+      'Puja': { good: ['NE','NNE','ENE'], text: 'Traditional placement: North-East is commonly preferred for puja.' }
+    };
+    function observation(room) {
+      const direction = roomDirection(room), rule = guidance[room.type];
+      if (direction === 'Center') return 'Center overlap: manually review exact room boundary and circulation.';
+      if (!rule) return 'Direction recorded. Review this room with the complete floor plan and a qualified professional.';
+      if (rule.good.includes(direction)) return `${rule.text} This marked position is broadly aligned.`;
+      if (room.type === 'Kitchen' && ['NW','WNW','NNW'].includes(direction)) return `${rule.text} This marked position falls near the alternative zone.`;
+      return `${rule.text} This marked position needs individual review; no automatic defect verdict.`;
+    }
+    function addText(parent, tag, value) { const element = document.createElement(tag); element.textContent = value; parent.append(element); return element; }
+    byId('report-button').addEventListener('click', async () => {
+      const confirmed = regions.map((r,i) => ({ ...r, index:i })).filter((r) => r.confirmed);
+      if (!northLocked || !confirmed.length) { message('Brochure North aur at least one layout confirm karein.'); return; }
+      let profile;
+      try {
+        const response = await fetch('/api/v2/broker-profile'); const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error('Broker profile unavailable');
+        profile = result.data;
+      } catch (error) { message(`Branded report unavailable: ${error.message}`); return; }
+      const name = String(profile.Name || '').trim(), mobile = String(profile.Mobile || '').trim();
+      if (!name || !mobile || name === 'Vikash Bhatter' || mobile === '+91 90000 00001') {
+        message('Digital Card mein apna asli name aur mobile set karein, phir report print karein.'); return;
+      }
+      const previous = selectedRegion, report = byId('report'); report.replaceChildren();
+      for (const region of confirmed) {
+        selectRegion(region.index);
+        const page = document.createElement('section'); page.className = 'report-page';
+        addText(page, 'h2', `Signature Properties — ${byId('project-name').textContent} — Layout ${region.index + 1}`);
+        addText(page, 'p', `${name} · ${mobile}`);
+        addText(page, 'p', `Brochure page ${pdf ? byId('brochure-page').value : 'image'} · North ${controls.angle.value}° from printed compass (locked) · Layout boundary confirmed`);
+        const snapshot = document.createElement('img'); snapshot.alt = `Marked layout ${region.index + 1}`;
+        try { snapshot.src = canvas.toDataURL('image/png'); } catch (_) { message('Image export blocked. Upload source JPG/PNG or stored brochure.'); selectRegion(previous); return; }
+        page.append(snapshot);
+        const table = document.createElement('table'), heading = document.createElement('tr');
+        for (const title of ['Marked room','Direction','Traditional review']) addText(heading,'th',title);
+        table.append(heading);
+        for (const room of region.rooms) {
+          const row = document.createElement('tr');
+          for (const value of [room.type, roomDirection(room), observation(room)]) addText(row,'td',value);
+          table.append(row);
+        }
+        page.append(table);
+        if (!region.rooms.length) addText(page,'p','No rooms confirmed; directional room assessment pending.');
+        addText(page,'p','Interpretation is traditional guidance based on manually marked room centers. Check exact room boundaries, floor orientation and site context before making design decisions.');
+        report.append(page);
+      }
+      selectRegion(previous); report.classList.add('active'); document.body.classList.add('report-print');
+      window.print();
+    });
+    window.addEventListener('afterprint', () => document.body.classList.remove('report-print'));
     async function loadProject() {
       const id = new URLSearchParams(location.search).get('projectId');
       if (!id) { draw(); return; }
