@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vastu Floor Plan — Signature Properties</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #2e190e; background: #faf7f2; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header { background: #2e190e; color: white; padding: 14px 20px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    header a { color: #f5cf82; text-decoration: none; }
+    main { max-width: 1200px; margin: auto; padding: 20px; }
+    h1 { margin: 0 0 6px; font-size: 25px; }
+    .muted { color: #655b52; font-size: 14px; line-height: 1.5; }
+    .layout { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; gap: 18px; margin-top: 16px; }
+    .panel { background: white; border: 1px solid #e7d9c5; border-radius: 12px; padding: 18px; }
+    label { display: block; font-weight: 700; margin: 15px 0 7px; font-size: 14px; }
+    input[type=file], select, input[type=range] { width: 100%; }
+    select, input[type=file] { padding: 9px; border: 1px solid #bcae9c; border-radius: 8px; background: white; }
+    button { border: 0; border-radius: 8px; background: #633718; color: white; padding: 11px 14px; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .secondary { background: #eee4d5; color: #3f2618; }
+    canvas { display: block; width: 100%; max-width: 900px; height: auto; border: 1px solid #e7d9c5; border-radius: 8px; touch-action: manipulation; cursor: crosshair; background: #f3eee7; }
+    .canvas-wrap { overflow: auto; }
+    #message { min-height: 20px; color: #8b371e; margin-top: 12px; font-size: 14px; }
+    @media(max-width: 760px) { .layout { grid-template-columns: 1fr; } main { padding: 12px; } }
+  </style>
+</head>
+<body>
+  <header><strong>Signature Properties</strong><a href="/builder-projects">← Builder Projects</a></header>
+  <main>
+    <h1>16-direction Vastu compass</h1>
+    <p class="muted">Floor plan chuniye. Plan ke center par tap karein, phir North angle set karein. North arrow / site orientation ko confirm kiye bina zones ko final na maanein.</p>
+    <div class="layout">
+      <section class="panel" aria-label="Vastu controls">
+        <strong id="project-name">Floor plan</strong>
+        <label for="project-plans">Project floor plan</label>
+        <select id="project-plans"><option value="">Select a project plan</option></select>
+        <label for="local-plan">Or upload JPG / PNG / WebP</label>
+        <input id="local-plan" type="file" accept="image/jpeg,image/png,image/webp" />
+        <label for="north-angle">North direction: <output id="north-value">0° (up)</output></label>
+        <input id="north-angle" type="range" min="0" max="359" value="0" />
+        <label for="compass-size">Compass radius: <output id="size-value">40%</output></label>
+        <input id="compass-size" type="range" min="15" max="70" value="40" />
+        <label for="opacity">Overlay opacity: <output id="opacity-value">70%</output></label>
+        <input id="opacity" type="range" min="20" max="100" value="70" />
+        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="reset" class="secondary">Reset center</button></div>
+        <p class="muted">0° means North is at the top of the image. Angle increases clockwise. Compass center is the marked dot; tap the plan to move it.</p>
+        <div id="message" role="status"></div>
+      </section>
+      <section class="panel canvas-wrap"><canvas id="plan" width="900" height="600" aria-label="Floor plan with Vastu compass"></canvas></section>
+    </div>
+  </main>
+  <script>
+    'use strict';
+    const directions = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    const canvas = document.getElementById('plan');
+    const ctx = canvas.getContext('2d');
+    const controls = {
+      angle: document.getElementById('north-angle'), size: document.getElementById('compass-size'),
+      opacity: document.getElementById('opacity'), plans: document.getElementById('project-plans')
+    };
+    let image = null, objectUrl = null, center = { x: .5, y: .5 };
+    const message = (value) => { document.getElementById('message').textContent = value; };
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!image) {
+        ctx.fillStyle = '#f3eee7'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#655b52'; ctx.font = '20px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText('Select or upload a floor plan', canvas.width / 2, canvas.height / 2);
+        return;
+      }
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const x = center.x * canvas.width, y = center.y * canvas.height;
+      const radius = Math.min(canvas.width, canvas.height) * Number(controls.size.value) / 100;
+      const north = (Number(controls.angle.value) - 90) * Math.PI / 180;
+      const alpha = Number(controls.opacity.value) / 100;
+      ctx.save(); ctx.translate(x, y);
+      for (let i = 0; i < 16; i++) {
+        const a = north + i * Math.PI / 8;
+        const start = a - Math.PI / 16, end = a + Math.PI / 16;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, radius, start, end); ctx.closePath();
+        ctx.fillStyle = i % 2 ? `rgba(245, 188, 59, ${alpha * .42})` : `rgba(255, 248, 224, ${alpha * .66})`;
+        ctx.fill(); ctx.strokeStyle = `rgba(82, 42, 10, ${alpha})`; ctx.lineWidth = 1.5; ctx.stroke();
+        const tx = Math.cos(a) * radius * .79, ty = Math.sin(a) * radius * .79;
+        ctx.font = `bold ${Math.max(11, Math.min(19, radius / 12))}px system-ui`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'white'; ctx.strokeText(directions[i], tx, ty);
+        ctx.fillStyle = '#3b1f10'; ctx.fillText(directions[i], tx, ty);
+      }
+      ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fillStyle = '#a32212'; ctx.fill();
+      ctx.restore();
+    }
+    function showImage(src, local = false) {
+      const next = new Image();
+      if (!local) next.crossOrigin = 'anonymous';
+      next.onload = () => {
+        if (next.naturalWidth < 2 || next.naturalHeight < 2) { message('Image could not be read. Upload a JPG or PNG instead.'); return; }
+        image = next;
+        const scale = Math.min(1, 1400 / next.naturalWidth, 1400 / next.naturalHeight);
+        canvas.width = Math.round(next.naturalWidth * scale);
+        canvas.height = Math.round(next.naturalHeight * scale);
+        center = { x: .5, y: .5 }; draw(); message('Tap the plan center and set North direction.');
+        document.getElementById('download').disabled = false;
+      };
+      next.onerror = () => message('Project image could not be opened. Upload the floor plan file instead.');
+      next.src = src;
+    }
+    document.getElementById('local-plan').addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { message('Use a JPG, PNG or WebP floor plan.'); return; }
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file); controls.plans.value = ''; showImage(objectUrl, true);
+    });
+    controls.plans.addEventListener('change', () => { if (controls.plans.value) showImage(controls.plans.value); });
+    canvas.addEventListener('pointerdown', (event) => {
+      if (!image) return;
+      const rect = canvas.getBoundingClientRect();
+      center = { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+        y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)) }; draw();
+    });
+    for (const [key, output, suffix] of [['angle','north-value','°'],['size','size-value','%'],['opacity','opacity-value','%']]) {
+      controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix + (key === 'angle' && controls[key].value === '0' ? ' (up)' : ''); draw(); });
+    }
+    document.getElementById('reset').addEventListener('click', () => { center = { x: .5, y: .5 }; draw(); });
+    document.getElementById('download').addEventListener('click', () => {
+      try {
+        const a = document.createElement('a'); a.download = 'signature-properties-vastu-plan.png';
+        a.href = canvas.toDataURL('image/png'); a.click(); message('Marked plan downloaded.');
+      } catch (_) { message('This project image cannot be exported because its source blocks canvas download. Upload the original JPG/PNG above, then download.'); }
+    });
+    async function loadProject() {
+      const id = new URLSearchParams(location.search).get('projectId');
+      if (!id) { draw(); return; }
+      try {
+        const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}`);
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || 'Project unavailable');
+        const project = result.data;
+        document.getElementById('project-name').textContent = project.ProjectName || id;
+        const plans = Array.isArray(project.FloorPlans) ? project.FloorPlans : [];
+        for (const [index, plan] of plans.entries()) {
+          const stored = plan.verified === true && (plan.StoragePath || plan.DriveFileID || plan.DriveFileId);
+          const url = stored && plan.MediaID ? `/api/v2/builder-projects/media/${encodeURIComponent(plan.MediaID)}` : plan.Url;
+          if (!url || !/^(https?:\/\/|\/api\/v2\/builder-projects\/media\/)/i.test(url)) continue;
+          const option = document.createElement('option'); option.value = url;
+          option.textContent = plan.Filename || `Floor plan ${index + 1}`; controls.plans.append(option);
+        }
+        if (controls.plans.options.length > 1) { controls.plans.selectedIndex = 1; showImage(controls.plans.value); }
+        else { draw(); message('No floor plan stored for this project. Upload a floor plan image.'); }
+      } catch (error) { draw(); message(error.message); }
+    }
+    loadProject();
+  </script>
+</body>
+</html>

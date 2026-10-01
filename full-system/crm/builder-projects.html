@@ -1103,6 +1103,7 @@ table td,table th{border-color:var(--v2-line)!important}
           <button class="link" data-testid="wa-share-${esc(p.ProjectID)}" onclick="shareProjectOnWhatsApp('${esc(p.ProjectID)}')" style="color:#128c1e">📱 Share</button>
           ${firstBrochureUrl ? `<button class="link" onclick="shareBrochurePdf('${esc(p.ProjectID)}')">📄 Share PDF</button><button class="link" onclick="showBrochureTrace('${esc(p.ProjectID)}')">👁 Brochure opens</button>` : ''}
           <a class="link" data-testid="view-inventory-${esc(p.ProjectID)}" href="/inventory?projectId=${encodeURIComponent(p.ProjectID)}" onclick="event.stopPropagation()">Inventory</a>
+          <a class="link" data-testid="vastu-${esc(p.ProjectID)}" href="/vastu-floor-plan?projectId=${encodeURIComponent(p.ProjectID)}" onclick="event.stopPropagation()">🧭 Vastu plan</a>
           <button class="link" data-testid="edit-${esc(p.ProjectID)}" onclick="openEditModal('${esc(p.ProjectID)}')">Edit</button>
           <button class="link danger" data-testid="delete-${esc(p.ProjectID)}" onclick="deleteProject('${esc(p.ProjectID)}')">Delete</button>
         </div>
