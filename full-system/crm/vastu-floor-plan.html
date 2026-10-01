@@ -319,7 +319,7 @@
       document.getElementById('align-north').textContent = '🧭 Align North from brochure';
     }
     function draw() {
-      canvas.style.touchAction = cropMode || alignMode ? 'none' : 'pan-x pan-y';
+      canvas.style.touchAction = alignMode ? 'none' : 'pan-x pan-y';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!image) {
         ctx.fillStyle = '#f3eee7'; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -333,6 +333,7 @@
         ctx.fillStyle = '#c32618'; ctx.fill();
         ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
       }
+      if (cropMode) return; // Keep the floor plan visible while selecting a flat.
       const x = center.x * canvas.width, y = center.y * canvas.height;
       if (alignMode) {
         if (northOrigin) {
@@ -488,7 +489,7 @@
       cropMode = !cropMode; cropStart = null; cropEnd = null; cropPointerStart = null; cropFirstTap = false;
       if (cropMode) { alignMode = null; northOrigin = null; document.getElementById('align-north').textContent = '🧭 Align North from brochure'; }
       document.getElementById('crop').textContent = cropMode ? 'Cancel crop' : 'Crop layout from page';
-      message(cropMode ? 'Flat ke pehle corner par tap karein, phir opposite corner par tap karein. Ya drag karein.' : 'Crop cancelled.'); draw();
+      message(cropMode ? 'Zoomed plan ko ungli se scroll karein. Flat ke pehle corner par tap karein, scroll karke opposite corner par tap karein.' : 'Crop cancelled.'); draw();
     });
     byId('suggest-layouts').addEventListener('click', () => {
       if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
@@ -563,7 +564,7 @@
     canvas.addEventListener('pointerdown', (event) => {
       if (!image) return;
       if (analysisStatus === 'final') { message('Final snapshot is read-only.'); return; }
-      if (cropMode) { cropPointerStart = pointerPosition(event); if (!cropStart) cropStart = cropPointerStart; cropEnd = cropPointerStart; canvas.setPointerCapture(event.pointerId); return; }
+      if (cropMode) { cropPointerStart = pointerPosition(event); if (!cropStart) cropStart = cropPointerStart; cropEnd = cropPointerStart; if (event.pointerType === 'mouse') canvas.setPointerCapture(event.pointerId); return; }
       if (alignMode === 'center') {
         northOrigin = pointerPosition(event); alignMode = 'north'; draw();
         message('Ab printed compass ke N arrow/tip par tap karein.'); return;
@@ -623,6 +624,11 @@
       regions.push({ x: x / sourceImage.width, y: y / sourceImage.height, w: w / sourceImage.width, h: h / sourceImage.height, confirmed: false, rooms: [] });
       renderRegionSelect(); selectRegion(regions.length - 1);
       message('Layout boundary check karke Confirm layout dabayein. Phir full page par next layout add karein.');
+    });
+    canvas.addEventListener('pointercancel', () => {
+      cropPointerStart = null;
+      if (!cropFirstTap) cropStart = null;
+      cropEnd = cropStart; draw();
     });
     for (const [key, output, suffix] of [['size','size-value','%'],['opacity','opacity-value','%']]) {
       controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix; draw(); });
