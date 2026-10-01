@@ -397,11 +397,15 @@ table td,table th{border-color:var(--v2-line)!important}
         </div>
         <div class="form-group">
           <label>Total Units</label>
-          <input id="f-total-units" data-testid="f-total-units" type="number" />
+          <input id="f-total-units" data-testid="f-total-units" type="number" min="0" />
         </div>
+        <div class="form-group"><label>Project Land Area</label><input id="f-project-area" type="text" placeholder="e.g. 2.5 acres or 12000 sqft" /></div>
+        <div class="form-group"><label>Total Towers / Buildings</label><input id="f-total-towers" type="number" min="0" step="1" /></div>
+        <div class="form-group"><label>Floors per Tower / Building</label><input id="f-total-floors" type="number" min="0" step="1" /></div>
+        <div class="form-group"><label>Floor-to-floor Height (ft)</label><input id="f-floor-height" type="number" min="0" step="0.01" placeholder="e.g. 10.5" /></div>
         <div class="form-group full">
           <label>Configurations & Sizes (sqft)</label>
-          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Legacy unlabeled area stays separate until you confirm whether it is carpet or built-up.</div>
+          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add a Penthouse configuration here with its carpet and built-up area. Legacy unlabeled area stays separate until confirmed.</div>
           <div id="config-rows" data-testid="config-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
           <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:5px 12px;font-size:12px">+ Add Config</button>
         </div>
@@ -548,7 +552,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <datalist id="dl-config-types">
   <option value="1 BHK"></option><option value="1.5 BHK"></option><option value="2 BHK"></option><option value="2.5 BHK"></option>
   <option value="3 BHK"></option><option value="3.5 BHK"></option><option value="4 BHK"></option><option value="4.5 BHK"></option>
-  <option value="5 BHK"></option><option value="Studio"></option><option value="Shop"></option><option value="Office"></option>
+  <option value="5 BHK"></option><option value="Penthouse"></option><option value="Studio"></option><option value="Shop"></option><option value="Office"></option>
   <option value="Showroom"></option><option value="Godown"></option><option value="Plot"></option>
 </datalist>
 <div class="toast" id="toast"></div>
@@ -1050,6 +1054,8 @@ table td,table th{border-color:var(--v2-line)!important}
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
     }
     if (p.TotalUnits) facts.push(p.TotalUnits + ' units');
+    if (p.TotalTowers) facts.push(p.TotalTowers + ' towers');
+    if (p.TotalFloors) facts.push(p.TotalFloors + ' floors');
     if (p.PossessionDate) facts.push('🗝 ' + String(p.PossessionDate).slice(0, 10));
     let priceText = '—';
     if (p.PriceRange && (p.PriceRange.min != null || p.PriceRange.max != null)) {
@@ -1107,6 +1113,10 @@ table td,table th{border-color:var(--v2-line)!important}
       lines.push(`Configs: ${p.Configurations.join(' / ')}`);
     }
     if (p.TotalUnits) lines.push(`Total Units: ${p.TotalUnits}`);
+    if (p.ProjectArea) lines.push(`Project Land Area: ${p.ProjectArea}`);
+    if (p.TotalTowers) lines.push(`Total Towers: ${p.TotalTowers}`);
+    if (p.TotalFloors) lines.push(`Floors per Tower / Building: ${p.TotalFloors}`);
+    if (p.FloorHeightFt) lines.push(`Floor-to-floor Height: ${p.FloorHeightFt} ft`);
     if (!Array.isArray(p.ConfigDetails) && p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) lines.push(`Carpet Area: ${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
     if (p.PriceRange && (p.PriceRange.min != null || p.PriceRange.max != null)) {
       const min = fmtPrice(p.PriceRange.min), max = fmtPrice(p.PriceRange.max);
@@ -1212,7 +1222,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('modal-title').textContent = 'Add Builder Project';
     document.getElementById('form-error').textContent = '';
     document.getElementById('autofill-status').textContent = '';
-    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes'].forEach(id => document.getElementById(id).value = '');
+    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-project-area','f-total-towers','f-total-floors','f-floor-height','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('f-status').value = 'Under Construction';
     document.getElementById('f-category').value = 'Residential';
     document.getElementById('media-section').style.display = 'none';
@@ -1238,6 +1248,10 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-status').value = p.ProjectStatus || 'Under Construction';
     document.getElementById('f-category').value = p.Category || 'Residential';
     document.getElementById('f-total-units').value = p.TotalUnits ?? '';
+    document.getElementById('f-project-area').value = p.ProjectArea || '';
+    document.getElementById('f-total-towers').value = p.TotalTowers ?? '';
+    document.getElementById('f-total-floors').value = p.TotalFloors ?? '';
+    document.getElementById('f-floor-height').value = p.FloorHeightFt ?? '';
     document.getElementById('f-price-min').value = p.PriceRange?.min ?? '';
     document.getElementById('f-price-max').value = p.PriceRange?.max ?? '';
     document.getElementById('f-possession').value = (p.PossessionDate || '').slice(0, 10);
@@ -1306,6 +1320,10 @@ table td,table th{border-color:var(--v2-line)!important}
     if (d.Category) document.getElementById('f-category').value = d.Category;
     if (d.ProjectStatus) document.getElementById('f-status').value = d.ProjectStatus;
     if (d.TotalUnits != null) document.getElementById('f-total-units').value = d.TotalUnits;
+    if (d.ProjectArea != null) document.getElementById('f-project-area').value = d.ProjectArea;
+    if (d.TotalTowers != null) document.getElementById('f-total-towers').value = d.TotalTowers;
+    if (d.TotalFloors != null) document.getElementById('f-total-floors').value = d.TotalFloors;
+    if (d.FloorHeightFt != null) document.getElementById('f-floor-height').value = d.FloorHeightFt;
     if (d.PriceMin != null) document.getElementById('f-price-min').value = d.PriceMin;
     if (d.PriceMax != null) document.getElementById('f-price-max').value = d.PriceMax;
     if (d.PossessionDate) document.getElementById('f-possession').value = String(d.PossessionDate).slice(0, 10);
@@ -1340,6 +1358,10 @@ table td,table th{border-color:var(--v2-line)!important}
         BuiltUpAreaSqft: r.BuiltUpAreaSqft !== '' && r.BuiltUpAreaSqft != null ? Number(r.BuiltUpAreaSqft) : null
       })),
       TotalUnits: document.getElementById('f-total-units').value || null,
+      ProjectArea: document.getElementById('f-project-area').value.trim() || null,
+      TotalTowers: document.getElementById('f-total-towers').value || null,
+      TotalFloors: document.getElementById('f-total-floors').value || null,
+      FloorHeightFt: document.getElementById('f-floor-height').value || null,
       PriceMin: document.getElementById('f-price-min').value || null,
       PriceMax: document.getElementById('f-price-max').value || null,
       PossessionDate: document.getElementById('f-possession').value || null,
