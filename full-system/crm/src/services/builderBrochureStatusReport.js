@@ -19,7 +19,7 @@ function brochureStatusReport(projects, visible = () => true) {
       ['RERA', project.RERANumber], ['Overview', project.Overview || project.Description]
     ].filter(([, value]) => value == null || value === '' || value === 0).map(([label]) => label);
     return {
-      projectId: project.ProjectID || '', projectName: project.ProjectName || '', builderName: project.BuilderName || '',
+      projectId: project.ProjectID || '', projectName: project.ProjectName || '', builderName: project.BuilderName || '', category: project.Category || '',
       status, brochureCount: linked.length,
       filenames: linked.map((item) => item.Filename || item.filename || '').filter(Boolean).join('; '),
       driveFileIds: linked.map((item) => item.DriveFileId || item.DriveFileID).join('; '),
@@ -41,7 +41,7 @@ function brochureStatusReport(projects, visible = () => true) {
   return { ok: true, generatedAt: new Date().toISOString(), counts, rows };
 }
 
-const CSV_COLUMNS = ['projectId', 'projectName', 'builderName', 'status', 'brochureCount', 'filenames', 'driveFileIds', 'sourceUrls', 'failureReason', 'missingFields', 'formComplete', 'brochureChecked', 'brochureCheckedBy', 'brochureCheckedAt', 'formVerified', 'formVerifiedBy', 'formVerifiedAt'];
+const CSV_COLUMNS = ['projectId', 'projectName', 'builderName', 'category', 'status', 'brochureCount', 'filenames', 'driveFileIds', 'sourceUrls', 'failureReason', 'missingFields', 'formComplete', 'brochureChecked', 'brochureCheckedBy', 'brochureCheckedAt', 'formVerified', 'formVerifiedBy', 'formVerifiedAt'];
 function reportCsv(report) {
   const quote = (value) => {
     const text = String(value ?? '');
