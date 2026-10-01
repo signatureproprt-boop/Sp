@@ -1118,10 +1118,6 @@ table td,table th{border-color:var(--v2-line)!important}
     if (p.TotalFloors) lines.push(`Floors per Tower / Building: ${p.TotalFloors}`);
     if (p.FloorHeightFt) lines.push(`Floor-to-floor Height: ${p.FloorHeightFt} ft`);
     if (!Array.isArray(p.ConfigDetails) && p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) lines.push(`Carpet Area: ${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
-    if (p.PriceRange && (p.PriceRange.min != null || p.PriceRange.max != null)) {
-      const min = fmtPrice(p.PriceRange.min), max = fmtPrice(p.PriceRange.max);
-      lines.push(`Price: ${min && max ? `${min} – ${max}` : (min || max)}`);
-    }
     if (p.PossessionDate) lines.push(`Possession: ${String(p.PossessionDate).slice(0, 10)}`);
     if (p.RERANumber) lines.push(`RERA: ${p.RERANumber}`);
     lines.push('');
