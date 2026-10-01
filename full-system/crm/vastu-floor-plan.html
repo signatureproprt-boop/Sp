@@ -22,7 +22,7 @@
     button:disabled { opacity: .5; cursor: not-allowed; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
     .secondary { background: #eee4d5; color: #3f2618; }
-    canvas { display: block; width: 100%; max-width: 900px; height: auto; border: 1px solid #e7d9c5; border-radius: 8px; touch-action: manipulation; cursor: crosshair; background: #f3eee7; }
+    canvas { display: block; width: 100%; max-width: 900px; height: auto; border: 1px solid #e7d9c5; border-radius: 8px; touch-action: none; cursor: crosshair; background: #f3eee7; }
     .canvas-wrap { overflow: auto; }
     #message { min-height: 20px; color: #8b371e; margin-top: 12px; font-size: 14px; }
     @media(max-width: 760px) { .layout { grid-template-columns: 1fr; } main { padding: 12px; } }
@@ -36,6 +36,14 @@
     <div class="layout">
       <section class="panel" aria-label="Vastu controls">
         <strong id="project-name">Floor plan</strong>
+        <label for="project-brochure">Project brochure PDF</label>
+        <button id="project-brochure" class="secondary" type="button" disabled>Open stored brochure</button>
+        <label for="local-brochure">Or upload brochure PDF</label>
+        <input id="local-brochure" type="file" accept="application/pdf,.pdf" />
+        <label for="brochure-page">Select layout plan page</label>
+        <select id="brochure-page" disabled><option value="">First open a brochure</option></select>
+        <button id="crop" class="secondary" type="button" disabled style="margin-top:10px">Crop layout from page</button>
+        <p class="muted">Jis page par layout hai woh chuniye. Ek page par multiple plans hon to Crop dabakar layout ke around drag karein.</p>
         <label for="project-plans">Project floor plan</label>
         <select id="project-plans"><option value="">Select a project plan</option></select>
         <label for="local-plan">Or upload JPG / PNG / WebP</label>
@@ -63,6 +71,7 @@
       opacity: document.getElementById('opacity'), plans: document.getElementById('project-plans')
     };
     let image = null, objectUrl = null, center = { x: .5, y: .5 };
+    let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, sourceVersion = 0;
     const message = (value) => { document.getElementById('message').textContent = value; };
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -94,9 +103,11 @@
       ctx.restore();
     }
     function showImage(src, local = false) {
+      const version = ++sourceVersion;
       const next = new Image();
       if (!local) next.crossOrigin = 'anonymous';
       next.onload = () => {
+        if (version !== sourceVersion) return;
         if (next.naturalWidth < 2 || next.naturalHeight < 2) { message('Image could not be read. Upload a JPG or PNG instead.'); return; }
         image = next;
         const scale = Math.min(1, 1400 / next.naturalWidth, 1400 / next.naturalHeight);
@@ -108,6 +119,75 @@
       next.onerror = () => message('Project image could not be opened. Upload the floor plan file instead.');
       next.src = src;
     }
+    async function openBrochure(bytes) {
+      const version = ++sourceVersion;
+      message('Loading PDF pages…');
+      try {
+        if (!pdfjs) {
+          pdfjs = await import('/assets/pdfjs/pdf.mjs');
+          pdfjs.GlobalWorkerOptions.workerSrc = '/assets/pdfjs/pdf.worker.mjs';
+        }
+        const nextPdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), standardFontDataUrl: '/assets/pdfjs/standard_fonts/' }).promise;
+        if (version !== sourceVersion) { await nextPdf.destroy(); return; }
+        if (pdf) await pdf.destroy();
+        pdf = nextPdf;
+        const pages = document.getElementById('brochure-page');
+        pages.replaceChildren();
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const option = document.createElement('option'); option.value = String(i); option.textContent = `Page ${i}`; pages.append(option);
+        }
+        pages.disabled = false;
+        await renderBrochurePage();
+      } catch (error) { message(`Brochure PDF could not be opened: ${error.message}`); }
+    }
+    async function renderBrochurePage() {
+      if (!pdf) return;
+      const version = ++sourceVersion;
+      const pageNumber = Number(document.getElementById('brochure-page').value);
+      message(`Rendering page ${pageNumber}…`);
+      try {
+        const page = await pdf.getPage(pageNumber);
+        const native = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: Math.min(2, 1600 / Math.max(native.width, native.height)) });
+        const bitmap = document.createElement('canvas');
+        bitmap.width = Math.round(viewport.width); bitmap.height = Math.round(viewport.height);
+        await page.render({ canvasContext: bitmap.getContext('2d'), viewport, canvas: bitmap }).promise;
+        if (version !== sourceVersion) return;
+        image = bitmap; canvas.width = bitmap.width; canvas.height = bitmap.height;
+        center = { x: .5, y: .5 }; cropMode = false;
+        document.getElementById('crop').disabled = false;
+        document.getElementById('crop').textContent = 'Crop layout from page';
+        document.getElementById('download').disabled = false;
+        draw(); message(`Page ${pageNumber} ready. Select the layout area if needed, then set North.`);
+      } catch (error) { message(`Page could not be rendered: ${error.message}`); }
+    }
+    document.getElementById('brochure-page').addEventListener('change', renderBrochurePage);
+    document.getElementById('project-brochure').addEventListener('click', async () => {
+      const id = new URLSearchParams(location.search).get('projectId');
+      if (!id) return;
+      try {
+        message('Downloading stored brochure…');
+        const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
+        if (!response.ok) throw new Error('Verified stored brochure unavailable');
+        await openBrochure(await response.arrayBuffer());
+      } catch (error) { message(error.message); }
+    });
+    document.getElementById('local-brochure').addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { message('Use a PDF brochure.'); return; }
+      await openBrochure(await file.arrayBuffer());
+    });
+    document.getElementById('crop').addEventListener('click', () => {
+      cropMode = !cropMode; cropStart = null; cropEnd = null;
+      document.getElementById('crop').textContent = cropMode ? 'Cancel crop' : 'Crop layout from page';
+      message(cropMode ? 'Drag from one corner of the layout to the opposite corner.' : 'Crop cancelled.'); draw();
+    });
+    const pointerPosition = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+        y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)) };
+    };
     document.getElementById('local-plan').addEventListener('change', (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -118,9 +198,29 @@
     controls.plans.addEventListener('change', () => { if (controls.plans.value) showImage(controls.plans.value); });
     canvas.addEventListener('pointerdown', (event) => {
       if (!image) return;
-      const rect = canvas.getBoundingClientRect();
-      center = { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
-        y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)) }; draw();
+      if (cropMode) { cropStart = pointerPosition(event); cropEnd = cropStart; canvas.setPointerCapture(event.pointerId); return; }
+      center = pointerPosition(event); draw();
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      if (!cropMode || !cropStart) return;
+      cropEnd = pointerPosition(event); draw();
+      ctx.strokeStyle = '#c32618'; ctx.lineWidth = 3;
+      ctx.strokeRect(cropStart.x * canvas.width, cropStart.y * canvas.height,
+        (cropEnd.x - cropStart.x) * canvas.width, (cropEnd.y - cropStart.y) * canvas.height);
+    });
+    canvas.addEventListener('pointerup', (event) => {
+      if (!cropMode || !cropStart || !image) return;
+      cropEnd = pointerPosition(event);
+      const x = Math.round(Math.min(cropStart.x, cropEnd.x) * canvas.width);
+      const y = Math.round(Math.min(cropStart.y, cropEnd.y) * canvas.height);
+      const w = Math.round(Math.abs(cropStart.x - cropEnd.x) * canvas.width);
+      const h = Math.round(Math.abs(cropStart.y - cropEnd.y) * canvas.height);
+      cropStart = null; cropMode = false; document.getElementById('crop').textContent = 'Crop layout from page';
+      if (w < 30 || h < 30) { message('Crop too small. Drag around the full layout.'); draw(); return; }
+      const cropped = document.createElement('canvas'); cropped.width = w; cropped.height = h;
+      cropped.getContext('2d').drawImage(image, x, y, w, h, 0, 0, w, h);
+      image = cropped; canvas.width = w; canvas.height = h; center = { x: .5, y: .5 }; draw();
+      message('Layout cropped. Tap its center and set North direction.');
     });
     for (const [key, output, suffix] of [['angle','north-value','°'],['size','size-value','%'],['opacity','opacity-value','%']]) {
       controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix + (key === 'angle' && controls[key].value === '0' ? ' (up)' : ''); draw(); });
@@ -141,6 +241,8 @@
         if (!response.ok || !result.ok) throw new Error(result.error || 'Project unavailable');
         const project = result.data;
         document.getElementById('project-name').textContent = project.ProjectName || id;
+        document.getElementById('project-brochure').disabled = !(project.Brochures || []).some((item) => item.verified === true &&
+          String(item.downloadStatus || '').toLowerCase() === 'downloaded' && (item.DriveFileID || item.DriveFileId || item.StoragePath));
         const plans = Array.isArray(project.FloorPlans) ? project.FloorPlans : [];
         for (const [index, plan] of plans.entries()) {
           const stored = plan.verified === true && (plan.StoragePath || plan.DriveFileID || plan.DriveFileId);
