@@ -249,11 +249,12 @@ table td,table th{border-color:var(--v2-line)!important}
         <div id="brochure-status-summary" style="margin-bottom:12px">Loading…</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           <select id="brochure-status-filter" onchange="renderBrochureStatus()" aria-label="Filter brochure status" class="btn"><option value="">All projects</option><option>Drive linked</option><option>Stored outside Drive</option><option>Failed</option><option>Pending</option><option>No brochure source</option></select>
+          <select id="brochure-review-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter review"><option value="">All reviews</option><option value="unchecked">Brochure unchecked</option><option value="incomplete">Form incomplete</option><option value="unverified">Form unverified</option></select>
           <input id="brochure-status-search" class="search-input" style="min-width:160px" placeholder="Search project or builder…" oninput="renderBrochureStatus()">
           <a class="btn btn-primary" href="/api/v2/builder-projects/brochure-status.csv" download>Download CSV log</a>
           <button class="btn btn-ghost" onclick="loadBrochureStatus()">↻ Refresh</button>
         </div>
-        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID / Error</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
+        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID / Error</th><th>Form / Review</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
       </div>
     </div>
   </div>
@@ -264,6 +265,16 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="chip" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</div>
     <div class="chip" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</div>
     <div class="chip" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</div>
+  </div>
+
+  <div class="toolbar" aria-label="Project size filters">
+    <input id="filter-location" class="search-input" list="dl-surat-areas" placeholder="Location" aria-label="Location" onchange="applyProjectFilters()" />
+    <select id="filter-bhk" class="btn" aria-label="BHK" onchange="applyProjectFilters()"><option value="">All BHK</option><option>1 BHK</option><option>2 BHK</option><option>3 BHK</option><option>4 BHK</option><option>5 BHK</option></select>
+    <input id="filter-carpet-min" type="number" min="0" class="search-input" placeholder="Carpet min sqft" aria-label="Carpet minimum sqft" onchange="applyProjectFilters()" />
+    <input id="filter-carpet-max" type="number" min="0" class="search-input" placeholder="Carpet max sqft" aria-label="Carpet maximum sqft" onchange="applyProjectFilters()" />
+    <input id="filter-built-min" type="number" min="0" class="search-input" placeholder="Built-up min sqft" aria-label="Built-up minimum sqft" onchange="applyProjectFilters()" />
+    <input id="filter-built-max" type="number" min="0" class="search-input" placeholder="Built-up max sqft" aria-label="Built-up maximum sqft" onchange="applyProjectFilters()" />
+    <button class="btn btn-ghost" onclick="clearProjectFilters()">Clear size filters</button>
   </div>
 
   <div class="toolbar">
@@ -383,7 +394,8 @@ table td,table th{border-color:var(--v2-line)!important}
           <input id="f-total-units" data-testid="f-total-units" type="number" />
         </div>
         <div class="form-group full">
-          <label>Configurations & Sizes</label>
+          <label>Configurations & Sizes (sqft)</label>
+          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Legacy unlabeled area stays separate until you confirm whether it is carpet or built-up.</div>
           <div id="config-rows" data-testid="config-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
           <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:5px 12px;font-size:12px">+ Add Config</button>
         </div>
@@ -553,6 +565,11 @@ table td,table th{border-color:var(--v2-line)!important}
   let lastPreview = null;
   let mediaBusy = false;
   let brochureStatusRows = [];
+  function applyProjectFilters() { currentPage = 1; loadProjects(); }
+  function clearProjectFilters() {
+    ['filter-location','filter-bhk','filter-carpet-min','filter-carpet-max','filter-built-min','filter-built-max'].forEach(id => document.getElementById(id).value = '');
+    applyProjectFilters();
+  }
 
   function openBrochureStatus() {
     document.getElementById('brochure-status-modal').classList.remove('hidden');
@@ -576,9 +593,36 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function renderBrochureStatus() {
     const filter = document.getElementById('brochure-status-filter').value;
+    const review = document.getElementById('brochure-review-filter').value;
     const query = document.getElementById('brochure-status-search').value.trim().toLowerCase();
-    const rows = brochureStatusRows.filter((row) => (!filter || row.status === filter) && (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query)));
-    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}</td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds || row.failureReason)}</small></td></tr>`).join('') || '<tr><td colspan="4">No matching projects</td></tr>';
+    const rows = brochureStatusRows.filter((row) => (!filter || row.status === filter) &&
+      (!review || review === 'unchecked' && !row.brochureChecked || review === 'incomplete' && !row.formComplete || review === 'unverified' && !row.formVerified) &&
+      (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query)));
+    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}</td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds || row.failureReason)}</small></td><td><small>${row.formComplete ? 'Fields filled' : 'Missing: ' + esc((row.missingFields || []).join(', '))}</small><br><label><input type="checkbox" ${row.brochureChecked ? 'checked' : ''} ${row.status === 'Drive linked' ? '' : 'disabled title="Verified Drive PDF required"'} onchange="setProjectReview('${esc(row.projectId)}','brochure',this.checked)"> Brochure checked</label><br><label><input type="checkbox" ${row.formVerified ? 'checked' : ''} onchange="setProjectReview('${esc(row.projectId)}','form',this.checked)"> Form verified</label><br><button class="link" onclick="editFromBrochureLog('${esc(row.projectId)}')">Edit Form</button></td></tr>`).join('') || '<tr><td colspan="5">No matching projects</td></tr>';
+  }
+
+  async function setProjectReview(projectId, kind, checked) {
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/review`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, checked })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Review could not be saved');
+      await loadBrochureStatus();
+    } catch (error) { toast(error.message, true); await loadBrochureStatus(); }
+  }
+
+  async function editFromBrochureLog(projectId) {
+    document.getElementById('brochure-status-modal').classList.add('hidden');
+    const project = allProjects.find(p => p.ProjectID === projectId);
+    if (project) { openEditModal(projectId); return; }
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Project not found');
+      allProjects.push(result.data);
+      openEditModal(projectId);
+    } catch (error) { toast(error.message, true); }
   }
 
   window.addEventListener('DOMContentLoaded', () => {
@@ -598,6 +642,10 @@ table td,table th{border-color:var(--v2-line)!important}
       if (currentStatus) params.set('status', currentStatus);
       if (currentCategory) params.set('category', currentCategory);
       if (currentSearch) params.set('q', currentSearch);
+      for (const [id, key] of [['filter-location','location'],['filter-bhk','bhk'],['filter-carpet-min','carpetMin'],['filter-carpet-max','carpetMax'],['filter-built-min','builtUpMin'],['filter-built-max','builtUpMax']]) {
+        const value = document.getElementById(id).value.trim();
+        if (value) params.set(key, value);
+      }
       const res = await fetch('/api/v2/builder-projects?' + params.toString()).then(r => r.json());
       if (!res.ok) throw new Error(res.error || 'Builder project load failed');
       allProjects = res.data || [];
@@ -975,7 +1023,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const catColor = catColors[p.Category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      p.ConfigDetails.forEach(c => facts.push(c.AreaSqft ? `${c.Type} · ${c.AreaSqft} sqft` : c.Type));
+      p.ConfigDetails.forEach(c => facts.push([c.Type, c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.BuiltUpAreaSqft != null ? `${c.BuiltUpAreaSqft} built-up sqft` : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       facts.push(p.Configurations.join(' / '));
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
@@ -1174,8 +1222,8 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-amenities').value = (p.Amenities || []).join(', ');
     document.getElementById('f-notes').value = p.Notes || '';
     configRows = (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length)
-      ? p.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '' }))
-      : (p.Configurations || []).map(t => ({ Type: t, AreaSqft: '' }));
+      ? p.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '' }))
+      : (p.Configurations || []).map(t => ({ Type: t, AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '' }));
     renderConfigRowsUI();
     document.getElementById('media-hint').style.display = 'none';
     document.getElementById('media-section').style.display = 'block';
@@ -1188,13 +1236,15 @@ table td,table th{border-color:var(--v2-line)!important}
   function renderConfigRowsUI() {
     const el = document.getElementById('config-rows');
     el.innerHTML = configRows.length ? configRows.map((row, i) => `
-      <div style="display:flex;gap:8px;align-items:center" data-testid="config-row-${i}">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" data-testid="config-row-${i}">
         <input type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="e.g. 2 BHK" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" style="flex:1;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <input type="number" value="${row.AreaSqft ?? ''}" placeholder="Area sqft" data-testid="config-area-${i}" oninput="updateConfigRow(${i},'AreaSqft',this.value)" style="width:110px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.CarpetAreaSqft ?? ''}" placeholder="Carpet sqft" aria-label="Carpet area sqft" data-testid="config-carpet-${i}" oninput="updateConfigRow(${i},'CarpetAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.BuiltUpAreaSqft ?? ''}" placeholder="Built-up sqft" aria-label="Built-up area sqft" data-testid="config-built-up-${i}" oninput="updateConfigRow(${i},'BuiltUpAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        ${row.AreaSqft !== '' && row.AreaSqft != null ? `<small title="Legacy area without confirmed type">Legacy ${esc(row.AreaSqft)} sqft</small>` : ''}
         <button type="button" data-testid="config-remove-${i}" onclick="removeConfigRow(${i})" style="background:none;border:none;color:var(--clr-danger);font-size:17px;cursor:pointer">×</button>
       </div>`).join('') : '<span style="font-size:12px;color:var(--clr-text-light)">No configurations added yet</span>';
   }
-  function addConfigRow() { configRows.push({ Type: '', AreaSqft: '' }); renderConfigRowsUI(); }
+  function addConfigRow() { configRows.push({ Type: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '' }); renderConfigRowsUI(); }
   function updateConfigRow(i, key, val) { if (configRows[i]) configRows[i][key] = val; }
   function removeConfigRow(i) { configRows.splice(i, 1); renderConfigRowsUI(); }
 
@@ -1237,7 +1287,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (d.PossessionDate) document.getElementById('f-possession').value = String(d.PossessionDate).slice(0, 10);
     if (Array.isArray(d.Amenities) && d.Amenities.length) document.getElementById('f-amenities').value = d.Amenities.join(', ');
     if (Array.isArray(d.ConfigDetails) && d.ConfigDetails.length) {
-      configRows = d.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '' }));
+      configRows = d.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '' }));
       renderConfigRowsUI();
     }
   }
@@ -1260,7 +1310,11 @@ table td,table th{border-color:var(--v2-line)!important}
       RERANumber: document.getElementById('f-rera-number').value.trim() || null,
       ProjectStatus: document.getElementById('f-status').value,
       Category: document.getElementById('f-category').value,
-      ConfigDetails: configRows.filter(r => r.Type && String(r.Type).trim()).map(r => ({ Type: String(r.Type).trim(), AreaSqft: (r.AreaSqft !== '' && r.AreaSqft != null) ? Number(r.AreaSqft) : null })),
+      ConfigDetails: configRows.filter(r => r.Type && String(r.Type).trim()).map(r => ({
+        Type: String(r.Type).trim(), AreaSqft: r.AreaSqft !== '' && r.AreaSqft != null ? Number(r.AreaSqft) : null,
+        CarpetAreaSqft: r.CarpetAreaSqft !== '' && r.CarpetAreaSqft != null ? Number(r.CarpetAreaSqft) : null,
+        BuiltUpAreaSqft: r.BuiltUpAreaSqft !== '' && r.BuiltUpAreaSqft != null ? Number(r.BuiltUpAreaSqft) : null
+      })),
       TotalUnits: document.getElementById('f-total-units').value || null,
       PriceMin: document.getElementById('f-price-min').value || null,
       PriceMax: document.getElementById('f-price-max').value || null,
