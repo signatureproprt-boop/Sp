@@ -460,6 +460,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="card-price">${fmtPrice(price, p.ListingFor)}${rate ? `<small>@ ₹${Number(rate).toLocaleString('en-IN')}/sqft</small>` : ''}</div>
         <div class="card-facts">${facts.map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}</div>
         <a href="${analyzeUrl}" data-testid="analyze-return-${esc(p.PropertyID)}" onclick="event.stopPropagation()" style="display:inline-block;margin-top:8px;font-size:12px;font-weight:700;color:#2c1405;background:#f7ecd2;padding:5px 10px;border-radius:7px;text-decoration:none">📈 Analyze Return</a>
+        ${['Residential','Commercial'].includes(p.Category) ? `<a href="/vastu-floor-plan?propertyId=${encodeURIComponent(p.PropertyID)}" onclick="event.stopPropagation()" style="display:inline-block;margin:8px 0 0 6px;font-size:12px;font-weight:700;color:#2c1405;background:#f7ecd2;padding:5px 10px;border-radius:7px;text-decoration:none">🧭 Vastu Plan</a>` : ''}
       </div>
       <div class="card-footer">
         <span>${esc(footerLeft)}</span>

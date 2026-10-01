@@ -1437,36 +1437,48 @@ async function handleApi(req, res, url) {
       return;
     }
 
-    // Vastu analyses are stored against existing Builder Projects. Final rows
+    // Vastu analyses are stored against Builder Projects and/or Inventory properties. Final rows
     // are immutable snapshots; edits must start a new draft.
     if (/^\/api\/v2\/vastu-analyses(?:\/.*)?$/i.test(pathname)) {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
       const { VastuAnalysisService } = require('./src/services/vastuAnalysisService');
       const svc = new VastuAnalysisService(runtime.repository);
+      const { AccessControlService } = require('./src/services/accessControlService');
+      const accessSvc = new AccessControlService(runtime.repository);
+      const propertyAccess = (propertyId, permission) => {
+        const property = runtime.repository.find('Inventory','PropertyID',String(propertyId || ''));
+        return property && !property._deleted && accessSvc.authorizeProperty(actor,property,{ permissions:[permission],hideExistence:true }).ok;
+      };
+      const reportPropertyId = () => {
+        const match = pathname.match(/^\/api\/v2\/vastu-analyses\/([^/]+)/i);
+        return match ? runtime.repository.find('VastuAnalyses','AnalysisID',decodeURIComponent(match[1]))?.PropertyID : null;
+      };
+      const permissionFor = (propertyId, read) => propertyId ? (propertyAccess(propertyId,read ? 'INVENTORY_READ' : 'INVENTORY_UPDATE') || (sendJson(res,{ok:false,error:'Property unavailable'},403),false)) : ensurePermissionOrRespond(req,res,url,read ? 'BUILDER_PROJECTS_READ' : 'BUILDER_PROJECTS_UPDATE');
       const collection = /^\/api\/v2\/vastu-analyses\/?$/i.test(pathname);
       if (collection && req.method === 'GET') {
-        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_READ')) return;
+        const propertyId = url.searchParams.get('propertyId');
+        if (!permissionFor(propertyId,true)) return;
         const projectId = url.searchParams.get('projectId');
-        if (!projectId) { sendJson(res, { ok:false,error:'projectId required' }, 400); return; }
-        sendJson(res, { ok:true,data:svc.list(projectId,actor) }); return;
+        if (!projectId && !propertyId) { sendJson(res, { ok:false,error:'projectId or propertyId required' }, 400); return; }
+        sendJson(res, { ok:true,data:svc.list(projectId,actor,propertyId) }); return;
       }
       if (collection && req.method === 'POST') {
-        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
+        if (!permissionFor(bodyForV2?.propertyId,false)) return;
         try { sendJson(res, { ok:true,data:svc.saveDraft(bodyForV2 || {},actor) }, 201); }
         catch (e) { sendJson(res, { ok:false,error:e.message }, 400); }
         return;
       }
       const finalize = pathname.match(/^\/api\/v2\/vastu-analyses\/([^/]+)\/finalize\/?$/i);
       if (finalize && req.method === 'POST') {
-        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_UPDATE')) return;
+        if (!permissionFor(reportPropertyId(),false)) return;
         try { sendJson(res, { ok:true,data:svc.finalize(decodeURIComponent(finalize[1]),actor) }); }
         catch (e) { sendJson(res, { ok:false,error:e.message }, 400); }
         return;
       }
       const recipients = pathname.match(/^\/api\/v2\/vastu-analyses\/([^/]+)\/recipients\/?$/i);
       if (recipients && ['GET','POST'].includes(req.method)) {
-        if (!ensurePermissionOrRespond(req, res, url, req.method === 'POST' ? 'BUILDER_PROJECTS_UPDATE' : 'BUILDER_PROJECTS_READ')) return;
+        if (!permissionFor(reportPropertyId(),req.method === 'GET')) return;
         const { AccessControlService } = require('./src/services/accessControlService');
         const access = new AccessControlService(runtime.repository);
         if (!access.requirePermissions(actor, ['LEADS_VIEW','LEADS_READ']).ok) { sendJson(res, { ok:false,error:'Client access forbidden' }, 403); return; }
@@ -1487,9 +1499,9 @@ async function handleApi(req, res, url) {
       }
       const byId = pathname.match(/^\/api\/v2\/vastu-analyses\/([^/]+)\/?$/i);
       if (byId && req.method === 'GET') {
-        if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_READ')) return;
+        if (!permissionFor(reportPropertyId(),true)) return;
         const row = runtime.repository.find('VastuAnalyses','AnalysisID',decodeURIComponent(byId[1]));
-        if (!row || !svc.list(row.ProjectID,actor).some((item) => item.AnalysisID === row.AnalysisID)) { sendJson(res, { ok:false,error:'Analysis not found' }, 404); return; }
+        if (!row || !svc.list(row.ProjectID,actor,row.PropertyID).some((item) => item.AnalysisID === row.AnalysisID)) { sendJson(res, { ok:false,error:'Analysis not found' }, 404); return; }
         sendJson(res, { ok:true,data:row }); return;
       }
       sendJson(res, { ok:false,error:'Method not supported' }, 405); return;

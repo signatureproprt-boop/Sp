@@ -28,7 +28,7 @@ function directionFor(mark, region, angle, sourceWidth = 1, sourceHeight = 1) {
   const bearing = (screen - angle + 360) % 360;
   return { direction: DIRECTIONS[Math.floor((bearing + 11.25) / 22.5) % 16], bearing: Math.round(bearing * 100) / 100 };
 }
-function sanitizeAnalysis(payload, project, actor) {
+function sanitizeAnalysis(payload, project, actor, property = null) {
   const type = String(payload.propertyType || '').toLowerCase();
   if (!SPACE_TYPES[type]) throw new Error('Select residential or commercial property type');
   const source = payload.source || {};
@@ -63,7 +63,8 @@ function sanitizeAnalysis(payload, project, actor) {
     };
   });
   return {
-    ProjectID:project.ProjectID,ProjectName:String(project.ProjectName || ''),
+    ProjectID:project?.ProjectID || null,ProjectName:String(project?.ProjectName || property?.ProjectName || ''),
+    PropertyID:property?.PropertyID || null,PropertyTitle:String(property?.Title || ''),
     CompanyID:actor.companyId || null,BrokerageID:actor.brokerageId || null,
     PropertyType:type,SpaceType:String(payload.spaceType || '').trim().slice(0,50),
     LayoutCount:expectedCount,Source:{ sha256:source.sha256.toLowerCase(),page,width:Number(source.width),height:Number(source.height),name:String(source.name || '').slice(0,150) },
@@ -73,20 +74,28 @@ function sanitizeAnalysis(payload, project, actor) {
 }
 class VastuAnalysisService {
   constructor(repo) { this.repo = repo; }
-  list(projectId, actor) {
-    return this.repo.list('VastuAnalyses').filter((r) => r.ProjectID === projectId &&
+  list(projectId, actor, propertyId = null) {
+    return this.repo.list('VastuAnalyses').filter((r) => (propertyId ? r.PropertyID === propertyId : r.ProjectID === projectId) &&
       (!r.CompanyID || r.CompanyID === actor.companyId) && (!r.BrokerageID || r.BrokerageID === actor.brokerageId));
   }
   saveDraft(payload, actor) {
-    const project = this.repo.find('BuilderProjects','ProjectID',String(payload.projectId || ''));
-    if (!project || project.Active === false) throw new Error('Project not found');
-    if ((project.CompanyID && project.CompanyID !== actor.companyId) ||
-        (project.BrokerageID && project.BrokerageID !== actor.brokerageId)) throw new Error('Project not available in this workspace');
-    const data = sanitizeAnalysis(payload,project,actor), now = new Date().toISOString();
+    const property = payload.propertyId ? this.repo.find('Inventory','PropertyID',String(payload.propertyId)) : null;
+    if (payload.propertyId && (!property || property._deleted)) throw new Error('Property not found');
+    if (property && ((property.CompanyID && property.CompanyID !== actor.companyId) ||
+        (property.BrokerageID && property.BrokerageID !== actor.brokerageId))) throw new Error('Property not available in this workspace');
+    const linkedProjectId = property?.ProjectID || property?.ProjectId || null;
+    if (property && !linkedProjectId && payload.projectId) throw new Error('Property has no verified project link');
+    if (linkedProjectId && payload.projectId && linkedProjectId !== payload.projectId) throw new Error('Property belongs to a different project');
+    const projectId = payload.projectId || linkedProjectId;
+    const project = projectId ? this.repo.find('BuilderProjects','ProjectID',String(projectId)) : null;
+    if ((!project && !property) || (projectId && (!project || project.Active === false))) throw new Error('Project not found');
+    if (project && ((project.CompanyID && project.CompanyID !== actor.companyId) ||
+        (project.BrokerageID && project.BrokerageID !== actor.brokerageId))) throw new Error('Project not available in this workspace');
+    const data = sanitizeAnalysis(payload,project,actor,property), now = new Date().toISOString();
     const id = String(payload.analysisId || '');
     if (id) {
       const old = this.repo.find('VastuAnalyses','AnalysisID',id);
-      if (!old || old.ProjectID !== project.ProjectID || old.CreatedBy !== actor.userId || old.Status !== 'draft') throw new Error('Draft unavailable or already finalized');
+      if (!old || old.ProjectID !== data.ProjectID || (old.PropertyID || null) !== data.PropertyID || old.CreatedBy !== actor.userId || old.Status !== 'draft') throw new Error('Draft unavailable or already finalized');
       const updated = this.repo.update('VastuAnalyses','AnalysisID',id,{ ...data,UpdatedAt:now,Revision:(old.Revision || 1)+1 });
       return updated;
     }
@@ -115,7 +124,7 @@ class VastuAnalysisService {
     const lead = this.repo.find('Leads','LeadID',leadId);
     if (!lead || (lead.CompanyID && lead.CompanyID !== actor.companyId) || (lead.BrokerageID && lead.BrokerageID !== actor.brokerageId)) throw new Error('Client not available');
     const row = {
-      RecipientID:this.repo.createId('VREC'),AnalysisID:id,ProjectID:report.ProjectID,LeadID:lead.LeadID,
+      RecipientID:this.repo.createId('VREC'),AnalysisID:id,ProjectID:report.ProjectID,PropertyID:report.PropertyID || null,LeadID:lead.LeadID,
       RecipientSnapshot:{ name:String(lead.ClientName || lead.Name || '').slice(0,100),mobile:String(lead.PrimaryMobile || lead.Phone || '').slice(0,30) },
       Channel:channel,Status:'manual_share_recorded',
       // There is no provider delivery receipt or verified viewer identity here.
