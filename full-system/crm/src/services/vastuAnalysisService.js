@@ -5,15 +5,29 @@ const SPACE_TYPES = {
   residential: new Set(['Entrance','Living room','Kitchen','Master bedroom','Bedroom','Puja','Toilet','Balcony','Staircase']),
   commercial: new Set(['Entrance','Reception/Counter','Owner cabin','Work area','Storage','Pantry','Washroom','Staircase'])
 };
-const GUIDANCE_VERSION = 'traditional-v1';
+const GUIDANCE_VERSION = 'traditional-v2';
 const GUIDANCE = Object.freeze({
   Kitchen: { preferred:['SE','ESE','SSE'],alternative:['NW','WNW','NNW'],text:'Traditional guidance commonly considers South-East for the kitchen; North-West is sometimes an alternative.' },
   'Master bedroom': { preferred:['SW','SSW','WSW'],alternative:[],text:'Traditional guidance commonly considers South-West for the master bedroom.' },
   Puja: { preferred:['NE','NNE','ENE'],alternative:[],text:'Traditional guidance commonly considers North-East for puja.' }
 });
+const REVIEW_PROMPTS = Object.freeze({
+  Entrance:'Verify the actual door threshold, facing and approach; the center of an entrance label alone cannot establish door orientation.',
+  'Living room':'Check usable room boundaries, windows and circulation against the complete plan.',
+  Bedroom:'Check room boundary, bed placement and openings on the actual unit plan.',
+  Toilet:'Check fixtures, plumbing and room boundaries; the marked center is only an approximation.',
+  Balcony:'Check the actual balcony exposure and open edge, including site orientation.',
+  Staircase:'Check the complete stair footprint and travel direction rather than a single point.',
+  'Reception/Counter':'Review counter orientation, customer approach and door placement on the shop plan.',
+  'Owner cabin':'Review desk orientation, cabin boundary and windows with the actual office layout.',
+  'Work area':'Review desks and circulation across the full work zone rather than its center alone.',
+  Storage:'Review storage footprint and loading access on the actual plan.',
+  Pantry:'Review water, cooking equipment and ventilation in the full commercial layout.',
+  Washroom:'Review fixtures, drainage and the room boundary on site.'
+});
 function guidanceFor(type, direction) {
   const rule = GUIDANCE[type];
-  if (!rule || direction === 'Center') return { status:'review_needed',text:direction === 'Center' ? 'Center overlap: check exact room boundary and circulation.' : 'Direction recorded. Review this space with the complete plan and site context.' };
+  if (!rule || direction === 'Center') return { status:'review_needed',text:direction === 'Center' ? 'Center overlap: check exact room boundary and circulation.' : (REVIEW_PROMPTS[type] || 'Direction recorded. Review this space with the complete plan and site context.') };
   if (rule.preferred.includes(direction)) return { status:'aligned',text:rule.text };
   if (rule.alternative.includes(direction)) return { status:'alternative',text:rule.text };
   return { status:'review_needed',text:`${rule.text} This marked position needs individual review, not an automatic defect verdict.` };
@@ -23,15 +37,19 @@ function finiteUnit(value) { return Number.isFinite(value) && value >= 0 && valu
 function directionFor(mark, region, angle, sourceWidth = 1, sourceHeight = 1) {
   const width = region.w * sourceWidth, height = region.h * sourceHeight;
   const dx = (mark.x - .5) * width, dy = (mark.y - .5) * height;
-  if (Math.hypot(dx, dy) < Math.min(width, height) * .08) return { direction: 'Center', bearing: null };
+  if (Math.hypot(dx, dy) < Math.min(width, height) * .08) return { direction: 'Center', bearing: null, boundaryReview: true };
   const screen = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
   const bearing = (screen - angle + 360) % 360;
-  return { direction: DIRECTIONS[Math.floor((bearing + 11.25) / 22.5) % 16], bearing: Math.round(bearing * 100) / 100 };
+  const distanceFromBoundary = Math.abs(((bearing + 11.25) % 22.5) - 11.25);
+  return { direction: DIRECTIONS[Math.floor((bearing + 11.25) / 22.5) % 16], bearing: Math.round(bearing * 100) / 100,
+    boundaryReview: distanceFromBoundary >= 9.25 };
 }
-function sanitizeAnalysis(payload, project, actor, property = null) {
+function sanitizeAnalysis(payload, project, actor, property = null, layoutProperties = new Map()) {
   const type = String(payload.propertyType || '').toLowerCase();
   if (!SPACE_TYPES[type]) throw new Error('Select residential or commercial property type');
   const source = payload.source || {};
+  const sourceRef = String(source.ref || '');
+  if (sourceRef && (!project || (sourceRef !== 'project-brochure' && !(project.FloorPlans || []).some((plan) => plan.MediaID === sourceRef)))) throw new Error('Project source reference unavailable');
   if (!/^[a-f0-9]{64}$/i.test(String(source.sha256 || ''))) throw new Error('Brochure or plan SHA-256 required');
   if (![source.width,source.height].every((v) => Number.isFinite(v) && v >= 30 && v <= 10000)) throw new Error('Invalid page size');
   const page = Number(source.page);
@@ -51,14 +69,21 @@ function sanitizeAnalysis(payload, project, actor, property = null) {
   const safeLayouts = layouts.map((r, index) => {
     if (!['x','y','w','h'].every((k) => finiteUnit(r[k])) || r.w < .03 || r.h < .03 || r.x + r.w > 1.001 || r.y + r.h > 1.001) throw new Error(`Invalid layout ${index + 1} boundary`);
     if (!Array.isArray(r.rooms) || r.rooms.length > 60) throw new Error('Too many room markers');
+    const layoutProperty = layoutProperties.get(String(r.propertyId || '')) || property;
+    if (r.propertyId && !layoutProperty) throw new Error(`Layout ${index + 1} property not found`);
+    if (property && layoutProperty?.PropertyID !== property.PropertyID) throw new Error('Layout property differs from selected property');
     return {
       x:r.x,y:r.y,w:r.w,h:r.h,confirmed:r.confirmed === true,
+      PropertyID:layoutProperty?.PropertyID || null,PropertyTitle:String(layoutProperty?.Title || ''),
       unit:String(r.unit || '').trim().slice(0,80),tower:String(r.tower || '').trim().slice(0,80),
       floor:String(r.floor || '').trim().slice(0,40),
       rooms:r.rooms.map((m) => {
         if (!SPACE_TYPES[type].has(m.type) || !finiteUnit(m.x) || !finiteUnit(m.y)) throw new Error('Invalid space marker');
         const computed = directionFor(m,r,angle,source.width,source.height);
-        return { type:m.type,x:m.x,y:m.y,...computed,guidance:guidanceFor(m.type,computed.direction),reviewStatus:'suggested' };
+        const reviewStatus = ['suggested','accepted','flagged'].includes(m.reviewStatus) ? m.reviewStatus : 'suggested';
+        const reviewNote = String(m.reviewNote || '').trim().slice(0,500);
+        if (reviewStatus === 'flagged' && !reviewNote) throw new Error('Flagged space needs a review note');
+        return { type:m.type,x:m.x,y:m.y,...computed,guidance:guidanceFor(m.type,computed.direction),reviewStatus,reviewNote };
       })
     };
   });
@@ -67,7 +92,7 @@ function sanitizeAnalysis(payload, project, actor, property = null) {
     PropertyID:property?.PropertyID || null,PropertyTitle:String(property?.Title || ''),
     CompanyID:actor.companyId || null,BrokerageID:actor.brokerageId || null,
     PropertyType:type,SpaceType:String(payload.spaceType || '').trim().slice(0,50),
-    LayoutCount:expectedCount,Source:{ sha256:source.sha256.toLowerCase(),page,width:Number(source.width),height:Number(source.height),name:String(source.name || '').slice(0,150) },
+    LayoutCount:expectedCount,Source:{ sha256:source.sha256.toLowerCase(),page,width:Number(source.width),height:Number(source.height),name:String(source.name || '').slice(0,150),SourceID:source.sourceId || null,Ref:sourceRef || null },
     North:{ centerX:north.centerX,centerY:north.centerY,tipX:north.tipX,tipY:north.tipY,angle,scopeConfirmed:north.scopeConfirmed === true,verifiedBy:actor.userId },
     Layouts:safeLayouts,GuidanceVersion:GUIDANCE_VERSION
   };
@@ -75,7 +100,7 @@ function sanitizeAnalysis(payload, project, actor, property = null) {
 class VastuAnalysisService {
   constructor(repo) { this.repo = repo; }
   list(projectId, actor, propertyId = null) {
-    return this.repo.list('VastuAnalyses').filter((r) => (propertyId ? r.PropertyID === propertyId : r.ProjectID === projectId) &&
+    return this.repo.list('VastuAnalyses').filter((r) => (propertyId ? (r.PropertyID === propertyId || r.Layouts?.some((layout) => layout.PropertyID === propertyId)) : r.ProjectID === projectId) &&
       (!r.CompanyID || r.CompanyID === actor.companyId) && (!r.BrokerageID || r.BrokerageID === actor.brokerageId));
   }
   saveDraft(payload, actor) {
@@ -91,7 +116,22 @@ class VastuAnalysisService {
     if ((!project && !property) || (projectId && (!project || project.Active === false))) throw new Error('Project not found');
     if (project && ((project.CompanyID && project.CompanyID !== actor.companyId) ||
         (project.BrokerageID && project.BrokerageID !== actor.brokerageId))) throw new Error('Project not available in this workspace');
-    const data = sanitizeAnalysis(payload,project,actor,property), now = new Date().toISOString();
+    const layoutProperties = new Map();
+    for (const layout of payload.layouts || []) {
+      const id = String(layout.propertyId || '');
+      if (!id || id === property?.PropertyID || layoutProperties.has(id)) continue;
+      const linked = this.repo.find('Inventory','PropertyID',id);
+      if (!linked || linked._deleted || (linked.CompanyID && linked.CompanyID !== actor.companyId) ||
+          (linked.BrokerageID && linked.BrokerageID !== actor.brokerageId) ||
+          !project || (linked.ProjectID || linked.ProjectId) !== project.ProjectID) throw new Error('Layout property must belong to this project and workspace');
+      layoutProperties.set(id,linked);
+    }
+    const data = sanitizeAnalysis(payload,project,actor,property,layoutProperties), now = new Date().toISOString();
+    if (data.Source.SourceID) {
+      const stored = this.repo.find('VastuSources','SourceID',String(data.Source.SourceID));
+      if (!stored || stored.Sha256 !== data.Source.sha256 || stored.CompanyID !== data.CompanyID || stored.BrokerageID !== data.BrokerageID ||
+          (stored.ProjectID && stored.ProjectID !== data.ProjectID) || (stored.PropertyID && stored.PropertyID !== data.PropertyID)) throw new Error('Stored brochure source does not match this analysis');
+    }
     const id = String(payload.analysisId || '');
     if (id) {
       const old = this.repo.find('VastuAnalyses','AnalysisID',id);
@@ -106,6 +146,7 @@ class VastuAnalysisService {
     const old = this.repo.find('VastuAnalyses','AnalysisID',id);
     if (!old || old.CreatedBy !== actor.userId || old.Status !== 'draft') throw new Error('Draft unavailable or already finalized');
     if (old.Layouts.length !== old.LayoutCount || !old.Layouts.every((r) => r.confirmed) || old.Layouts.some((r) => !r.rooms.length)) throw new Error('Confirm every selected layout and mark its spaces before finalizing');
+    if (old.Layouts.some((r) => r.rooms.some((m) => !['accepted','flagged'].includes(m.reviewStatus) || (m.boundaryReview && !m.reviewNote)))) throw new Error('Review every space and add a note for marks near Center or sector boundary');
     const now = new Date().toISOString();
     const profile = this.repo.read().BrokerProfile || {};
     if (!profile.Name || !profile.Mobile || profile.Name === 'Vikash Bhatter' || profile.Mobile === '+91 90000 00001') throw new Error('Set real Digital Card name and mobile before finalizing');
@@ -124,7 +165,8 @@ class VastuAnalysisService {
     const lead = this.repo.find('Leads','LeadID',leadId);
     if (!lead || (lead.CompanyID && lead.CompanyID !== actor.companyId) || (lead.BrokerageID && lead.BrokerageID !== actor.brokerageId)) throw new Error('Client not available');
     const row = {
-      RecipientID:this.repo.createId('VREC'),AnalysisID:id,ProjectID:report.ProjectID,PropertyID:report.PropertyID || null,LeadID:lead.LeadID,
+      RecipientID:this.repo.createId('VREC'),AnalysisID:id,ProjectID:report.ProjectID,PropertyID:report.PropertyID || null,
+      PropertyIDs:[...new Set((report.Layouts || []).map((layout) => layout.PropertyID).filter(Boolean))],LeadID:lead.LeadID,
       RecipientSnapshot:{ name:String(lead.ClientName || lead.Name || '').slice(0,100),mobile:String(lead.PrimaryMobile || lead.Phone || '').slice(0,30) },
       Channel:channel,Status:'manual_share_recorded',
       // There is no provider delivery receipt or verified viewer identity here.

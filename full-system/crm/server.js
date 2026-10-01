@@ -1437,6 +1437,47 @@ async function handleApi(req, res, url) {
       return;
     }
 
+    if (/^\/api\/v2\/vastu-sources(?:\/[^/]+)?\/?$/i.test(pathname)) {
+      const actor = getAuthenticatedActor(req,url);
+      if (!actor?.userId) { sendJson(res,{ok:false,error:'Unauthorized'},401); return; }
+      const { VastuSourceService } = require('./src/services/vastuSourceService');
+      const { AccessControlService } = require('./src/services/accessControlService');
+      const svc = new VastuSourceService(runtime.repository);
+      const access = new AccessControlService(runtime.repository);
+      const sourceId = pathname.match(/^\/api\/v2\/vastu-sources\/([^/]+)\/?$/i)?.[1];
+      if (sourceId && req.method === 'GET') {
+        const row = svc.get(decodeURIComponent(sourceId),actor);
+        if (!row) { sendJson(res,{ok:false,error:'Source not found'},404); return; }
+        if (row.PropertyID) {
+          const property = runtime.repository.find('Inventory','PropertyID',row.PropertyID);
+          if (!property || !access.authorizeProperty(actor,property,{permissions:['INVENTORY_READ'],hideExistence:true}).ok) { sendJson(res,{ok:false,error:'Source unavailable'},403); return; }
+        } else if (!ensurePermissionOrRespond(req,res,url,'BUILDER_PROJECTS_READ')) return;
+        try {
+          const { buffer } = await require('./src/services/objectStorageService').getObject(row.StoragePath);
+          res.writeHead(200,withSecurityHeaders({ 'Content-Type':row.ContentType,'Content-Length':buffer.length,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff' }));
+          res.end(buffer);
+        } catch (e) { sendJson(res,{ok:false,error:'Stored source unavailable'},503); }
+        return;
+      }
+      if (!sourceId && req.method === 'POST') {
+        const payload = bodyForV2 || {};
+        if (!payload.propertyId && !payload.projectId) { sendJson(res,{ok:false,error:'Project or Property required'},400); return; }
+        const property = payload.propertyId ? runtime.repository.find('Inventory','PropertyID',String(payload.propertyId)) : null;
+        if (payload.propertyId && (!property || !access.authorizeProperty(actor,property,{permissions:['INVENTORY_UPDATE'],hideExistence:true}).ok)) { sendJson(res,{ok:false,error:'Property unavailable'},403); return; }
+        if (property && payload.projectId && (property.ProjectID || property.ProjectId) !== payload.projectId) { sendJson(res,{ok:false,error:'Property/project mismatch'},400); return; }
+        if (!property && !ensurePermissionOrRespond(req,res,url,'BUILDER_PROJECTS_UPDATE')) return;
+        const projectId = payload.projectId || property?.ProjectID || property?.ProjectId;
+        if (projectId) {
+          const project = runtime.repository.find('BuilderProjects','ProjectID',String(projectId));
+          if (!project || project.Active === false || (project.CompanyID && project.CompanyID !== actor.companyId) || (project.BrokerageID && project.BrokerageID !== actor.brokerageId)) { sendJson(res,{ok:false,error:'Project unavailable'},403); return; }
+        }
+        try { sendJson(res,{ok:true,data:await svc.upload({...payload,projectId},actor)},201); }
+        catch (e) { sendJson(res,{ok:false,error:e.message},400); }
+        return;
+      }
+      sendJson(res,{ok:false,error:'Method not supported'},405); return;
+    }
+
     // Vastu analyses are stored against Builder Projects and/or Inventory properties. Final rows
     // are immutable snapshots; edits must start a new draft.
     if (/^\/api\/v2\/vastu-analyses(?:\/.*)?$/i.test(pathname)) {
@@ -1461,10 +1502,15 @@ async function handleApi(req, res, url) {
         if (!permissionFor(propertyId,true)) return;
         const projectId = url.searchParams.get('projectId');
         if (!projectId && !propertyId) { sendJson(res, { ok:false,error:'projectId or propertyId required' }, 400); return; }
-        sendJson(res, { ok:true,data:svc.list(projectId,actor,propertyId) }); return;
+        const rows = svc.list(projectId,actor,propertyId);
+        const mayReadCombined = accessSvc.requirePermissions(actor,['BUILDER_PROJECTS_READ']).ok;
+        sendJson(res, { ok:true,data:propertyId && !mayReadCombined ? rows.filter((row) => row.PropertyID === propertyId) : rows }); return;
       }
       if (collection && req.method === 'POST') {
         if (!permissionFor(bodyForV2?.propertyId,false)) return;
+        if ((bodyForV2?.layouts || []).some((layout) => layout.propertyId && !propertyAccess(layout.propertyId,'INVENTORY_READ'))) {
+          sendJson(res,{ok:false,error:'Layout property unavailable'},403); return;
+        }
         try { sendJson(res, { ok:true,data:svc.saveDraft(bodyForV2 || {},actor) }, 201); }
         catch (e) { sendJson(res, { ok:false,error:e.message }, 400); }
         return;
@@ -2300,11 +2346,21 @@ async function handleApi(req, res, url) {
         if (req.method === 'GET') {
           const shares = runtime.repository.list('BuilderBrochureShares')
             .filter((row) => row.ProjectID === project.data.ProjectID)
-            .map(({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt, RecipientName, RecipientPhone, Channel, ShareStatus, SentAt }) =>
-              ({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt, RecipientName, RecipientPhone, Channel, ShareStatus, SentAt }));
+            .map(({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt, RecipientName, RecipientPhone, LeadID, Channel, ShareStatus, SentAt }) =>
+              ({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt, RecipientName, RecipientPhone, LeadID, Channel, ShareStatus, SentAt }));
           sendJson(res, { ok: true, data: shares }); return;
         }
-        const recipient = normalizeBrochureRecipient(bodyForV2);
+        const leadId = String(bodyForV2?.leadId || '');
+        const lead = leadId ? runtime.repository.find('Leads','LeadID',leadId) : null;
+        if (leadId) {
+          const { AccessControlService } = require('./src/services/accessControlService');
+          if (!new AccessControlService(runtime.repository).authorizeLead(actor,lead,{permissions:['LEADS_VIEW','LEADS_READ'],hideExistence:true}).ok) { sendJson(res,{ok:false,error:'Client unavailable'},403); return; }
+        }
+        const recipient = normalizeBrochureRecipient(lead ? {
+          recipientName:lead.ClientName || lead.Name,
+          recipientPhone:lead.PrimaryMobile || lead.Phone,
+          channel:bodyForV2?.channel
+        } : bodyForV2);
         if (!recipient) { sendJson(res, { ok: false, error: 'Recipient name, valid phone and share channel are required' }, 400); return; }
         const brochure = (project.data.Brochures || []).find((row) =>
           row.verified === true && String(row.downloadStatus || '').toLowerCase() === 'downloaded' &&
@@ -2321,6 +2377,7 @@ async function handleApi(req, res, url) {
           CompanyID: project.data.CompanyID || null,
           BrokerageID: project.data.BrokerageID || null,
           CreatedBy: actor.userId,
+          LeadID: lead?.LeadID || null,
           RecipientName: recipient.name,
           RecipientPhone: recipient.phone,
           Channel: recipient.channel,

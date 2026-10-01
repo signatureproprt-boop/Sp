@@ -59,7 +59,8 @@ const ARRAY_COLLECTION_KEYS = [
   'V2ScoringConfig',
   'PropertyInvestmentAnalyses',
   'VastuAnalyses',
-  'VastuReportRecipients'
+  'VastuReportRecipients',
+  'VastuSources'
 ];
 
 class JsonRepository {
