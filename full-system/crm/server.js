@@ -1233,6 +1233,11 @@ function tenantCheck(record = {}, actor = {}) {
   return { ok: true };
 }
 
+function brochureProjectSlug(name) {
+  return String(name || 'project').normalize('NFKD').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'project';
+}
+
 // ── readJson helper (may be called before V2 dispatch) ──────────────────────
 async function readJsonOnce(req) {
   if (req._parsedBody !== undefined) return req._parsedBody;
@@ -1273,12 +1278,17 @@ async function handleApi(req, res, url) {
       }
     }
 
-    const publicBrochureShare = pathname.match(/^\/api\/v2\/brochure-shares\/([a-f0-9]{64})\/?$/i);
+    const publicBrochureShare = pathname.match(/^\/signature-properties\/([a-z0-9-]{1,80})\/brochure\/([a-f0-9]{64})\/?$/i)
+      || pathname.match(/^\/api\/v2\/brochure-shares\/([a-f0-9]{64})\/?$/i);
     if (publicBrochureShare) {
       if (!['GET', 'HEAD'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
-      const tokenHash = crypto.createHash('sha256').update(publicBrochureShare[1]).digest('hex');
+      const brandedSlug = publicBrochureShare.length === 3 ? publicBrochureShare[1] : null;
+      const tokenHash = crypto.createHash('sha256').update(publicBrochureShare[publicBrochureShare.length - 1]).digest('hex');
       const share = runtime.repository.find('BuilderBrochureShares', 'TokenHash', tokenHash);
-      if (!share || Date.parse(share.ExpiresAt) <= Date.now()) { sendJson(res, { ok: false, error: 'Brochure link expired or unavailable' }, 404); return; }
+      if (!share || Date.parse(share.ExpiresAt) <= Date.now() ||
+          (brandedSlug && brandedSlug !== share.ProjectSlug)) {
+        sendJson(res, { ok: false, error: 'Brochure link expired or unavailable' }, 404); return;
+      }
       const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
       const out = await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectBrochureFile(share.ProjectID);
       if (!out.ok) { sendJson(res, { ok: false, error: 'Brochure unavailable' }, 404); return; }
@@ -1293,7 +1303,7 @@ async function handleApi(req, res, url) {
       }
       res.writeHead(200, withSecurityHeaders({
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'inline; filename="brochure.pdf"',
+        'Content-Disposition': `inline; filename="${share.ProjectSlug || 'project'}-brochure.pdf"`,
         'Cache-Control': 'private, no-store',
         'Content-Length': out.buffer.length
       }));
@@ -2224,6 +2234,7 @@ async function handleApi(req, res, url) {
           ShareID: shareId,
           TokenHash: crypto.createHash('sha256').update(token).digest('hex'),
           ProjectID: project.data.ProjectID,
+          ProjectSlug: brochureProjectSlug(project.data.ProjectName),
           CompanyID: project.data.CompanyID || null,
           BrokerageID: project.data.BrokerageID || null,
           CreatedBy: actor.userId,
@@ -2231,7 +2242,7 @@ async function handleApi(req, res, url) {
           ExpiresAt: new Date(createdAt.getTime() + 30 * 86400000).toISOString(),
           OpenCount: 0
         });
-        sendJson(res, { ok: true, data: { ShareID: shareId, path: `/api/v2/brochure-shares/${token}` } }, 201);
+        sendJson(res, { ok: true, data: { ShareID: shareId, path: `/signature-properties/${brochureProjectSlug(project.data.ProjectName)}/brochure/${token}` } }, 201);
         return;
       }
 
@@ -5222,7 +5233,8 @@ appServer = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/health' || url.pathname.startsWith('/api/')) {
+  if (url.pathname === '/health' || url.pathname.startsWith('/api/') ||
+      /^\/signature-properties\/[a-z0-9-]{1,80}\/brochure\//i.test(url.pathname)) {
     await handleApi(req, res, url);
     return;
   }
