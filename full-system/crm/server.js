@@ -1278,7 +1278,8 @@ async function handleApi(req, res, url) {
       }
     }
 
-    const publicBrochureShare = pathname.match(/^\/signature-properties\/([a-z0-9-]{1,80})\/brochure\/([a-f0-9]{64})\/?$/i)
+    const publicBrochureShare = pathname.match(/^\/brochure\/([a-z0-9-]{1,80})\/([a-f0-9]{64})\/?$/i)
+      || pathname.match(/^\/signature-properties\/([a-z0-9-]{1,80})\/brochure\/([a-f0-9]{64})\/?$/i)
       || pathname.match(/^\/api\/v2\/brochure-shares\/([a-f0-9]{64})\/?$/i);
     if (publicBrochureShare) {
       if (!['GET', 'HEAD'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
@@ -2242,7 +2243,10 @@ async function handleApi(req, res, url) {
           ExpiresAt: new Date(createdAt.getTime() + 30 * 86400000).toISOString(),
           OpenCount: 0
         });
-        sendJson(res, { ok: true, data: { ShareID: shareId, path: `/signature-properties/${brochureProjectSlug(project.data.ProjectName)}/brochure/${token}` } }, 201);
+        sendJson(res, { ok: true, data: {
+          ShareID: shareId,
+          url: `https://signatureproperties.cloud.run/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`
+        } }, 201);
         return;
       }
 
@@ -5234,6 +5238,7 @@ appServer = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/health' || url.pathname.startsWith('/api/') ||
+      /^\/brochure\/[a-z0-9-]{1,80}\//i.test(url.pathname) ||
       /^\/signature-properties\/[a-z0-9-]{1,80}\/brochure\//i.test(url.pathname)) {
     await handleApi(req, res, url);
     return;
