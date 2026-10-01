@@ -9,12 +9,24 @@ function brochureStatusReport(projects, visible = () => true) {
     const failureReason = String(project.Notes || '').match(/Brochure ingest failed:\s*([^|]+)/gi)?.at(-1)?.replace(/^Brochure ingest failed:\s*/i, '').trim() ||
       brochures.find((item) => item?.downloadStatus === 'failed')?.error || '';
     const status = linked.length ? 'Drive linked' : stored.length ? 'Stored outside Drive' : failureReason && (sources.length || brochures.length) ? 'Failed' : sources.length || brochures.length ? 'Pending' : 'No brochure source';
+    const currentFileIds = linked.map((item) => item.DriveFileId || item.DriveFileID).sort();
+    const brochureChecked = project.BrochureReview?.checked === true &&
+      JSON.stringify(project.BrochureReview.fileIds || []) === JSON.stringify(currentFileIds);
+    const missingFields = [
+      ['Builder', project.BuilderName], ['Location', project.Location1], ['Address', project.Address],
+      ['Configuration', project.ConfigDetails?.length || project.Configurations?.length],
+      ['Price', project.PriceRange?.min ?? project.PriceRange?.max], ['Possession', project.PossessionDate],
+      ['RERA', project.RERANumber], ['Overview', project.Overview || project.Description]
+    ].filter(([, value]) => value == null || value === '' || value === 0).map(([label]) => label);
     return {
       projectId: project.ProjectID || '', projectName: project.ProjectName || '', builderName: project.BuilderName || '',
       status, brochureCount: linked.length,
       filenames: linked.map((item) => item.Filename || item.filename || '').filter(Boolean).join('; '),
       driveFileIds: linked.map((item) => item.DriveFileId || item.DriveFileID).join('; '),
-      sourceUrls: [...new Set(sources)].join('; '), failureReason: linked.length ? '' : failureReason
+      sourceUrls: [...new Set(sources)].join('; '), failureReason: linked.length ? '' : failureReason,
+      missingFields, formComplete: missingFields.length === 0,
+      brochureChecked, brochureCheckedBy: brochureChecked ? project.BrochureReview.checkedBy || '' : '', brochureCheckedAt: brochureChecked ? project.BrochureReview.checkedAt || '' : '',
+      formVerified: project.FormReview?.checked === true, formVerifiedBy: project.FormReview?.checkedBy || '', formVerifiedAt: project.FormReview?.checkedAt || ''
     };
   }).sort((a, b) => a.projectName.localeCompare(b.projectName) || a.projectId.localeCompare(b.projectId));
   const counts = { totalProjects: rows.length, driveLinked: 0, storedOutsideDrive: 0, failed: 0, pending: 0, noBrochureSource: 0, linkedFiles: 0 };
@@ -29,7 +41,7 @@ function brochureStatusReport(projects, visible = () => true) {
   return { ok: true, generatedAt: new Date().toISOString(), counts, rows };
 }
 
-const CSV_COLUMNS = ['projectId', 'projectName', 'builderName', 'status', 'brochureCount', 'filenames', 'driveFileIds', 'sourceUrls', 'failureReason'];
+const CSV_COLUMNS = ['projectId', 'projectName', 'builderName', 'status', 'brochureCount', 'filenames', 'driveFileIds', 'sourceUrls', 'failureReason', 'missingFields', 'formComplete', 'brochureChecked', 'brochureCheckedBy', 'brochureCheckedAt', 'formVerified', 'formVerifiedBy', 'formVerifiedAt'];
 function reportCsv(report) {
   const quote = (value) => {
     const text = String(value ?? '');

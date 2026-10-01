@@ -2171,6 +2171,21 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      const reviewMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^/]+)\/review\/?$/i);
+      if (reviewMatch) {
+        if (req.method !== 'PATCH') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const project = svc.get(decodeURIComponent(reviewMatch[1]));
+        if (!project.ok) { sendJson(res, project, 404); return; }
+        const tenant = tenantCheck(project.data, actor);
+        if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+        const kind = bodyForV2?.kind;
+        if (!['brochure', 'form'].includes(kind) || typeof bodyForV2?.checked !== 'boolean') {
+          sendJson(res, { ok: false, error: 'kind and checked are required' }, 400); return;
+        }
+        sendJson(res, svc.setReview(project.data.ProjectID, kind, bodyForV2.checked, actor.userId));
+        return;
+      }
+
       const brochureByProjectMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/brochure\/?$/i);
       if (brochureByProjectMatch) {
         if (req.method !== 'GET' && req.method !== 'HEAD') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
@@ -2288,7 +2303,11 @@ async function handleApi(req, res, url) {
       const mediaDeleteMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^\/]+)\/media\/([^\/]+)\/?$/i);
       if (mediaDeleteMatch) {
         if (req.method !== 'DELETE') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
-        const out = svc.removeMedia(mediaDeleteMatch[1], mediaDeleteMatch[2]);
+        const project = svc.get(decodeURIComponent(mediaDeleteMatch[1]));
+        if (!project.ok) { sendJson(res, project, 404); return; }
+        const tenant = tenantCheck(project.data, actor);
+        if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+        const out = svc.removeMedia(project.data.ProjectID, decodeURIComponent(mediaDeleteMatch[2]));
         sendJson(res, out, out.ok ? 200 : 404);
         return;
       }
@@ -2333,8 +2352,15 @@ async function handleApi(req, res, url) {
           }
           sendJson(res, out, out.ok ? 200 : 404); return;
         }
-        if (req.method === 'PATCH') { const out = svc.update(id, bodyForV2 || {}); sendJson(res, out, out.ok ? 200 : 400); return; }
-        if (req.method === 'DELETE') { const out = svc.remove(id); sendJson(res, out, out.ok ? 200 : 404); return; }
+        if (req.method === 'PATCH' || req.method === 'DELETE') {
+          const project = svc.get(id);
+          if (!project.ok) { sendJson(res, project, 404); return; }
+          const tenant = tenantCheck(project.data, actor);
+          if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+          const out = req.method === 'PATCH' ? svc.update(id, bodyForV2 || {}) : svc.remove(id);
+          sendJson(res, out, out.ok ? 200 : req.method === 'PATCH' ? 400 : 404);
+          return;
+        }
         sendJson(res, { ok: false, error: 'Method not supported' }, 405);
         return;
       }
@@ -2348,6 +2374,11 @@ async function handleApi(req, res, url) {
             location: url.searchParams.get('location'),
             status: url.searchParams.get('status'),
             category: url.searchParams.get('category'),
+            bhk: url.searchParams.get('bhk'),
+            carpetMin: url.searchParams.get('carpetMin'),
+            carpetMax: url.searchParams.get('carpetMax'),
+            builtUpMin: url.searchParams.get('builtUpMin'),
+            builtUpMax: url.searchParams.get('builtUpMax'),
             page: url.searchParams.get('page') || 1,
             limit: url.searchParams.get('limit') || 50,
             visible: (row) => tenantCheck(row, actor).ok

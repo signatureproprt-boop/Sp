@@ -308,11 +308,23 @@ class BuilderProjectService {
   }
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
-  list({ q, location, status, category } = {}) {
+  list({ q, location, status, category, bhk, carpetMin, carpetMax, builtUpMin, builtUpMax } = {}) {
     let rows = this.repo.list('BuilderProjects').filter((p) => p.Active !== false);
     if (location) rows = rows.filter((p) => String(p.Location1 || '').toLowerCase() === String(location).toLowerCase());
     if (status) rows = rows.filter((p) => p.ProjectStatus === status);
     if (category) rows = rows.filter((p) => p.Category === category);
+    if (bhk || carpetMin || carpetMax || builtUpMin || builtUpMax) {
+      const minCarpet = parseNum(carpetMin), maxCarpet = parseNum(carpetMax);
+      const minBuiltUp = parseNum(builtUpMin), maxBuiltUp = parseNum(builtUpMax);
+      rows = rows.filter((p) => (p.ConfigDetails || []).some((c) => {
+        if (bhk && String(c.Type || '').toLowerCase() !== String(bhk).toLowerCase()) return false;
+        const carpet = parseNum(c.CarpetAreaSqft), builtUp = parseNum(c.BuiltUpAreaSqft);
+        return (minCarpet == null || carpet != null && carpet >= minCarpet) &&
+          (maxCarpet == null || carpet != null && carpet <= maxCarpet) &&
+          (minBuiltUp == null || builtUp != null && builtUp >= minBuiltUp) &&
+          (maxBuiltUp == null || builtUp != null && builtUp <= maxBuiltUp);
+      }));
+    }
     if (q) {
       const qq = String(q).toLowerCase();
       rows = rows.filter((p) =>
@@ -434,10 +446,15 @@ class BuilderProjectService {
     if (payload.ConfigDetails !== undefined) {
       out.ConfigDetails = Array.isArray(payload.ConfigDetails)
         ? payload.ConfigDetails.filter((c) => c && String(c.Type || '').trim())
-          .map((c) => ({ Type: String(c.Type).trim(), AreaSqft: c.AreaSqft != null && c.AreaSqft !== '' ? parseNum(c.AreaSqft) : null }))
+          .map((c) => ({
+            Type: String(c.Type).trim(),
+            AreaSqft: c.AreaSqft != null && c.AreaSqft !== '' ? parseNum(c.AreaSqft) : null,
+            CarpetAreaSqft: c.CarpetAreaSqft != null && c.CarpetAreaSqft !== '' ? parseNum(c.CarpetAreaSqft) : null,
+            BuiltUpAreaSqft: c.BuiltUpAreaSqft != null && c.BuiltUpAreaSqft !== '' ? parseNum(c.BuiltUpAreaSqft) : null
+          }))
         : [];
       out.Configurations = out.ConfigDetails.map((c) => c.Type);
-      const areas = out.ConfigDetails.map((c) => c.AreaSqft).filter((a) => a != null);
+      const areas = out.ConfigDetails.map((c) => c.CarpetAreaSqft ?? c.AreaSqft).filter((a) => a != null);
       out.AreaRange = areas.length ? { min: Math.min(...areas), max: Math.max(...areas) } : null;
     }
     return out;
@@ -555,9 +572,25 @@ class BuilderProjectService {
     const merged = { ...row, ...clean };
     const duplicate = this._findDuplicateProject(merged, id);
     if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
+    const changed = Object.entries(clean).some(([key, value]) => JSON.stringify(row[key]) !== JSON.stringify(value));
     Object.assign(row, clean, { UpdatedAt: new Date().toISOString() });
+    if (changed) row.FormReview = null;
     this.repo.write(db);
     return { ok: true, data: row };
+  }
+
+  setReview(id, kind, checked, userId) {
+    const db = this.repo.read();
+    const row = this._all(db).find((p) => p.ProjectID === id && p.Active !== false);
+    if (!row) return { ok: false, error: 'Project not found' };
+    const key = kind === 'brochure' ? 'BrochureReview' : 'FormReview';
+    const fileIds = (row.Brochures || []).filter((item) => item?.verified === true && (item.DriveFileId || item.DriveFileID))
+      .map((item) => item.DriveFileId || item.DriveFileID).sort();
+    if (kind === 'brochure' && checked && !fileIds.length) return { ok: false, error: 'Link a verified Drive brochure before checking it' };
+    row[key] = checked ? { checked: true, checkedBy: userId, checkedAt: new Date().toISOString(), ...(kind === 'brochure' ? { fileIds } : {}) } : null;
+    row.UpdatedAt = new Date().toISOString();
+    this.repo.write(db);
+    return { ok: true, data: row[key] };
   }
 
   remove(id) {
