@@ -13,7 +13,7 @@
     main { max-width: 1200px; margin: auto; padding: 20px; }
     h1 { margin: 0 0 6px; font-size: 25px; }
     .muted { color: #655b52; font-size: 14px; line-height: 1.5; }
-    .layout { display: grid; grid-template-columns: minmax(240px, 300px) 1fr; gap: 18px; margin-top: 16px; }
+    .layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 18px; margin-top: 16px; }
     .panel { background: white; border: 1px solid #e7d9c5; border-radius: 12px; padding: 18px; }
     label { display: block; font-weight: 700; margin: 15px 0 7px; font-size: 14px; }
     input[type=file], select, input[type=range] { width: 100%; }
@@ -23,7 +23,7 @@
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
     .secondary { background: #eee4d5; color: #3f2618; }
     canvas { display: block; width: 100%; max-width: none; height: auto; border: 1px solid #e7d9c5; border-radius: 8px; touch-action: none; cursor: crosshair; background: #f3eee7; }
-    .canvas-wrap { overflow: auto; }
+    .canvas-wrap { min-width: 0; overflow: auto; }
     #message { min-height: 20px; color: #8b371e; margin-top: 12px; font-size: 14px; }
     .print-heading { display: none; }
     .region-fields { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; }
@@ -307,7 +307,7 @@
     function setPreviewZoom() {
       const zoom = Number(document.getElementById('preview-zoom').value);
       document.getElementById('zoom-value').textContent = zoom + '%';
-      const base = Math.min(900, Math.max(240, canvas.parentElement.clientWidth - 36));
+      const base = Math.max(1, canvas.parentElement.clientWidth - 36);
       canvas.style.width = `${Math.round(base * zoom / 100)}px`;
     }
     document.getElementById('preview-zoom').addEventListener('input', setPreviewZoom);
@@ -319,6 +319,7 @@
       document.getElementById('align-north').textContent = '🧭 Align North from brochure';
     }
     function draw() {
+      canvas.style.touchAction = cropMode || alignMode ? 'none' : 'pan-x pan-y';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!image) {
         ctx.fillStyle = '#f3eee7'; ctx.fillRect(0, 0, canvas.width, canvas.height);
