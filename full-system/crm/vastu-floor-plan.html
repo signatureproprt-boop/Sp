@@ -17,7 +17,7 @@
     .panel { background: white; border: 1px solid #e7d9c5; border-radius: 12px; padding: 18px; }
     label { display: block; font-weight: 700; margin: 15px 0 7px; font-size: 14px; }
     input[type=file], select, input[type=range] { width: 100%; }
-    select, input[type=file] { padding: 9px; border: 1px solid #bcae9c; border-radius: 8px; background: white; }
+    select, input[type=file], input[type=text], #unit-fields input { width:100%; padding: 9px; border: 1px solid #bcae9c; border-radius: 8px; background: white; }
     button { border: 0; border-radius: 8px; background: #633718; color: white; padding: 11px 14px; font-weight: 700; cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
@@ -57,6 +57,13 @@
     <div class="layout">
       <section class="panel" aria-label="Vastu controls">
         <strong id="project-name">Floor plan</strong>
+        <label for="property-type">Property type</label>
+        <select id="property-type"><option value="residential">Residential</option><option value="commercial">Commercial</option></select>
+        <label for="space-type">Unit type</label>
+        <select id="space-type"></select>
+        <label for="layout-count">Layouts on brochure page</label>
+        <select id="layout-count"><option value="1">1 layout</option><option value="2">2 layouts</option><option value="4">4 layouts</option></select>
+        <p class="muted">Choose the unit type and count before confirming the brochure layouts. North comes only from the printed compass.</p>
         <label for="project-brochure">Project brochure PDF</label>
         <button id="project-brochure" class="secondary" type="button" disabled>Open stored brochure</button>
         <label for="local-brochure">Or upload brochure PDF</label>
@@ -74,6 +81,11 @@
           <label>Width %<input id="region-w" type="number" min="1" max="100" step="0.1"></label>
           <label>Height %<input id="region-h" type="number" min="1" max="100" step="0.1"></label>
         </div>
+        <div id="unit-fields" hidden>
+          <label for="unit-name">Flat / Shop / Office number</label><input id="unit-name" maxlength="80" placeholder="e.g. A-1201" />
+          <label for="tower-name">Tower / Building</label><input id="tower-name" maxlength="80" />
+          <label for="floor-name">Floor</label><input id="floor-name" maxlength="40" />
+        </div>
         <div class="actions"><button id="layout-confirm" class="secondary" disabled>Confirm layout</button><button id="layout-delete" class="secondary" disabled>Remove layout</button></div>
         <label for="project-plans">Project floor plan</label>
         <select id="project-plans"><option value="">Select a project plan</option></select>
@@ -81,6 +93,7 @@
         <input id="local-plan" type="file" accept="image/jpeg,image/png,image/webp" />
         <button id="align-north" class="secondary" type="button" disabled style="margin-top:14px">🧭 Align North from brochure</button>
         <div id="north-source" class="muted">North reference not set</div>
+        <label><input id="north-scope-confirm" type="checkbox" /> Printed North is the same for every layout on this page (check all layout compasses first)</label>
         <label for="preview-zoom">Preview zoom: <output id="zoom-value">100%</output></label>
         <input id="preview-zoom" type="range" min="100" max="300" step="25" value="100" />
         <label for="north-angle">North direction: <output id="north-value">0° (up)</output></label>
@@ -88,6 +101,9 @@
         <label for="room-type">Mark room on selected layout</label>
         <select id="room-type"><option value="">Select a room, then tap its center</option><option>Entrance</option><option>Kitchen</option><option>Master bedroom</option><option>Bedroom</option><option>Puja</option><option>Living room</option><option>Toilet</option><option>Balcony</option></select>
         <div id="room-list" class="muted"></div>
+        <label for="saved-analysis">Saved analyses for this project</label>
+        <select id="saved-analysis"><option value="">Start new analysis</option></select>
+        <div class="actions"><button id="save-draft" class="secondary" type="button" disabled>Save draft</button><button id="finalize-analysis" class="secondary" type="button" disabled>Finalize review</button></div>
         <label for="compass-size">Compass radius: <output id="size-value">40%</output></label>
         <input id="compass-size" type="range" min="15" max="70" value="40" />
         <label for="opacity">Overlay opacity: <output id="opacity-value">70%</output></label>
@@ -97,6 +113,14 @@
         <label for="paper-orientation">Orientation</label>
         <select id="paper-orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
         <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="print" class="secondary" disabled>Print plan</button><button id="report-button" class="secondary" disabled>Print all layout reports</button><button id="reset" class="secondary">Reset center</button></div>
+        <label for="client-search">After sending PDF, record the client</label>
+        <input id="client-search" placeholder="Search client name or mobile" autocomplete="off" />
+        <select id="client-select"><option value="">Select client</option></select>
+        <label for="share-channel">How was it shared?</label>
+        <select id="share-channel"><option value="whatsapp">WhatsApp (manual)</option><option value="email">Email (manual)</option><option value="download">Downloaded for client</option></select>
+        <button id="record-share" class="secondary" type="button" disabled>Record manual share</button>
+        <div id="share-history" class="muted"></div>
+        <p class="muted">This records your action in CRM. It does not claim WhatsApp delivery or identify who opened a file.</p>
         <p class="muted">North angle brochure ke printed compass se hi set hota hai. Room label select karne ke baad layout par tap karein. Report mein sirf confirmed layouts/rooms jayenge.</p>
         <div id="message" role="status"></div>
       </section>
@@ -117,16 +141,44 @@
     let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, sourceVersion = 0;
     let alignMode = null, northOrigin = null;
     let sourceImage = null, regions = [], selectedRegion = -1, northLocked = false;
+    let sourceHash = '', sourceName = '', northReference = null, analysisId = null, analysisStatus = 'draft', finalIdentity = null, finalProjectName = '';
+    const spaceConfig = {
+      residential: { units:['Flat','Penthouse','Villa','Other residential'], rooms:['Entrance','Living room','Kitchen','Master bedroom','Bedroom','Puja','Toilet','Balcony','Staircase'] },
+      commercial: { units:['Shop','Office','Showroom','Mixed use commercial'], rooms:['Entrance','Reception/Counter','Owner cabin','Work area','Storage','Pantry','Washroom','Staircase'] }
+    };
     const byId = (id) => document.getElementById(id);
+    function configureSpaces() {
+      const type = byId('property-type').value, config = spaceConfig[type];
+      byId('space-type').replaceChildren(...config.units.map((item) => new Option(item,item)));
+      byId('room-type').replaceChildren(new Option('Select a space, then tap its center',''),...config.rooms.map((item) => new Option(item,item)));
+    }
+    byId('property-type').addEventListener('change', () => {
+      if (analysisStatus === 'final') { message('Final analysis is read-only. Reload source to create a new draft.'); return; }
+      if (regions.some((r) => r.rooms.length) && !confirm('Space type change karne se marked rooms clear honge. Continue?')) { byId('property-type').value = byId('property-type').dataset.previous || 'residential'; return; }
+      regions.forEach((r) => { r.rooms = []; r.confirmed = false; });
+      byId('property-type').dataset.previous = byId('property-type').value;
+      configureSpaces(); renderRegionSelect(); selectRegion(selectedRegion);
+    });
+    byId('layout-count').addEventListener('change', () => {
+      if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
+      const limit = Number(byId('layout-count').value);
+      if (regions.length > limit) { byId('layout-count').value = String(regions.length <= 2 ? 2 : 4); message('Extra layouts remove karein before changing count.'); }
+    });
+    async function hashBytes(bytes) {
+      const digest = await crypto.subtle.digest('SHA-256',bytes);
+      return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2,'0')).join('');
+    }
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
     function currentRegion() { return regions[selectedRegion]; }
     function selectRegion(index) {
       selectedRegion = index; const region = currentRegion();
       byId('layout-select').value = index < 0 ? '' : String(index);
       byId('region-fields').hidden = !region;
-      byId('layout-confirm').disabled = byId('layout-delete').disabled = !region;
+      byId('unit-fields').hidden = !region;
+      byId('layout-confirm').disabled = byId('layout-delete').disabled = !region || analysisStatus === 'final';
       if (region) {
         for (const key of ['x','y','w','h']) byId('region-' + key).value = +(region[key] * 100).toFixed(1);
+        byId('unit-name').value = region.unit || ''; byId('tower-name').value = region.tower || ''; byId('floor-name').value = region.floor || '';
         const crop = document.createElement('canvas');
         crop.width = Math.max(1, Math.round(region.w * sourceImage.width));
         crop.height = Math.max(1, Math.round(region.h * sourceImage.height));
@@ -140,10 +192,26 @@
     function renderRegionSelect() {
       byId('layout-select').replaceChildren(new Option('Full brochure page', ''));
       regions.forEach((region, i) => byId('layout-select').add(new Option(`Layout ${i + 1}${region.confirmed ? ' ✓' : ' — confirm boundary'}`, String(i))));
-      byId('report-button').disabled = !northLocked || !regions.some((r) => r.confirmed);
+      byId('report-button').disabled = analysisStatus !== 'final' || !regions.some((r) => r.confirmed);
+      byId('download').disabled = !northLocked;
+      byId('print').disabled = !northLocked;
+      byId('save-draft').disabled = !northLocked || !regions.length || !sourceHash || analysisStatus === 'final';
+      byId('finalize-analysis').disabled = !northLocked || !regions.length || !sourceHash || analysisStatus === 'final';
+      byId('record-share').disabled = analysisStatus !== 'final';
+      const locked = analysisStatus === 'final';
+      for (const id of ['property-type','space-type','layout-count','room-type','unit-name','tower-name','floor-name','region-x','region-y','region-w','region-h']) byId(id).disabled = locked;
+      byId('north-scope-confirm').disabled = locked;
+      byId('crop').disabled = locked || !sourceImage;
+      byId('suggest-layouts').disabled = locked || !sourceImage;
+      byId('layout-confirm').disabled = locked || !currentRegion();
+      byId('layout-delete').disabled = locked || !currentRegion();
     }
     function resetRegions(source) {
       sourceImage = source; regions = []; selectedRegion = -1; northLocked = false;
+      northReference = null; analysisId = null; analysisStatus = 'draft'; finalIdentity = null; finalProjectName = '';
+      byId('north-scope-confirm').checked = false;
+      byId('report').replaceChildren(); byId('report').classList.remove('active');
+      byId('share-history').replaceChildren();
       renderRegionSelect(); selectRegion(-1);
     }
     function suggestRegions(source) {
@@ -182,10 +250,11 @@
       const region = currentRegion(); if (!region) return;
       region.rooms.forEach((room, i) => {
         const line = document.createElement('div');
-        line.textContent = `${room.type}: ${roomDirection(room)} `;
+        line.textContent = `${room.type}: ${analysisStatus === 'final' ? room.direction : roomDirection(room)} `;
         const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary';
         remove.textContent = '×'; remove.setAttribute('aria-label', `Remove ${room.type}`);
-        remove.addEventListener('click', () => { region.rooms.splice(i, 1); renderRooms(); draw(); });
+        remove.disabled = analysisStatus === 'final';
+        remove.addEventListener('click', () => { if (analysisStatus === 'final') return; region.rooms.splice(i, 1); renderRooms(); draw(); });
         line.append(remove); box.append(line);
       });
     }
@@ -205,7 +274,7 @@
     document.getElementById('preview-zoom').addEventListener('input', setPreviewZoom);
     window.addEventListener('resize', setPreviewZoom);
     function resetNorth() {
-      alignMode = null; northOrigin = null; northLocked = false; controls.angle.value = '0';
+      alignMode = null; northOrigin = null; northReference = null; northLocked = false; controls.angle.value = '0';
       document.getElementById('north-value').textContent = '0° (up)';
       document.getElementById('north-source').textContent = 'North reference not set';
       document.getElementById('align-north').textContent = '🧭 Align North from brochure';
@@ -227,6 +296,7 @@
         }
         return;
       }
+      if (!northLocked) return;
       const radius = Math.max(0, Math.min(
         Math.min(canvas.width, canvas.height) * Number(controls.size.value) / 100,
         x, y, canvas.width - x, canvas.height - y
@@ -253,8 +323,9 @@
         const px = room.x * canvas.width, py = room.y * canvas.height;
         ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fillStyle = '#a32212'; ctx.fill();
         ctx.font = 'bold 15px system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.lineWidth = 3; ctx.strokeStyle = 'white'; ctx.strokeText(`${room.type} · ${roomDirection(room)}`, px + 10, py);
-        ctx.fillStyle = '#2e190e'; ctx.fillText(`${room.type} · ${roomDirection(room)}`, px + 10, py);
+        const label = `${room.type} · ${analysisStatus === 'final' ? room.direction : roomDirection(room)}`;
+        ctx.lineWidth = 3; ctx.strokeStyle = 'white'; ctx.strokeText(label, px + 10, py);
+        ctx.fillStyle = '#2e190e'; ctx.fillText(label, px + 10, py);
       });
     }
     function showImage(src, local = false) {
@@ -269,18 +340,19 @@
         canvas.width = Math.round(next.naturalWidth * scale);
         canvas.height = Math.round(next.naturalHeight * scale);
         center = { x: .5, y: .5 }; resetNorth(); resetRegions(next); draw(); message('Printed compass center aur N tip mark karein.');
-        document.getElementById('download').disabled = false;
-        document.getElementById('print').disabled = false;
+        document.getElementById('download').disabled = true;
+        document.getElementById('print').disabled = true;
         document.getElementById('align-north').disabled = false;
         byId('suggest-layouts').disabled = false;
       };
       next.onerror = () => message('Project image could not be opened. Upload the floor plan file instead.');
       next.src = src;
     }
-    async function openBrochure(bytes) {
+    async function openBrochure(bytes, name = 'brochure.pdf') {
       const version = ++sourceVersion;
       message('Loading PDF pages…');
       try {
+        const fingerprint = await hashBytes(bytes);
         if (!pdfjs) {
           pdfjs = await import('/assets/pdfjs/pdf.mjs');
           pdfjs.GlobalWorkerOptions.workerSrc = '/assets/pdfjs/pdf.worker.mjs';
@@ -289,6 +361,7 @@
         if (version !== sourceVersion) { await nextPdf.destroy(); return; }
         if (pdf) await pdf.destroy();
         pdf = nextPdf;
+        sourceHash = fingerprint; sourceName = name;
         const pages = document.getElementById('brochure-page');
         pages.replaceChildren();
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -315,8 +388,8 @@
         center = { x: .5, y: .5 }; cropMode = false; resetNorth(); resetRegions(bitmap);
         document.getElementById('crop').disabled = false;
         document.getElementById('crop').textContent = 'Crop layout from page';
-        document.getElementById('download').disabled = false;
-        document.getElementById('print').disabled = false;
+        document.getElementById('download').disabled = true;
+        document.getElementById('print').disabled = true;
         document.getElementById('align-north').disabled = false;
         byId('suggest-layouts').disabled = false;
         draw(); message(`Page ${pageNumber} ready. Select the layout area if needed, then set North.`);
@@ -330,16 +403,17 @@
         message('Downloading stored brochure…');
         const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
         if (!response.ok) throw new Error('Verified stored brochure unavailable');
-        await openBrochure(await response.arrayBuffer());
+        await openBrochure(await response.arrayBuffer(),'stored-project-brochure.pdf');
       } catch (error) { message(error.message); }
     });
     document.getElementById('local-brochure').addEventListener('change', async (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
       if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { message('Use a PDF brochure.'); return; }
-      await openBrochure(await file.arrayBuffer());
+      await openBrochure(await file.arrayBuffer(),file.name);
     });
     document.getElementById('crop').addEventListener('click', () => {
+      if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
       if (!northLocked) { message('Pehle printed brochure compass se North lock karein.'); return; }
       if (selectedRegion >= 0) selectRegion(-1);
       cropMode = !cropMode; cropStart = null; cropEnd = null;
@@ -348,9 +422,10 @@
       message(cropMode ? 'Drag from one corner of the layout to the opposite corner.' : 'Crop cancelled.'); draw();
     });
     byId('suggest-layouts').addEventListener('click', () => {
+      if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
       if (!northLocked || !sourceImage) { message('Pehle printed compass se North lock karein.'); return; }
       if (regions.some((r) => r.confirmed || r.rooms.length)) { message('Confirmed layouts hain. Naye page par suggestions use karein, ya manual crop add karein.'); return; }
-      regions = suggestRegions(sourceImage); renderRegionSelect(); selectRegion(0);
+      regions = suggestRegions(sourceImage).slice(0,Number(byId('layout-count').value)); renderRegionSelect(); selectRegion(0);
       message(`${regions.length} possible layout boundary/boundaries suggested. Har boundary check, correct aur Confirm layout karein.`);
     });
     const pointerPosition = (event) => {
@@ -358,16 +433,30 @@
       return { x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
         y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)) };
     };
-    document.getElementById('local-plan').addEventListener('change', (event) => {
+    document.getElementById('local-plan').addEventListener('change', async (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
       if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { message('Use a JPG, PNG or WebP floor plan.'); return; }
       if (objectUrl) URL.revokeObjectURL(objectUrl);
+      sourceHash = await hashBytes(await file.arrayBuffer()); sourceName = file.name;
       objectUrl = URL.createObjectURL(file); controls.plans.value = ''; showImage(objectUrl, true);
     });
-    controls.plans.addEventListener('change', () => { if (controls.plans.value) showImage(controls.plans.value); });
+    controls.plans.addEventListener('change', async () => {
+      if (!controls.plans.value) return;
+      try {
+        const response = await fetch(controls.plans.value);
+        if (!response.ok) throw new Error('Plan unavailable');
+        sourceHash = await hashBytes(await response.arrayBuffer()); sourceName = controls.plans.selectedOptions[0].textContent;
+        showImage(controls.plans.value);
+      } catch (e) { message(e.message); }
+    });
     byId('layout-select').addEventListener('change', () => selectRegion(byId('layout-select').value === '' ? -1 : Number(byId('layout-select').value)));
+    for (const key of ['unit','tower','floor']) byId(key + '-name').addEventListener('input', () => {
+      if (analysisStatus === 'final') return;
+      const region = currentRegion(); if (region) region[key] = byId(key + '-name').value;
+    });
     for (const key of ['x','y','w','h']) byId('region-' + key).addEventListener('change', () => {
+      if (analysisStatus === 'final') { selectRegion(selectedRegion); return; }
       const region = currentRegion(); if (!region) return;
       const values = Object.fromEntries(['x','y','w','h'].map((k) => [k, Number(byId('region-' + k).value) / 100]));
       if (!Object.values(values).every(Number.isFinite) || values.w < .03 || values.h < .03 || values.x < 0 || values.y < 0 || values.x + values.w > 1 || values.y + values.h > 1) {
@@ -377,10 +466,12 @@
       message('Boundary updated. Confirm layout again and mark rooms.');
     });
     byId('layout-confirm').addEventListener('click', () => {
+      if (analysisStatus === 'final') return;
       const region = currentRegion(); if (!region || !northLocked) return;
       region.confirmed = true; renderRegionSelect(); message('Layout boundary confirmed. Rooms mark karein.');
     });
     byId('layout-delete').addEventListener('click', () => {
+      if (analysisStatus === 'final') return;
       if (selectedRegion < 0) return; regions.splice(selectedRegion, 1); renderRegionSelect(); selectRegion(-1);
     });
     document.getElementById('align-north').addEventListener('click', () => {
@@ -392,6 +483,7 @@
     });
     canvas.addEventListener('pointerdown', (event) => {
       if (!image) return;
+      if (analysisStatus === 'final') { message('Final snapshot is read-only.'); return; }
       if (cropMode) { cropStart = pointerPosition(event); cropEnd = cropStart; canvas.setPointerCapture(event.pointerId); return; }
       if (alignMode === 'center') {
         northOrigin = pointerPosition(event); alignMode = 'north'; draw();
@@ -403,6 +495,7 @@
         const dy = (tip.y - northOrigin.y) * canvas.height;
         if (Math.hypot(dx, dy) < 12) { message('N arrow center se door hona chahiye. Dobara N par tap karein.'); return; }
         const degrees = (Math.round(Math.atan2(dy, dx) * 180 / Math.PI + 90) + 360) % 360;
+        northReference = { centerX:northOrigin.x,centerY:northOrigin.y,tipX:tip.x,tipY:tip.y };
         controls.angle.value = String(degrees);
         document.getElementById('north-value').textContent = degrees + '°' + (degrees === 0 ? ' (up)' : '');
         document.getElementById('north-source').textContent = 'North angle calculated from marked brochure compass';
@@ -437,7 +530,7 @@
       const h = Math.round(Math.abs(cropStart.y - cropEnd.y) * canvas.height);
       cropStart = null; cropMode = false; document.getElementById('crop').textContent = 'Crop layout from page';
       if (w < 30 || h < 30) { message('Crop too small. Drag around the full layout.'); draw(); return; }
-      if (regions.length >= 4) { message('Ek page par maximum 4 layouts. Dusra brochure page select karein.'); draw(); return; }
+      if (regions.length >= Number(byId('layout-count').value)) { message('Selected layout count reached. Setup count change karein ya next page select karein.'); draw(); return; }
       regions.push({ x: x / sourceImage.width, y: y / sourceImage.height, w: w / sourceImage.width, h: h / sourceImage.height, confirmed: false, rooms: [] });
       renderRegionSelect(); selectRegion(regions.length - 1);
       message('Layout boundary check karke Confirm layout dabayein. Phir full page par next layout add karein.');
@@ -445,7 +538,104 @@
     for (const [key, output, suffix] of [['size','size-value','%'],['opacity','opacity-value','%']]) {
       controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix; draw(); });
     }
-    document.getElementById('reset').addEventListener('click', () => { center = { x: .5, y: .5 }; draw(); });
+    document.getElementById('reset').addEventListener('click', () => { if (analysisStatus === 'final') return; center = { x: .5, y: .5 }; draw(); });
+    function currentPayload() {
+      return {
+        analysisId,projectId:new URLSearchParams(location.search).get('projectId'),
+        propertyType:byId('property-type').value,spaceType:byId('space-type').value,
+        layoutCount:Number(byId('layout-count').value),
+        source:{ sha256:sourceHash,name:sourceName,page:pdf ? Number(byId('brochure-page').value) : 1,width:sourceImage?.width,height:sourceImage?.height },
+        north:{ ...northReference,scopeConfirmed:byId('north-scope-confirm').checked },
+        layouts:regions.map((r) => ({ x:r.x,y:r.y,w:r.w,h:r.h,unit:r.unit,tower:r.tower,floor:r.floor,confirmed:r.confirmed,rooms:r.rooms.map((m) => ({ type:m.type,x:m.x,y:m.y })) }))
+      };
+    }
+    async function apiJson(url, options = {}) {
+      const response = await fetch(url, { credentials:'same-origin',headers:{ 'Content-Type':'application/json' },...options });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+      return result.data;
+    }
+    async function refreshSaved() {
+      const projectId = new URLSearchParams(location.search).get('projectId'); if (!projectId) return;
+      try {
+        const rows = await apiJson(`/api/v2/vastu-analyses?projectId=${encodeURIComponent(projectId)}`);
+        byId('saved-analysis').replaceChildren(new Option('Start new analysis',''),...rows.sort((a,b) => String(b.UpdatedAt).localeCompare(String(a.UpdatedAt))).map((r) =>
+          new Option(`${r.Status.toUpperCase()} · ${r.PropertyType} · ${r.Source.name || 'brochure'} page ${r.Source.page} · ${new Date(r.UpdatedAt).toLocaleDateString()}`,r.AnalysisID)));
+        if (analysisId) byId('saved-analysis').value = analysisId;
+      } catch (e) { message(`Saved analyses unavailable: ${e.message}`); }
+    }
+    byId('save-draft').addEventListener('click', async () => {
+      if (!sourceHash || !northReference) { message('Brochure/plan source aur printed North required.'); return; }
+      try {
+        const row = await apiJson('/api/v2/vastu-analyses',{ method:'POST',body:JSON.stringify(currentPayload()) });
+        analysisId = row.AnalysisID; analysisStatus = 'draft'; await refreshSaved();
+        message(`Draft saved: ${analysisId}. Finalize karne se pehle sab layouts aur rooms verify karein.`);
+      } catch (e) { message(`Save failed: ${e.message}`); }
+    });
+    byId('finalize-analysis').addEventListener('click', async () => {
+      if (regions.length !== Number(byId('layout-count').value) || regions.some((r) => !r.confirmed || !r.rooms.length)) { message('Selected count ke har layout ko confirm karein aur spaces mark karein.'); return; }
+      try {
+        // Save the latest marks before freezing the final snapshot.
+        const draft = await apiJson('/api/v2/vastu-analyses',{ method:'POST',body:JSON.stringify(currentPayload()) });
+        analysisId = draft.AnalysisID;
+        const row = await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(analysisId)}/finalize`,{ method:'POST',body:'{}' });
+        analysisStatus = 'final'; finalIdentity = row.IdentitySnapshot; finalProjectName = row.ProjectName;
+        regions = row.Layouts.map((r) => ({...r,rooms:r.rooms.map((m) => ({...m}))}));
+        renderRegionSelect(); selectRegion(selectedRegion); await refreshSaved(); await refreshShares(); message('Final snapshot saved. Print all layout reports is ready. Changes need a new analysis.');
+      } catch (e) { message(`Finalize failed: ${e.message}`); }
+    });
+    byId('saved-analysis').addEventListener('change', async () => {
+      const id = byId('saved-analysis').value; if (!id) return;
+      try {
+        const row = await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(id)}`);
+        if (!sourceImage || sourceHash !== row.Source.sha256 || (pdf ? Number(byId('brochure-page').value) : 1) !== row.Source.page) {
+          message(`First load the same source (${row.Source.name}), page ${row.Source.page}. Source hash must match.`); return;
+        }
+        analysisId = id; analysisStatus = row.Status; finalIdentity = row.IdentitySnapshot || null; finalProjectName = row.ProjectName;
+        byId('report').replaceChildren(); byId('report').classList.remove('active');
+        byId('property-type').value = row.PropertyType; configureSpaces(); byId('space-type').value = row.SpaceType;
+        byId('layout-count').value = String(row.LayoutCount);
+        northReference = { ...row.North }; northLocked = true;
+        byId('north-scope-confirm').checked = row.North.scopeConfirmed === true;
+        controls.angle.value = String(row.North.angle); byId('north-value').textContent = `${row.North.angle}°`;
+        byId('north-source').textContent = 'North locked from saved brochure compass';
+        regions = row.Layouts.map((r) => ({ ...r,rooms:r.rooms.map((m) => ({ ...m })) }));
+        renderRegionSelect(); selectRegion(0);
+        await refreshShares();
+        message(`${row.Status.toUpperCase()} analysis loaded. ${row.Status === 'final' ? 'Final snapshot is read-only.' : 'Continue review and save draft.'}`);
+      } catch (e) { message(`Load failed: ${e.message}`); }
+    });
+    let clientSearchTimer = null;
+    byId('client-search').addEventListener('input', () => {
+      clearTimeout(clientSearchTimer);
+      const q = byId('client-search').value.trim();
+      if (q.length < 2) { byId('client-select').replaceChildren(new Option('Type at least 2 characters','')); return; }
+      clientSearchTimer = setTimeout(async () => {
+        try {
+          const rows = await apiJson(`/api/v2/clients/query?q=${encodeURIComponent(q)}&limit=20`);
+          if (byId('client-search').value.trim() !== q) return;
+          byId('client-select').replaceChildren(new Option('Select client',''),...rows.map((r) => new Option(`${r.ClientName || r.Name || r.LeadID} · ${r.PrimaryMobile || r.Phone || ''}`,r.LeadID)));
+        } catch (e) { message(`Client search failed: ${e.message}`); }
+      },300);
+    });
+    async function refreshShares() {
+      const box = byId('share-history'); box.replaceChildren();
+      if (!analysisId || analysisStatus !== 'final') return;
+      try {
+        const rows = await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(analysisId)}/recipients`);
+        rows.forEach((r) => addText(box,'div',`${r.RecipientSnapshot.name} · ${r.Channel} · manual record ${new Date(r.RecordedAt).toLocaleString()}`));
+      } catch (e) { message(`Share history unavailable: ${e.message}`); }
+    }
+    byId('record-share').addEventListener('click', async () => {
+      const leadId = byId('client-select').value;
+      if (!leadId || analysisStatus !== 'final') { message('Final report aur client select karein.'); return; }
+      try {
+        await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(analysisId)}/recipients`,{
+          method:'POST',body:JSON.stringify({ leadId,channel:byId('share-channel').value })
+        });
+        await refreshShares(); message('Manual share recorded in CRM. Delivery/open not verified.');
+      } catch (e) { message(`Share record failed: ${e.message}`); }
+    });
     document.getElementById('download').addEventListener('click', () => {
       try {
         const a = document.createElement('a'); a.download = 'signature-properties-vastu-plan.png';
@@ -478,23 +668,15 @@
     byId('report-button').addEventListener('click', async () => {
       const confirmed = regions.map((r,i) => ({ ...r, index:i })).filter((r) => r.confirmed);
       if (!northLocked || !confirmed.length) { message('Brochure North aur at least one layout confirm karein.'); return; }
-      let profile;
-      try {
-        const response = await fetch('/api/v2/broker-profile'); const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error('Broker profile unavailable');
-        profile = result.data;
-      } catch (error) { message(`Branded report unavailable: ${error.message}`); return; }
-      const name = String(profile.Name || '').trim(), mobile = String(profile.Mobile || '').trim();
-      if (!name || !mobile || name === 'Vikash Bhatter' || mobile === '+91 90000 00001') {
-        message('Digital Card mein apna asli name aur mobile set karein, phir report print karein.'); return;
-      }
+      if (analysisStatus !== 'final' || !finalIdentity) { message('Finalize review before printing the report.'); return; }
+      const name = finalIdentity.name, mobile = finalIdentity.mobile;
       const previous = selectedRegion, report = byId('report'); report.replaceChildren();
       for (const region of confirmed) {
         selectRegion(region.index);
         const page = document.createElement('section'); page.className = 'report-page';
-        addText(page, 'h2', `Signature Properties — ${byId('project-name').textContent} — Layout ${region.index + 1}`);
+        addText(page, 'h2', `Signature Properties — ${finalProjectName} — Layout ${region.index + 1}${region.unit ? ' · ' + region.unit : ''}`);
         addText(page, 'p', `${name} · ${mobile}`);
-        addText(page, 'p', `Brochure page ${pdf ? byId('brochure-page').value : 'image'} · North ${controls.angle.value}° from printed compass (locked) · Layout boundary confirmed`);
+        addText(page, 'p', `Report ${analysisId} · ${sourceName} (${sourceHash.slice(0,12)}) · page ${pdf ? byId('brochure-page').value : 'image'} · North ${controls.angle.value}° from printed compass (locked) · Guidance traditional-v1 · Layout boundary confirmed`);
         const snapshot = document.createElement('img'); snapshot.alt = `Marked layout ${region.index + 1}`;
         try { snapshot.src = canvas.toDataURL('image/png'); } catch (_) { message('Image export blocked. Upload source JPG/PNG or stored brochure.'); selectRegion(previous); return; }
         page.append(snapshot);
@@ -503,7 +685,7 @@
         table.append(heading);
         for (const room of region.rooms) {
           const row = document.createElement('tr');
-          for (const value of [room.type, roomDirection(room), observation(room)]) addText(row,'td',value);
+          for (const value of [room.type, room.direction, `${room.guidance?.status || 'review_needed'}: ${room.guidance?.text || observation(room)}`]) addText(row,'td',value);
           table.append(row);
         }
         page.append(table);
@@ -512,6 +694,10 @@
         report.append(page);
       }
       selectRegion(previous); report.classList.add('active'); document.body.classList.add('report-print');
+      const paper = byId('paper-size').value, orientation = byId('paper-orientation').value;
+      let style = byId('print-page-style');
+      if (!style) { style = document.createElement('style'); style.id = 'print-page-style'; document.head.append(style); }
+      style.textContent = `@page { size: ${paper} ${orientation}; margin: 10mm; }`;
       window.print();
     });
     window.addEventListener('afterprint', () => document.body.classList.remove('report-print'));
@@ -535,11 +721,12 @@
           const option = document.createElement('option'); option.value = url;
           option.textContent = plan.Filename || `Floor plan ${index + 1}`; controls.plans.append(option);
         }
-        if (controls.plans.options.length > 1) { controls.plans.selectedIndex = 1; showImage(controls.plans.value); }
+        if (controls.plans.options.length > 1) { controls.plans.selectedIndex = 1; controls.plans.dispatchEvent(new Event('change')); }
         else { draw(); message('No floor plan stored for this project. Upload a floor plan image.'); }
+        await refreshSaved();
       } catch (error) { draw(); message(error.message); }
     }
-    setPreviewZoom(); loadProject();
+    configureSpaces(); setPreviewZoom(); loadProject();
   </script>
 </body>
 </html>
