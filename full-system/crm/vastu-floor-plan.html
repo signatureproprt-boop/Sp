@@ -85,6 +85,8 @@
           <label>Height %<input id="region-h" type="number" min="1" max="100" step="0.1"></label>
         </div>
         <div id="unit-fields" hidden>
+          <label for="layout-property">Inventory property for this layout (optional)</label>
+          <select id="layout-property"><option value="">No individual property linked</option></select>
           <label for="unit-name">Flat / Shop / Office number</label><input id="unit-name" maxlength="80" placeholder="e.g. A-1201" />
           <label for="tower-name">Tower / Building</label><input id="tower-name" maxlength="80" />
           <label for="floor-name">Floor</label><input id="floor-name" maxlength="40" />
@@ -123,8 +125,10 @@
         <select id="share-channel"><option value="whatsapp">WhatsApp (manual)</option><option value="email">Email (manual)</option><option value="download">Downloaded for client</option></select>
         <button id="record-share" class="secondary" type="button" disabled>Record manual share</button>
         <div id="share-history" class="muted"></div>
+        <button id="tracked-brochure" class="secondary" type="button">Create client-specific brochure link</button>
+        <div id="brochure-share-link" class="muted"></div>
         <p class="muted">This records your action in CRM. It does not claim WhatsApp delivery or identify who opened a file.</p>
-        <p class="muted">North angle brochure ke printed compass se hi set hota hai. Room label select karne ke baad layout par tap karein. Report mein sirf confirmed layouts/rooms jayenge.</p>
+        <p class="muted">North angle brochure ke printed compass se hi set hota hai. Har room mark ka direction aur boundary check karein, phir Accept ya Flag karein. Center/sector boundary par note zaroori hai.</p>
         <div id="message" role="status"></div>
       </section>
       <section class="panel canvas-wrap"><div class="print-heading" id="print-heading">Signature Properties — Vastu Floor Plan</div><canvas id="plan" width="900" height="600" aria-label="Floor plan with Vastu compass"></canvas></section>
@@ -144,7 +148,7 @@
     let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, sourceVersion = 0;
     let alignMode = null, northOrigin = null;
     let sourceImage = null, regions = [], selectedRegion = -1, northLocked = false;
-    let sourceHash = '', sourceName = '', northReference = null, analysisId = null, analysisStatus = 'draft', finalIdentity = null, finalProjectName = '';
+    let sourceHash = '', sourceName = '', sourceId = null, sourceRef = null, northReference = null, analysisId = null, analysisStatus = 'draft', finalIdentity = null, finalProjectName = '', finalGuidanceVersion = '';
     const spaceConfig = {
       residential: { units:['Flat','Penthouse','Villa','Other residential'], rooms:['Entrance','Living room','Kitchen','Master bedroom','Bedroom','Puja','Toilet','Balcony','Staircase'] },
       commercial: { units:['Shop','Office','Showroom','Mixed use commercial'], rooms:['Entrance','Reception/Counter','Owner cabin','Work area','Storage','Pantry','Washroom','Staircase'] }
@@ -181,6 +185,7 @@
       byId('layout-confirm').disabled = byId('layout-delete').disabled = !region || analysisStatus === 'final';
       if (region) {
         for (const key of ['x','y','w','h']) byId('region-' + key).value = +(region[key] * 100).toFixed(1);
+        byId('layout-property').value = region.PropertyID || '';
         byId('unit-name').value = region.unit || ''; byId('tower-name').value = region.tower || ''; byId('floor-name').value = region.floor || '';
         const crop = document.createElement('canvas');
         crop.width = Math.max(1, Math.round(region.w * sourceImage.width));
@@ -202,7 +207,7 @@
       byId('finalize-analysis').disabled = !northLocked || !regions.length || !sourceHash || analysisStatus === 'final';
       byId('record-share').disabled = analysisStatus !== 'final';
       const locked = analysisStatus === 'final';
-      for (const id of ['property-type','space-type','layout-count','room-type','unit-name','tower-name','floor-name','region-x','region-y','region-w','region-h']) byId(id).disabled = locked;
+      for (const id of ['property-type','space-type','layout-count','room-type','layout-property','unit-name','tower-name','floor-name','region-x','region-y','region-w','region-h']) byId(id).disabled = locked;
       byId('north-scope-confirm').disabled = locked;
       byId('crop').disabled = locked || !sourceImage;
       byId('suggest-layouts').disabled = locked || !sourceImage;
@@ -211,13 +216,13 @@
     }
     function resetRegions(source) {
       sourceImage = source; regions = []; selectedRegion = -1; northLocked = false;
-      northReference = null; analysisId = null; analysisStatus = 'draft'; finalIdentity = null; finalProjectName = '';
+      northReference = null; analysisId = null; analysisStatus = 'draft'; finalIdentity = null; finalProjectName = ''; finalGuidanceVersion = '';
       byId('north-scope-confirm').checked = false;
       byId('report').replaceChildren(); byId('report').classList.remove('active');
       byId('share-history').replaceChildren();
       renderRegionSelect(); selectRegion(-1);
     }
-    function suggestRegions(source) {
+    function suggestRegions(source, count) {
       const scan = document.createElement('canvas'); scan.width = 120; scan.height = Math.max(40, Math.round(120 * source.height / source.width));
       const context = scan.getContext('2d', { willReadFrequently: true });
       context.fillStyle = '#fff'; context.fillRect(0, 0, scan.width, scan.height);
@@ -237,14 +242,20 @@
         } rows.push(ink / scan.width);
       }
       const split = (values) => {
-        const left = Math.floor(values.length * .32), right = Math.ceil(values.length * .68);
-        let best = left; for (let i = left; i < right; i++) if (values[i] < values[best]) best = i;
-        const baseline = values.reduce((a,b) => a+b, 0) / values.length;
-        return values[best] < Math.min(.035, baseline * .3) ? best / values.length : null;
+        const left = Math.floor(values.length * .25), right = Math.ceil(values.length * .75);
+        const smooth = values.map((_,i) => values.slice(Math.max(0,i-2),Math.min(values.length,i+3)).reduce((a,b) => a+b,0) / Math.min(5,Math.min(values.length,i+3)-Math.max(0,i-2)));
+        let best = left; for (let i = left; i < right; i++) if (smooth[i] < smooth[best]) best = i;
+        const baseline = smooth.slice(left,right).reduce((a,b) => a+b, 0) / (right-left);
+        return smooth[best] < Math.min(.05, baseline * .4) ? { at:best / values.length,strength:(baseline - smooth[best]) / Math.max(.001,baseline) } : null;
       };
-      const sx = split(cols), sy = split(rows);
-      const xs = sx == null ? [[.02,.96]] : [[.02,sx-.025],[sx+.025,.975-sx]];
-      const ys = sy == null ? [[.02,.96]] : [[.02,sy-.025],[sy+.025,.975-sy]];
+      const sx = count > 1 ? split(cols) : null, sy = count > 1 ? split(rows) : null;
+      let useX = sx, useY = sy;
+      if (count === 2) {
+        if (!sx || (sy && sy.strength > sx.strength)) useX = null;
+        else useY = null;
+      }
+      const xs = !useX ? [[.02,.96]] : [[.02,useX.at-.025],[useX.at+.025,.975-useX.at]];
+      const ys = !useY ? [[.02,.96]] : [[.02,useY.at-.025],[useY.at+.025,.975-useY.at]];
       return ys.flatMap(([y,h]) => xs.map(([x,w]) => ({ x,y,w,h,confirmed:false,rooms:[] })))
         .filter((r) => r.w > .15 && r.h > .15).slice(0,4);
     }
@@ -253,7 +264,21 @@
       const region = currentRegion(); if (!region) return;
       region.rooms.forEach((room, i) => {
         const line = document.createElement('div');
-        line.textContent = `${room.type}: ${analysisStatus === 'final' ? room.direction : roomDirection(room)} `;
+        line.style.cssText = 'border-top:1px solid #e7d9c5;padding:9px 0';
+        const direction = analysisStatus === 'final' ? room.direction : roomDirection(room);
+        addText(line,'strong',`${room.type}: ${direction}${roomBoundaryReview(room) ? ' · boundary review' : ''}`);
+        const review = document.createElement('select');
+        review.setAttribute('aria-label',`${room.type} review`);
+        for (const [value,label] of [['suggested','Needs review'],['accepted','Accepted after review'],['flagged','Flagged for site review']]) review.add(new Option(label,value));
+        review.value = room.reviewStatus || 'suggested'; review.disabled = analysisStatus === 'final';
+        review.addEventListener('change',() => { room.reviewStatus = review.value; });
+        line.append(review);
+        const note = document.createElement('input'); note.type = 'text'; note.maxLength = 500;
+        note.placeholder = 'Reviewer note (required at boundary or when flagged)';
+        note.setAttribute('aria-label',`${room.type} review note`); note.value = room.reviewNote || '';
+        note.disabled = analysisStatus === 'final';
+        note.addEventListener('input',() => { room.reviewNote = note.value; });
+        line.append(note);
         const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary';
         remove.textContent = '×'; remove.setAttribute('aria-label', `Remove ${room.type}`);
         remove.disabled = analysisStatus === 'final';
@@ -266,6 +291,17 @@
       if (Math.hypot(dx, dy) < Math.min(canvas.width, canvas.height) * .08) return 'Center';
       const bearing = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
       return directions[Math.round(((bearing - Number(controls.angle.value) + 360) % 360) / 22.5) % 16];
+    }
+    function roomBoundaryReview(room) {
+      return roomBoundaryReviewForRegion(room,currentRegion());
+    }
+    function roomBoundaryReviewForRegion(room,region) {
+      if (!region || !sourceImage) return false;
+      const width = region.w * sourceImage.width, height = region.h * sourceImage.height;
+      const dx = (room.x - .5) * width, dy = (room.y - .5) * height;
+      if (Math.hypot(dx,dy) < Math.min(width,height) * .08) return true;
+      const bearing = (Math.atan2(dy,dx) * 180 / Math.PI + 90 - Number(controls.angle.value) + 720) % 360;
+      return Math.abs(((bearing + 11.25) % 22.5) - 11.25) >= 9.25;
     }
     const message = (value) => { document.getElementById('message').textContent = value; };
     function setPreviewZoom() {
@@ -332,12 +368,14 @@
       });
     }
     function showImage(src, local = false) {
+      return new Promise((resolve,reject) => {
       const version = ++sourceVersion;
       const next = new Image();
       if (!local) next.crossOrigin = 'anonymous';
       next.onload = () => {
-        if (version !== sourceVersion) return;
-        if (next.naturalWidth < 2 || next.naturalHeight < 2) { message('Image could not be read. Upload a JPG or PNG instead.'); return; }
+        if (version !== sourceVersion) { resolve(); return; }
+        if (next.naturalWidth < 2 || next.naturalHeight < 2) { reject(new Error('Image could not be read')); return; }
+        pdf = null;
         image = next;
         const scale = Math.min(1, 1400 / next.naturalWidth, 1400 / next.naturalHeight);
         canvas.width = Math.round(next.naturalWidth * scale);
@@ -347,9 +385,26 @@
         document.getElementById('print').disabled = true;
         document.getElementById('align-north').disabled = false;
         byId('suggest-layouts').disabled = false;
+        resolve();
       };
-      next.onerror = () => message('Project image could not be opened. Upload the floor plan file instead.');
+      next.onerror = () => { message('Project image could not be opened. Upload the floor plan file instead.'); reject(new Error('Plan image could not be opened')); };
       next.src = src;
+      });
+    }
+    function encodeBase64(bytes) {
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i,i+32768));
+      return btoa(binary);
+    }
+    async function storeLocalSource(file,bytes) {
+      if (bytes.byteLength > 18 * 1024 * 1024) throw new Error('File 18 MB se chhoti honi chahiye.');
+      const params = new URLSearchParams(location.search);
+      const stored = await apiJson('/api/v2/vastu-sources',{ method:'POST',body:JSON.stringify({
+        projectId:params.get('projectId'),propertyId:byId('inventory-property').value || null,
+        filename:file.name,dataBase64:encodeBase64(new Uint8Array(bytes))
+      }) });
+      sourceId = stored.SourceID; sourceHash = stored.Sha256; sourceName = stored.Filename;
+      return stored;
     }
     async function openBrochure(bytes, name = 'brochure.pdf') {
       const version = ++sourceVersion;
@@ -403,17 +458,22 @@
       const id = new URLSearchParams(location.search).get('projectId');
       if (!id) return;
       try {
+        sourceId = null; sourceRef = 'project-brochure';
         message('Downloading stored brochure…');
         const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
         if (!response.ok) throw new Error('Verified stored brochure unavailable');
         await openBrochure(await response.arrayBuffer(),'stored-project-brochure.pdf');
-      } catch (error) { message(error.message); }
+      } catch (error) { sourceRef = null; message(error.message); }
     });
     document.getElementById('local-brochure').addEventListener('change', async (event) => {
       const file = event.target.files?.[0];
       if (!file) return;
       if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) { message('Use a PDF brochure.'); return; }
-      await openBrochure(await file.arrayBuffer(),file.name);
+      try {
+        sourceId = null; sourceRef = null;
+        message('Saving brochure source…'); const bytes = await file.arrayBuffer();
+        await storeLocalSource(file,bytes); await openBrochure(bytes,file.name);
+      } catch (e) { message(`Brochure save failed: ${e.message}`); }
     });
     document.getElementById('crop').addEventListener('click', () => {
       if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
@@ -428,8 +488,9 @@
       if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
       if (!northLocked || !sourceImage) { message('Pehle printed compass se North lock karein.'); return; }
       if (regions.some((r) => r.confirmed || r.rooms.length)) { message('Confirmed layouts hain. Naye page par suggestions use karein, ya manual crop add karein.'); return; }
-      regions = suggestRegions(sourceImage).slice(0,Number(byId('layout-count').value)); renderRegionSelect(); selectRegion(0);
-      message(`${regions.length} possible layout boundary/boundaries suggested. Har boundary check, correct aur Confirm layout karein.`);
+      const count = Number(byId('layout-count').value);
+      regions = suggestRegions(sourceImage,count).slice(0,count); renderRegionSelect(); selectRegion(0);
+      message(`${regions.length}/${count} possible layout boundaries suggested. Missing layouts manually crop karein. Har boundary correct aur Confirm layout karein; suggestions automatically final nahi honge.`);
     });
     const pointerPosition = (event) => {
       const rect = canvas.getBoundingClientRect();
@@ -441,22 +502,31 @@
       if (!file) return;
       if (!['image/jpeg','image/png','image/webp'].includes(file.type)) { message('Use a JPG, PNG or WebP floor plan.'); return; }
       if (objectUrl) URL.revokeObjectURL(objectUrl);
-      sourceHash = await hashBytes(await file.arrayBuffer()); sourceName = file.name;
-      objectUrl = URL.createObjectURL(file); controls.plans.value = ''; showImage(objectUrl, true);
+      try {
+        sourceId = null; sourceRef = null;
+        message('Saving plan source…'); await storeLocalSource(file,await file.arrayBuffer());
+        objectUrl = URL.createObjectURL(file); controls.plans.value = ''; await showImage(objectUrl, true);
+      } catch (e) { message(`Plan save failed: ${e.message}`); }
     });
     controls.plans.addEventListener('change', async () => {
       if (!controls.plans.value) return;
       try {
+        sourceId = null;
+        sourceRef = controls.plans.selectedOptions[0]?.dataset.mediaId || null;
         const response = await fetch(controls.plans.value);
         if (!response.ok) throw new Error('Plan unavailable');
         sourceHash = await hashBytes(await response.arrayBuffer()); sourceName = controls.plans.selectedOptions[0].textContent;
-        showImage(controls.plans.value);
-      } catch (e) { message(e.message); }
+        await showImage(controls.plans.value);
+      } catch (e) { sourceRef = null; message(e.message); }
     });
     byId('layout-select').addEventListener('change', () => selectRegion(byId('layout-select').value === '' ? -1 : Number(byId('layout-select').value)));
     for (const key of ['unit','tower','floor']) byId(key + '-name').addEventListener('input', () => {
       if (analysisStatus === 'final') return;
       const region = currentRegion(); if (region) region[key] = byId(key + '-name').value;
+    });
+    byId('layout-property').addEventListener('change',() => {
+      if (analysisStatus === 'final') return;
+      const region = currentRegion(); if (region) { region.PropertyID = byId('layout-property').value || null; region.PropertyTitle = byId('layout-property').selectedOptions[0]?.textContent || ''; region.confirmed = false; renderRegionSelect(); message('Unit link updated. Layout boundary and unit confirm karein.'); }
     });
     for (const key of ['x','y','w','h']) byId('region-' + key).addEventListener('change', () => {
       if (analysisStatus === 'final') { selectRegion(selectedRegion); return; }
@@ -547,9 +617,9 @@
         analysisId,projectId:new URLSearchParams(location.search).get('projectId'),propertyId:byId('inventory-property').value || null,
         propertyType:byId('property-type').value,spaceType:byId('space-type').value,
         layoutCount:Number(byId('layout-count').value),
-        source:{ sha256:sourceHash,name:sourceName,page:pdf ? Number(byId('brochure-page').value) : 1,width:sourceImage?.width,height:sourceImage?.height },
+        source:{ sha256:sourceHash,name:sourceName,sourceId,ref:sourceRef,page:pdf ? Number(byId('brochure-page').value) : 1,width:sourceImage?.width,height:sourceImage?.height },
         north:{ ...northReference,scopeConfirmed:byId('north-scope-confirm').checked },
-        layouts:regions.map((r) => ({ x:r.x,y:r.y,w:r.w,h:r.h,unit:r.unit,tower:r.tower,floor:r.floor,confirmed:r.confirmed,rooms:r.rooms.map((m) => ({ type:m.type,x:m.x,y:m.y })) }))
+        layouts:regions.map((r) => ({ x:r.x,y:r.y,w:r.w,h:r.h,propertyId:r.PropertyID || null,unit:r.unit,tower:r.tower,floor:r.floor,confirmed:r.confirmed,rooms:r.rooms.map((m) => ({ type:m.type,x:m.x,y:m.y,reviewStatus:m.reviewStatus || 'suggested',reviewNote:m.reviewNote || '' })) }))
       };
     }
     async function apiJson(url, options = {}) {
@@ -569,6 +639,28 @@
         if (analysisId) byId('saved-analysis').value = analysisId;
       } catch (e) { message(`Saved analyses unavailable: ${e.message}`); }
     }
+    async function restoreSavedSource(source) {
+      const projectId = new URLSearchParams(location.search).get('projectId');
+      const url = source.SourceID ? `/api/v2/vastu-sources/${encodeURIComponent(source.SourceID)}` :
+        source.Ref === 'project-brochure' && projectId ? `/api/v2/builder-projects/${encodeURIComponent(projectId)}/brochure` :
+        source.Ref && projectId ? `/api/v2/builder-projects/media/${encodeURIComponent(source.Ref)}` : null;
+      if (!url) return;
+      const response = await fetch(url,{credentials:'same-origin'});
+      if (!response.ok) throw new Error('Saved brochure source unavailable');
+      const bytes = await response.arrayBuffer();
+      const sha = await hashBytes(bytes);
+      if (sha !== source.sha256) throw new Error('Saved source checksum mismatch');
+      sourceId = source.SourceID || null; sourceRef = source.Ref || null; sourceHash = sha; sourceName = source.name;
+      if (response.headers.get('content-type')?.includes('pdf')) {
+        await openBrochure(bytes,source.name);
+        byId('brochure-page').value = String(source.page);
+        await renderBrochurePage();
+      } else {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = URL.createObjectURL(new Blob([bytes],{type:response.headers.get('content-type') || 'image/png'}));
+        await showImage(objectUrl,true);
+      }
+    }
     byId('save-draft').addEventListener('click', async () => {
       if (!sourceHash || !northReference) { message('Brochure/plan source aur printed North required.'); return; }
       try {
@@ -579,12 +671,13 @@
     });
     byId('finalize-analysis').addEventListener('click', async () => {
       if (regions.length !== Number(byId('layout-count').value) || regions.some((r) => !r.confirmed || !r.rooms.length)) { message('Selected count ke har layout ko confirm karein aur spaces mark karein.'); return; }
+      if (regions.some((r) => r.rooms.some((m) => !['accepted','flagged'].includes(m.reviewStatus) || ((roomBoundaryReviewForRegion(m,r) || m.reviewStatus === 'flagged') && !String(m.reviewNote || '').trim())))) { message('Har space review karein; boundary/flagged mark par note bharein.'); return; }
       try {
         // Save the latest marks before freezing the final snapshot.
         const draft = await apiJson('/api/v2/vastu-analyses',{ method:'POST',body:JSON.stringify(currentPayload()) });
         analysisId = draft.AnalysisID;
         const row = await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(analysisId)}/finalize`,{ method:'POST',body:'{}' });
-        analysisStatus = 'final'; finalIdentity = row.IdentitySnapshot; finalProjectName = row.PropertyTitle || row.ProjectName;
+        analysisStatus = 'final'; finalIdentity = row.IdentitySnapshot; finalProjectName = row.PropertyTitle || row.ProjectName; finalGuidanceVersion = row.GuidanceVersion;
         regions = row.Layouts.map((r) => ({...r,rooms:r.rooms.map((m) => ({...m}))}));
         renderRegionSelect(); selectRegion(selectedRegion); await refreshSaved(); await refreshShares(); message('Final snapshot saved. Print all layout reports is ready. Changes need a new analysis.');
       } catch (e) { message(`Finalize failed: ${e.message}`); }
@@ -593,10 +686,13 @@
       const id = byId('saved-analysis').value; if (!id) return;
       try {
         const row = await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(id)}`);
+        if ((!sourceImage || sourceHash !== row.Source.sha256 || (pdf ? Number(byId('brochure-page').value) : 1) !== row.Source.page) && (row.Source.SourceID || row.Source.Ref)) {
+          await restoreSavedSource(row.Source);
+        }
         if (!sourceImage || sourceHash !== row.Source.sha256 || (pdf ? Number(byId('brochure-page').value) : 1) !== row.Source.page) {
           message(`First load the same source (${row.Source.name}), page ${row.Source.page}. Source hash must match.`); return;
         }
-        analysisId = id; analysisStatus = row.Status; finalIdentity = row.IdentitySnapshot || null; finalProjectName = row.PropertyTitle || row.ProjectName;
+        analysisId = id; analysisStatus = row.Status; finalIdentity = row.IdentitySnapshot || null; finalProjectName = row.PropertyTitle || row.ProjectName; finalGuidanceVersion = row.GuidanceVersion;
         byId('inventory-property').value = row.PropertyID || '';
         byId('report').replaceChildren(); byId('report').classList.remove('active');
         byId('property-type').value = row.PropertyType; configureSpaces(); byId('space-type').value = row.SpaceType;
@@ -620,7 +716,11 @@
         try {
           const rows = await apiJson(`/api/v2/clients/query?q=${encodeURIComponent(q)}&limit=20`);
           if (byId('client-search').value.trim() !== q) return;
-          byId('client-select').replaceChildren(new Option('Select client',''),...rows.map((r) => new Option(`${r.ClientName || r.Name || r.LeadID} · ${r.PrimaryMobile || r.Phone || ''}`,r.LeadID)));
+          byId('client-select').replaceChildren(new Option('Select client',''),...rows.map((r) => {
+            const option = new Option(`${r.ClientName || r.Name || r.LeadID} · ${r.PrimaryMobile || r.Phone || ''}`,r.LeadID);
+            option.dataset.name = r.ClientName || r.Name || ''; option.dataset.phone = r.PrimaryMobile || r.Phone || '';
+            return option;
+          }));
         } catch (e) { message(`Client search failed: ${e.message}`); }
       },300);
     });
@@ -641,6 +741,42 @@
         });
         await refreshShares(); message('Manual share recorded in CRM. Delivery/open not verified.');
       } catch (e) { message(`Share record failed: ${e.message}`); }
+    });
+    byId('tracked-brochure').addEventListener('click',async () => {
+      const projectId = new URLSearchParams(location.search).get('projectId');
+      const selected = byId('client-select').selectedOptions[0];
+      if (!projectId || !selected?.value) { message('Project aur CRM client select karein. Standalone property ke liye project brochure nahi hai.'); return; }
+      const digits = String(selected.dataset.phone || '').replace(/[\s()+-]/g,'');
+      const phone = digits.length === 10 ? `91${digits}` : digits;
+      if (!selected.dataset.name || !/^\d{8,15}$/.test(phone)) { message('Client ka valid name aur mobile CRM mein required hai.'); return; }
+      try {
+        const created = await apiJson(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/brochure-shares`,{
+          method:'POST',body:JSON.stringify({leadId:selected.value,channel:'whatsapp_text'})
+        });
+        const box = byId('brochure-share-link'); box.replaceChildren();
+        addText(box,'p',`${selected.dataset.name} ke liye unique brochure link. Link opens count device requests dikhata hai, opener ki identity verify nahi karta.`);
+        const link = document.createElement('a'); link.href = created.url; link.textContent = created.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; box.append(link);
+        const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'secondary'; copy.textContent = 'Copy link';
+        copy.addEventListener('click',async () => { await navigator.clipboard.writeText(created.url); message('Brochure link copied. Client ko send karne ke baad Mark sent karein.'); }); box.append(copy);
+        const send = document.createElement('a'); send.href = `https://wa.me/${phone}?text=${encodeURIComponent(`Signature Properties brochure: ${created.url}`)}`;
+        send.target = '_blank'; send.rel = 'noopener noreferrer'; send.textContent = 'Open WhatsApp'; box.append(send);
+        const confirmSent = document.createElement('button'); confirmSent.type = 'button'; confirmSent.className = 'secondary'; confirmSent.textContent = 'Mark sent after sending';
+        confirmSent.addEventListener('click',async () => {
+          if (!confirm(`${selected.dataset.name} ko brochure bheja hai?`)) return;
+          await apiJson(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/brochure-shares/${encodeURIComponent(created.ShareID)}`,{method:'PATCH',body:JSON.stringify({sent:true})});
+          confirmSent.disabled = true; message('Brochure send manually recorded. Open count Builder Project → Brochure Trace mein dikhega.');
+        }); box.append(confirmSent);
+        const opens = addText(box,'p','Link opens: 0 (request count, viewer identity unverified)');
+        const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'secondary'; refresh.textContent = 'Refresh opens';
+        refresh.addEventListener('click',async () => {
+          try {
+            const rows = await apiJson(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/brochure-shares`);
+            const row = rows.find((item) => item.ShareID === created.ShareID);
+            opens.textContent = `Link opens: ${row?.OpenCount || 0}${row?.LastOpenedAt ? ' · Last: ' + new Date(row.LastOpenedAt).toLocaleString() : ''} (viewer identity unverified)`;
+          } catch (e) { message(`Open count unavailable: ${e.message}`); }
+        }); box.append(refresh);
+        message('Recipient-specific link ready. Open WhatsApp aur actual send confirm karein.');
+      } catch (e) { message(`Brochure link failed: ${e.message}`); }
     });
     document.getElementById('download').addEventListener('click', () => {
       try {
@@ -680,9 +816,9 @@
       for (const region of confirmed) {
         selectRegion(region.index);
         const page = document.createElement('section'); page.className = 'report-page';
-        addText(page, 'h2', `Signature Properties — ${finalProjectName} — Layout ${region.index + 1}${region.unit ? ' · ' + region.unit : ''}`);
+        addText(page, 'h2', `Signature Properties — ${region.PropertyTitle || finalProjectName} — Layout ${region.index + 1}${region.unit ? ' · ' + region.unit : ''}`);
         addText(page, 'p', `${name} · ${mobile}`);
-        addText(page, 'p', `Report ${analysisId} · ${sourceName} (${sourceHash.slice(0,12)}) · page ${pdf ? byId('brochure-page').value : 'image'} · North ${controls.angle.value}° from printed compass (locked) · Guidance traditional-v1 · Layout boundary confirmed`);
+        addText(page, 'p', `Report ${analysisId} · ${sourceName} (${sourceHash.slice(0,12)}) · page ${pdf ? byId('brochure-page').value : 'image'} · North ${controls.angle.value}° from printed compass (locked) · Guidance ${finalGuidanceVersion || 'traditional-v1'} · Layout boundary confirmed`);
         const snapshot = document.createElement('img'); snapshot.alt = `Marked layout ${region.index + 1}`;
         try { snapshot.src = canvas.toDataURL('image/png'); } catch (_) { message('Image export blocked. Upload source JPG/PNG or stored brochure.'); selectRegion(previous); return; }
         page.append(snapshot);
@@ -691,7 +827,7 @@
         table.append(heading);
         for (const room of region.rooms) {
           const row = document.createElement('tr');
-          for (const value of [room.type, room.direction, `${room.guidance?.status || 'review_needed'}: ${room.guidance?.text || observation(room)}`]) addText(row,'td',value);
+          for (const value of [room.type, `${room.direction}${room.boundaryReview ? ' (boundary)' : ''}`, `${room.guidance?.status || 'review_needed'}: ${room.guidance?.text || observation(room)} · Reviewer: ${room.reviewStatus}${room.reviewNote ? ' — ' + room.reviewNote : ''}`]) addText(row,'td',value);
           table.append(row);
         }
         page.append(table);
@@ -719,6 +855,7 @@
           if (id && !params.get('projectId')) { params.set('projectId',id); history.replaceState(null,'',`${location.pathname}?${params}`); }
           byId('inventory-property').add(new Option(`${property.Title || property.PropertyID} (${property.PropertyID})`,property.PropertyID));
           byId('inventory-property').value = property.PropertyID;
+          byId('layout-property').add(new Option(`${property.Title || property.PropertyID} (${property.PropertyID})`,property.PropertyID));
           byId('project-name').textContent = property.Title || property.PropertyID;
           byId('print-heading').textContent = `Signature Properties — ${property.Title || property.PropertyID} — Vastu Floor Plan`;
           if (['Residential','Commercial'].includes(property.Category)) { byId('property-type').value = property.Category.toLowerCase(); configureSpaces(); }
@@ -727,7 +864,11 @@
         if (!propertyId) {
           try {
             const inventory = await apiJson(`/api/v2/inventory?projectId=${encodeURIComponent(id)}&limit=100`);
-            for (const property of inventory) byId('inventory-property').add(new Option(`${property.Title || property.PropertyID} (${property.PropertyID})`,property.PropertyID));
+            for (const property of inventory) {
+              const label = `${property.Title || property.PropertyID} (${property.PropertyID})`;
+              byId('inventory-property').add(new Option(label,property.PropertyID));
+              byId('layout-property').add(new Option(label,property.PropertyID));
+            }
           } catch (_) { /* Project-only reports remain available without Inventory access. */ }
           byId('inventory-property').addEventListener('change', () => { analysisId = null; analysisStatus = 'draft'; refreshSaved(); });
         }
@@ -745,6 +886,7 @@
           const url = stored && plan.MediaID ? `/api/v2/builder-projects/media/${encodeURIComponent(plan.MediaID)}` : plan.Url;
           if (!url || !/^(https?:\/\/|\/api\/v2\/builder-projects\/media\/)/i.test(url)) continue;
           const option = document.createElement('option'); option.value = url;
+          if (plan.MediaID) option.dataset.mediaId = plan.MediaID;
           option.textContent = plan.Filename || `Floor plan ${index + 1}`; controls.plans.append(option);
         }
         if (controls.plans.options.length > 1) { controls.plans.selectedIndex = 1; controls.plans.dispatchEvent(new Event('change')); }
