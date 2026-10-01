@@ -239,7 +239,6 @@ table td,table th{border-color:var(--v2-line)!important}
   </div>
 
   <div id="karma-scrape-status" data-testid="karma-scrape-status" style="display:none;margin-bottom:14px;padding:12px 14px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-gold-soft);font-size:12.5px;color:var(--clr-brown)"></div>
-  <div id="karma-scrape-errors" data-testid="karma-scrape-errors" style="display:none;margin:-6px 0 14px;padding:12px 14px;border:1px solid #f0c9c5;border-radius:8px;background:#fff8f7;color:#57221e;font-size:12px"></div>
 
   <div class="modal-overlay hidden" id="brochure-status-modal">
     <div class="modal" style="max-width:1000px">
@@ -247,6 +246,11 @@ table td,table th{border-color:var(--v2-line)!important}
       <div class="modal-body">
         <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Live CRM status for every active builder project. “Drive linked” means a verified Drive file is recorded against that project.</p>
         <div id="brochure-status-summary" style="margin-bottom:12px">Loading…</div>
+        <details id="brochure-scrape-history" style="margin-bottom:12px;border:1px solid #f0c9c5;border-radius:8px;background:#fff8f7;padding:10px 12px">
+          <summary id="brochure-scrape-history-title" style="cursor:pointer;font-weight:700;color:#57221e">Historical scrape errors</summary>
+          <p style="font-size:12px;color:var(--clr-text-light);margin:8px 0">These are previous upload attempts. A project may already be linked now; use the live status table below for its current state.</p>
+          <div id="karma-scrape-errors" data-testid="karma-scrape-errors" style="display:none;color:#57221e;font-size:12px"></div>
+        </details>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
           <select id="brochure-status-filter" onchange="renderBrochureStatus()" aria-label="Filter brochure status" class="btn"><option value="">All projects</option><option>Drive linked</option><option>Stored outside Drive</option><option>Failed</option><option>Pending</option><option>No brochure source</option></select>
           <select id="brochure-review-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter review"><option value="">All reviews</option><option value="unchecked">Brochure unchecked</option><option value="incomplete">Form incomplete</option><option value="unverified">Form unverified</option></select>
@@ -577,6 +581,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function openBrochureStatus() {
     document.getElementById('brochure-status-modal').classList.remove('hidden');
+    renderKarmaScrapeErrors(lastKarmaScrapeData);
     loadBrochureStatus();
   }
 
@@ -667,15 +672,16 @@ table td,table th{border-color:var(--v2-line)!important}
   let lastKarmaScrapeData = null;
   function renderKarmaScrapeErrors(data) {
     const panel = document.getElementById('karma-scrape-errors');
+    const history = document.getElementById('brochure-scrape-history');
+    const summary = document.getElementById('brochure-scrape-history-title');
     const result = data?.result || {};
     const errors = Array.isArray(data?.errors) ? data.errors : (Array.isArray(result.errors) ? result.errors : []);
     const count = Number(data?.errorCount ?? result.errorCount ?? errors.length);
     panel.replaceChildren();
-    if (!count && !errors.length) { panel.style.display = 'none'; return; }
+    if (!count && !errors.length) { panel.style.display = 'none'; history.style.display = 'none'; return; }
+    history.style.display = 'block';
     panel.style.display = 'block';
-    const title = document.createElement('strong');
-    title.textContent = `Error tracker · ${count} error(s) · last ${errors.length} saved`;
-    panel.appendChild(title);
+    summary.textContent = `Historical scrape errors · ${count} attempt(s) · last ${errors.length} saved`;
     const list = document.createElement('div');
     list.style.cssText = 'display:grid;gap:6px;margin-top:8px';
     errors.slice(-20).reverse().forEach((item) => {
@@ -715,11 +721,12 @@ table td,table th{border-color:var(--v2-line)!important}
       return;
     }
     if (data?.status === 'completed') {
-      const mediaFailureExamples = Array.isArray(result.mediaFailureExamples) ? result.mediaFailureExamples : [];
+      const mediaFailureExamples = Array.isArray(result.mediaFailureExamples)
+        ? result.mediaFailureExamples.filter(item => item.mediaType !== 'brochure') : [];
       const mediaFailureNote = mediaFailureExamples.length
         ? ` · Media errors: ${mediaFailureExamples.slice(0, 2).map(item => `${item.mediaType || 'file'}: ${String(item.error || 'Unknown error').slice(0, 120)}`).join(' | ')}`
         : '';
-      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Brochures saved ${(result.brochuresStored || 0) + (result.brochuresReused || 0)} (Drive) · Brochure errors ${result.brochuresFailed || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}${mediaFailureNote}`;
+      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}${mediaFailureNote}. Brochure status and past upload errors are in Brochure Log.`;
       return;
     }
     if (data?.status === 'failed') {
