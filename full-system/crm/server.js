@@ -1238,6 +1238,15 @@ function brochureProjectSlug(name) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'project';
 }
 
+function normalizeBrochureRecipient(body = {}) {
+  const name = String(body.recipientName || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  const rawPhone = String(body.recipientPhone || '').trim();
+  const digits = rawPhone.replace(/[\s()+-]/g, '');
+  const phone = digits.length === 10 ? `91${digits}` : digits;
+  if (!name || !/^\d{8,15}$/.test(phone) || !['whatsapp_text', 'pdf_share'].includes(body.channel)) return null;
+  return { name, phone, channel: body.channel };
+}
+
 // ── readJson helper (may be called before V2 dispatch) ──────────────────────
 async function readJsonOnce(req) {
   if (req._parsedBody !== undefined) return req._parsedBody;
@@ -2220,10 +2229,12 @@ async function handleApi(req, res, url) {
         if (req.method === 'GET') {
           const shares = runtime.repository.list('BuilderBrochureShares')
             .filter((row) => row.ProjectID === project.data.ProjectID)
-            .map(({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt }) =>
-              ({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt }));
+            .map(({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt, RecipientName, RecipientPhone, Channel, ShareStatus, SentAt }) =>
+              ({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt, RecipientName, RecipientPhone, Channel, ShareStatus, SentAt }));
           sendJson(res, { ok: true, data: shares }); return;
         }
+        const recipient = normalizeBrochureRecipient(bodyForV2);
+        if (!recipient) { sendJson(res, { ok: false, error: 'Recipient name, valid phone and share channel are required' }, 400); return; }
         const brochure = (project.data.Brochures || []).find((row) =>
           row.verified === true && String(row.downloadStatus || '').toLowerCase() === 'downloaded' &&
           (row.DriveFileID || row.DriveFileId || row.StoragePath));
@@ -2239,14 +2250,38 @@ async function handleApi(req, res, url) {
           CompanyID: project.data.CompanyID || null,
           BrokerageID: project.data.BrokerageID || null,
           CreatedBy: actor.userId,
+          RecipientName: recipient.name,
+          RecipientPhone: recipient.phone,
+          Channel: recipient.channel,
+          ShareStatus: 'prepared',
           CreatedAt: createdAt.toISOString(),
           ExpiresAt: new Date(createdAt.getTime() + 30 * 86400000).toISOString(),
           OpenCount: 0
         });
         sendJson(res, { ok: true, data: {
           ShareID: shareId,
+          recipientPhone: recipient.phone,
           url: `https://signatureproperties.cloud.run/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`
         } }, 201);
+        return;
+      }
+
+      const brochureSentMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^/]+)\/brochure-shares\/([0-9a-f-]{36})\/?$/i);
+      if (brochureSentMatch) {
+        if (req.method !== 'PATCH') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        if (bodyForV2?.sent !== true) { sendJson(res, { ok: false, error: 'sent: true is required' }, 400); return; }
+        const project = svc.get(decodeURIComponent(brochureSentMatch[1]));
+        if (!project.ok) { sendJson(res, project, 404); return; }
+        const tenant = tenantCheck(project.data, actor);
+        if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+        const share = runtime.repository.find('BuilderBrochureShares', 'ShareID', brochureSentMatch[2]);
+        if (!share || share.ProjectID !== project.data.ProjectID) { sendJson(res, { ok: false, error: 'Share not found' }, 404); return; }
+        const updated = runtime.repository.update('BuilderBrochureShares', 'ShareID', share.ShareID, {
+          ShareStatus: 'sent_confirmed_manually',
+          SentAt: share.SentAt || new Date().toISOString(),
+          SentBy: share.SentBy || actor.userId
+        });
+        sendJson(res, { ok: true, data: { ShareID: updated.ShareID, ShareStatus: updated.ShareStatus, SentAt: updated.SentAt } });
         return;
       }
 
@@ -5622,6 +5657,7 @@ if (require.main === module) {
 module.exports = {
   __test: {
     handleApi,
+    normalizeBrochureRecipient,
     sendJson,
     setRuntimeForTest,
     resolveSessionActor,
