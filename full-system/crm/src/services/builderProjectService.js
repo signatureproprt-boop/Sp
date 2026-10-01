@@ -398,6 +398,7 @@ class BuilderProjectService {
     if (payload.TotalUnits !== undefined) out.TotalUnits = parseIntSafe(payload.TotalUnits);
     if (payload.TotalTowers !== undefined) out.TotalTowers = parseIntSafe(payload.TotalTowers);
     if (payload.TotalFloors !== undefined) out.TotalFloors = parseIntSafe(payload.TotalFloors);
+    if (payload.FloorHeightFt !== undefined) out.FloorHeightFt = parseNum(payload.FloorHeightFt);
     if (payload.ProjectArea !== undefined) out.ProjectArea = String(payload.ProjectArea || '').trim() || null;
     if (payload.Notes !== undefined) out.Notes = String(payload.Notes || '').trim() || null;
     if (payload.Overview !== undefined) out.Overview = String(payload.Overview || '').trim() || null;
@@ -528,6 +529,7 @@ class BuilderProjectService {
       TotalUnits: clean.TotalUnits ?? null,
       TotalTowers: clean.TotalTowers ?? null,
       TotalFloors: clean.TotalFloors ?? null,
+      FloorHeightFt: clean.FloorHeightFt ?? null,
       ProjectArea: clean.ProjectArea || null,
       AreaRange: clean.AreaRange || null,
       CarpetAreaRange: clean.CarpetAreaRange || null,

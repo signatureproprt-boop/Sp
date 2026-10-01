@@ -30,3 +30,19 @@ test('manual review records who checked and becomes stale after brochure or form
   assert.equal(service.update('p1', { Address: 'New address' }).ok, true);
   assert.equal(project.FormReview, null);
 });
+
+test('land, tower, floor, height and penthouse details survive project edits', () => {
+  const project = { ProjectID: 'p-floor', Active: true, ProjectName: 'Tower', BuilderName: 'Builder', Location1: 'Vesu' };
+  const service = new BuilderProjectService(repo([project]));
+  const result = service.update('p-floor', {
+    ProjectArea: '2.5 acres', TotalTowers: '3', TotalFloors: '18', FloorHeightFt: '10.5',
+    ConfigDetails: [{ Type: 'Penthouse', CarpetAreaSqft: 2400, BuiltUpAreaSqft: 3000 }]
+  });
+  assert.equal(result.ok, true);
+  assert.equal(project.ProjectArea, '2.5 acres');
+  assert.equal(project.TotalTowers, 3);
+  assert.equal(project.TotalFloors, 18);
+  assert.equal(project.FloorHeightFt, 10.5);
+  assert.equal(project.ConfigDetails[0].Type, 'Penthouse');
+  assert.equal(project.ConfigDetails[0].BuiltUpAreaSqft, 3000);
+});
