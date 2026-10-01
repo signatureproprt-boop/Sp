@@ -1273,6 +1273,34 @@ async function handleApi(req, res, url) {
       }
     }
 
+    const publicBrochureShare = pathname.match(/^\/api\/v2\/brochure-shares\/([a-f0-9]{64})\/?$/i);
+    if (publicBrochureShare) {
+      if (!['GET', 'HEAD'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+      const tokenHash = crypto.createHash('sha256').update(publicBrochureShare[1]).digest('hex');
+      const share = runtime.repository.find('BuilderBrochureShares', 'TokenHash', tokenHash);
+      if (!share || Date.parse(share.ExpiresAt) <= Date.now()) { sendJson(res, { ok: false, error: 'Brochure link expired or unavailable' }, 404); return; }
+      const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
+      const out = await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectBrochureFile(share.ProjectID);
+      if (!out.ok) { sendJson(res, { ok: false, error: 'Brochure unavailable' }, 404); return; }
+      if (req.method === 'GET') {
+        try {
+          runtime.repository.update('BuilderBrochureShares', 'TokenHash', tokenHash, {
+            OpenCount: (share.OpenCount || 0) + 1,
+            FirstOpenedAt: share.FirstOpenedAt || new Date().toISOString(),
+            LastOpenedAt: new Date().toISOString()
+          });
+        } catch (error) { console.error('[brochure-share] tracking write failed', error); }
+      }
+      res.writeHead(200, withSecurityHeaders({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline; filename="brochure.pdf"',
+        'Cache-Control': 'private, no-store',
+        'Content-Length': out.buffer.length
+      }));
+      res.end(req.method === 'HEAD' ? undefined : out.buffer);
+      return;
+    }
+
     if (/^\/api\/v2\/ai\/agent\/?$/i.test(pathname) && req.method === 'POST') {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
@@ -2168,6 +2196,42 @@ async function handleApi(req, res, url) {
           }));
           res.end(reportCsv(report));
         } else sendJson(res, report);
+        return;
+      }
+
+      const brochureShareMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^/]+)\/brochure-shares\/?$/i);
+      if (brochureShareMatch) {
+        if (!['GET', 'POST'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const project = svc.get(decodeURIComponent(brochureShareMatch[1]));
+        if (!project.ok) { sendJson(res, project, 404); return; }
+        const tenant = tenantCheck(project.data, actor);
+        if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
+        if (req.method === 'GET') {
+          const shares = runtime.repository.list('BuilderBrochureShares')
+            .filter((row) => row.ProjectID === project.data.ProjectID)
+            .map(({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt }) =>
+              ({ ShareID, CreatedAt, ExpiresAt, CreatedBy, OpenCount, FirstOpenedAt, LastOpenedAt }));
+          sendJson(res, { ok: true, data: shares }); return;
+        }
+        const brochure = (project.data.Brochures || []).find((row) =>
+          row.verified === true && String(row.downloadStatus || '').toLowerCase() === 'downloaded' &&
+          (row.DriveFileID || row.DriveFileId || row.StoragePath));
+        if (!brochure) { sendJson(res, { ok: false, error: 'Verified stored brochure unavailable' }, 404); return; }
+        const token = crypto.randomBytes(32).toString('hex');
+        const shareId = crypto.randomUUID();
+        const createdAt = new Date();
+        runtime.repository.create('BuilderBrochureShares', {
+          ShareID: shareId,
+          TokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+          ProjectID: project.data.ProjectID,
+          CompanyID: project.data.CompanyID || null,
+          BrokerageID: project.data.BrokerageID || null,
+          CreatedBy: actor.userId,
+          CreatedAt: createdAt.toISOString(),
+          ExpiresAt: new Date(createdAt.getTime() + 30 * 86400000).toISOString(),
+          OpenCount: 0
+        });
+        sendJson(res, { ok: true, data: { ShareID: shareId, path: `/api/v2/brochure-shares/${token}` } }, 201);
         return;
       }
 

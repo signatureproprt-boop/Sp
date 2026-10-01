@@ -1091,6 +1091,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <span style="font-size:11px;color:var(--clr-text-light)">${esc(p.ProjectID)}</span>
         <div>
           <button class="link" data-testid="wa-share-${esc(p.ProjectID)}" onclick="shareProjectOnWhatsApp('${esc(p.ProjectID)}')" style="color:#128c1e">📱 Share</button>
+          ${firstBrochureUrl ? `<button class="link" onclick="shareBrochurePdf('${esc(p.ProjectID)}')">📄 Share PDF</button><button class="link" onclick="showBrochureTrace('${esc(p.ProjectID)}')">👁 Brochure opens</button>` : ''}
           <a class="link" data-testid="view-inventory-${esc(p.ProjectID)}" href="/inventory?projectId=${encodeURIComponent(p.ProjectID)}" onclick="event.stopPropagation()">Inventory</a>
           <button class="link" data-testid="edit-${esc(p.ProjectID)}" onclick="openEditModal('${esc(p.ProjectID)}')">Edit</button>
           <button class="link danger" data-testid="delete-${esc(p.ProjectID)}" onclick="deleteProject('${esc(p.ProjectID)}')">Delete</button>
@@ -1099,9 +1100,7 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>`;
   }
 
-  function shareProjectOnWhatsApp(id) {
-    const p = allProjects.find(x => x.ProjectID === id);
-    if (!p) return;
+  function projectShareLines(p) {
     const lines = [];
     lines.push(`🏗️ *${p.ProjectName || 'Builder Project'}*`);
     lines.push(`Builder: ${p.BuilderName || '—'}`);
@@ -1120,10 +1119,74 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!Array.isArray(p.ConfigDetails) && p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) lines.push(`Carpet Area: ${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
     if (p.PossessionDate) lines.push(`Possession: ${String(p.PossessionDate).slice(0, 10)}`);
     if (p.RERANumber) lines.push(`RERA: ${p.RERANumber}`);
-    lines.push('');
-    lines.push('— Signature Properties');
-    const url = `https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`;
-    window.open(url, '_blank', 'noopener');
+    return lines;
+  }
+
+  async function createBrochureShare(id) {
+    const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`, { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Brochure link could not be created');
+    return new URL(result.data.path, window.location.origin).href;
+  }
+
+  async function shareProjectOnWhatsApp(id) {
+    const p = allProjects.find(x => x.ProjectID === id);
+    if (!p) return;
+    const popup = window.open('about:blank', '_blank');
+    try {
+      const lines = projectShareLines(p);
+      if ((p.Brochures || []).some(isStoredBrochure)) {
+        lines.push(`📄 Brochure: ${await createBrochureShare(id)}`);
+      }
+      lines.push('', '— Signature Properties');
+      const url = `https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`;
+      if (popup) popup.location.href = url;
+      else window.location.href = url;
+    } catch (error) {
+      if (popup) popup.close();
+      alert(error.message);
+    }
+  }
+
+  async function shareBrochurePdf(id) {
+    const p = allProjects.find(x => x.ProjectID === id);
+    if (!p) return;
+    try {
+      const link = await createBrochureShare(id);
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
+      if (!response.ok) throw new Error('Stored PDF could not be downloaded');
+      const file = new File([await response.blob()], `${(p.ProjectName || 'project').replace(/[^a-z0-9-]/gi, '-')}-brochure.pdf`, { type: 'application/pdf' });
+      const text = [...projectShareLines(p), `📄 Brochure: ${link}`, '', '— Signature Properties'].join('\n');
+      let shared = false;
+      if (navigator.canShare?.({ files: [file] }) && navigator.share) {
+        try {
+          await navigator.share({ files: [file], text, title: p.ProjectName || 'Brochure' });
+          shared = true;
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+        }
+      }
+      if (!shared) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(file);
+        a.download = file.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        alert('PDF downloaded. Attach it in WhatsApp; the brochure link is available through the Share button.');
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') alert(error.message);
+    }
+  }
+
+  async function showBrochureTrace(id) {
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Could not load brochure opens');
+      const rows = (result.data || []).slice().reverse().slice(0, 20);
+      alert(rows.length ? rows.map(row => `${new Date(row.CreatedAt).toLocaleString()} · Opened ${row.OpenCount || 0} time(s)${row.LastOpenedAt ? ` · Last: ${new Date(row.LastOpenedAt).toLocaleString()}` : ''}`).join('\n') : 'No brochure links have been shared yet.');
+    } catch (error) { alert(error.message); }
   }
 
   function setStatusFilter(el, val) {

@@ -38,6 +38,7 @@ const ARRAY_COLLECTION_KEYS = [
   'Projects',
   'Brokers',
   'BrokerShares',
+  'BuilderBrochureShares',
   'BrokerSubmissions',
   'Permissions',
   'Audit',
