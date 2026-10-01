@@ -1126,7 +1126,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`, { method: 'POST' });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || 'Brochure link could not be created');
-    return new URL(result.data.path, window.location.origin).href;
+    return result.data.url || new URL(result.data.path, window.location.origin).href;
   }
 
   async function shareProjectOnWhatsApp(id) {
