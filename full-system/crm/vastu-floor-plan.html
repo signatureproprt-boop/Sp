@@ -74,7 +74,7 @@
         <label for="brochure-page">Select layout plan page</label>
         <select id="brochure-page" disabled><option value="">First open a brochure</option></select>
         <button id="crop" class="secondary" type="button" disabled style="margin-top:10px">Crop layout from page</button>
-        <p class="muted">North mark karne ke baad page par har layout ke around drag karein. 1, 2 ya 4 layouts alag add kar sakte hain. Boundary fields se correct karein.</p>
+        <p class="muted">Har flat alag mark karein: Crop dabayein, flat ke ek corner par tap karein, phir opposite corner par tap karein. Drag bhi kar sakte hain. 2 flats ek drawing mein hon to dono ko alag mark karein.</p>
         <label for="layout-select">Layouts on this page</label>
         <button id="suggest-layouts" class="secondary" type="button" disabled>Suggest layout boundaries</button>
         <select id="layout-select"><option value="">Full brochure page</option></select>
@@ -145,7 +145,7 @@
       opacity: document.getElementById('opacity'), plans: document.getElementById('project-plans')
     };
     let image = null, objectUrl = null, center = { x: .5, y: .5 };
-    let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, sourceVersion = 0;
+    let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, cropPointerStart = null, cropFirstTap = false, sourceVersion = 0;
     let alignMode = null, northOrigin = null;
     let sourceImage = null, regions = [], selectedRegion = -1, northLocked = false;
     let sourceHash = '', sourceName = '', sourceId = null, sourceRef = null, northReference = null, analysisId = null, analysisStatus = 'draft', finalIdentity = null, finalProjectName = '', finalGuidanceVersion = '';
@@ -327,6 +327,11 @@
         return;
       }
       ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      if (cropMode && cropStart) {
+        ctx.beginPath(); ctx.arc(cropStart.x * canvas.width, cropStart.y * canvas.height, 9, 0, Math.PI * 2);
+        ctx.fillStyle = '#c32618'; ctx.fill();
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 2; ctx.stroke();
+      }
       const x = center.x * canvas.width, y = center.y * canvas.height;
       if (alignMode) {
         if (northOrigin) {
@@ -479,10 +484,10 @@
       if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
       if (!northLocked) { message('Pehle printed brochure compass se North lock karein.'); return; }
       if (selectedRegion >= 0) selectRegion(-1);
-      cropMode = !cropMode; cropStart = null; cropEnd = null;
+      cropMode = !cropMode; cropStart = null; cropEnd = null; cropPointerStart = null; cropFirstTap = false;
       if (cropMode) { alignMode = null; northOrigin = null; document.getElementById('align-north').textContent = '🧭 Align North from brochure'; }
       document.getElementById('crop').textContent = cropMode ? 'Cancel crop' : 'Crop layout from page';
-      message(cropMode ? 'Drag from one corner of the layout to the opposite corner.' : 'Crop cancelled.'); draw();
+      message(cropMode ? 'Flat ke pehle corner par tap karein, phir opposite corner par tap karein. Ya drag karein.' : 'Crop cancelled.'); draw();
     });
     byId('suggest-layouts').addEventListener('click', () => {
       if (analysisStatus === 'final') { message('Final analysis is read-only.'); return; }
@@ -557,7 +562,7 @@
     canvas.addEventListener('pointerdown', (event) => {
       if (!image) return;
       if (analysisStatus === 'final') { message('Final snapshot is read-only.'); return; }
-      if (cropMode) { cropStart = pointerPosition(event); cropEnd = cropStart; canvas.setPointerCapture(event.pointerId); return; }
+      if (cropMode) { cropPointerStart = pointerPosition(event); if (!cropStart) cropStart = cropPointerStart; cropEnd = cropPointerStart; canvas.setPointerCapture(event.pointerId); return; }
       if (alignMode === 'center') {
         northOrigin = pointerPosition(event); alignMode = 'north'; draw();
         message('Ab printed compass ke N arrow/tip par tap karein.'); return;
@@ -575,7 +580,7 @@
         northLocked = true; renderRegionSelect();
         alignMode = null; northOrigin = null;
         document.getElementById('align-north').textContent = '🧭 Align North from brochure';
-        draw(); message(`Brochure North ${degrees}° locked. Har layout ke around drag karein.`); return;
+        draw(); message(`Brochure North ${degrees}° locked. Har flat ke liye Crop dabakar do opposite corners tap karein.`); return;
       }
       const region = currentRegion();
       if (region && byId('room-type').value) {
@@ -588,7 +593,7 @@
       center = pointerPosition(event); draw();
     });
     canvas.addEventListener('pointermove', (event) => {
-      if (!cropMode || !cropStart) return;
+      if (!cropMode || !cropStart || !cropPointerStart) return;
       cropEnd = pointerPosition(event); draw();
       ctx.strokeStyle = '#c32618'; ctx.lineWidth = 3;
       ctx.strokeRect(cropStart.x * canvas.width, cropStart.y * canvas.height,
@@ -597,11 +602,21 @@
     canvas.addEventListener('pointerup', (event) => {
       if (!cropMode || !cropStart || !image) return;
       cropEnd = pointerPosition(event);
+      const moved = Math.hypot((cropEnd.x - cropPointerStart.x) * canvas.getBoundingClientRect().width,
+        (cropEnd.y - cropPointerStart.y) * canvas.getBoundingClientRect().height);
+      cropPointerStart = null;
+      if (moved < 12 && !cropFirstTap) {
+        cropFirstTap = true;
+        message('Pehla corner set. Ab flat ke opposite corner par tap karein.'); draw(); return;
+      }
+      if (moved < 12 && Math.hypot((cropEnd.x - cropStart.x) * canvas.width, (cropEnd.y - cropStart.y) * canvas.height) < 30) {
+        message('Doosra corner door rakhein, flat ka poora area cover karein.'); draw(); return;
+      }
       const x = Math.round(Math.min(cropStart.x, cropEnd.x) * canvas.width);
       const y = Math.round(Math.min(cropStart.y, cropEnd.y) * canvas.height);
       const w = Math.round(Math.abs(cropStart.x - cropEnd.x) * canvas.width);
       const h = Math.round(Math.abs(cropStart.y - cropEnd.y) * canvas.height);
-      cropStart = null; cropMode = false; document.getElementById('crop').textContent = 'Crop layout from page';
+      cropStart = null; cropMode = false; cropFirstTap = false; document.getElementById('crop').textContent = 'Crop layout from page';
       if (w < 30 || h < 30) { message('Crop too small. Drag around the full layout.'); draw(); return; }
       if (regions.length >= Number(byId('layout-count').value)) { message('Selected layout count reached. Setup count change karein ya next page select karein.'); draw(); return; }
       regions.push({ x: x / sourceImage.width, y: y / sourceImage.height, w: w / sourceImage.width, h: h / sourceImage.height, confirmed: false, rooms: [] });
