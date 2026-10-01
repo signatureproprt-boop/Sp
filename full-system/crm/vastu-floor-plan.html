@@ -57,6 +57,9 @@
     <div class="layout">
       <section class="panel" aria-label="Vastu controls">
         <strong id="project-name">Floor plan</strong>
+        <label for="inventory-property">CRM Property / Unit</label>
+        <select id="inventory-property"><option value="">Project common layout (no property)</option></select>
+        <p class="muted">Select the exact Inventory property for a unit report. A common project layout can remain unlinked.</p>
         <label for="property-type">Property type</label>
         <select id="property-type"><option value="residential">Residential</option><option value="commercial">Commercial</option></select>
         <label for="space-type">Unit type</label>
@@ -541,7 +544,7 @@
     document.getElementById('reset').addEventListener('click', () => { if (analysisStatus === 'final') return; center = { x: .5, y: .5 }; draw(); });
     function currentPayload() {
       return {
-        analysisId,projectId:new URLSearchParams(location.search).get('projectId'),
+        analysisId,projectId:new URLSearchParams(location.search).get('projectId'),propertyId:byId('inventory-property').value || null,
         propertyType:byId('property-type').value,spaceType:byId('space-type').value,
         layoutCount:Number(byId('layout-count').value),
         source:{ sha256:sourceHash,name:sourceName,page:pdf ? Number(byId('brochure-page').value) : 1,width:sourceImage?.width,height:sourceImage?.height },
@@ -556,9 +559,11 @@
       return result.data;
     }
     async function refreshSaved() {
-      const projectId = new URLSearchParams(location.search).get('projectId'); if (!projectId) return;
+      const projectId = new URLSearchParams(location.search).get('projectId');
+      const propertyId = byId('inventory-property').value;
+      if (!projectId && !propertyId) return;
       try {
-        const rows = await apiJson(`/api/v2/vastu-analyses?projectId=${encodeURIComponent(projectId)}`);
+        const rows = await apiJson(`/api/v2/vastu-analyses?${propertyId ? `propertyId=${encodeURIComponent(propertyId)}` : `projectId=${encodeURIComponent(projectId)}`}`);
         byId('saved-analysis').replaceChildren(new Option('Start new analysis',''),...rows.sort((a,b) => String(b.UpdatedAt).localeCompare(String(a.UpdatedAt))).map((r) =>
           new Option(`${r.Status.toUpperCase()} · ${r.PropertyType} · ${r.Source.name || 'brochure'} page ${r.Source.page} · ${new Date(r.UpdatedAt).toLocaleDateString()}`,r.AnalysisID)));
         if (analysisId) byId('saved-analysis').value = analysisId;
@@ -579,7 +584,7 @@
         const draft = await apiJson('/api/v2/vastu-analyses',{ method:'POST',body:JSON.stringify(currentPayload()) });
         analysisId = draft.AnalysisID;
         const row = await apiJson(`/api/v2/vastu-analyses/${encodeURIComponent(analysisId)}/finalize`,{ method:'POST',body:'{}' });
-        analysisStatus = 'final'; finalIdentity = row.IdentitySnapshot; finalProjectName = row.ProjectName;
+        analysisStatus = 'final'; finalIdentity = row.IdentitySnapshot; finalProjectName = row.PropertyTitle || row.ProjectName;
         regions = row.Layouts.map((r) => ({...r,rooms:r.rooms.map((m) => ({...m}))}));
         renderRegionSelect(); selectRegion(selectedRegion); await refreshSaved(); await refreshShares(); message('Final snapshot saved. Print all layout reports is ready. Changes need a new analysis.');
       } catch (e) { message(`Finalize failed: ${e.message}`); }
@@ -591,7 +596,8 @@
         if (!sourceImage || sourceHash !== row.Source.sha256 || (pdf ? Number(byId('brochure-page').value) : 1) !== row.Source.page) {
           message(`First load the same source (${row.Source.name}), page ${row.Source.page}. Source hash must match.`); return;
         }
-        analysisId = id; analysisStatus = row.Status; finalIdentity = row.IdentitySnapshot || null; finalProjectName = row.ProjectName;
+        analysisId = id; analysisStatus = row.Status; finalIdentity = row.IdentitySnapshot || null; finalProjectName = row.PropertyTitle || row.ProjectName;
+        byId('inventory-property').value = row.PropertyID || '';
         byId('report').replaceChildren(); byId('report').classList.remove('active');
         byId('property-type').value = row.PropertyType; configureSpaces(); byId('space-type').value = row.SpaceType;
         byId('layout-count').value = String(row.LayoutCount);
@@ -702,15 +708,35 @@
     });
     window.addEventListener('afterprint', () => document.body.classList.remove('report-print'));
     async function loadProject() {
-      const id = new URLSearchParams(location.search).get('projectId');
-      if (!id) { draw(); return; }
+      const params = new URLSearchParams(location.search);
+      let id = params.get('projectId');
+      const propertyId = params.get('propertyId');
       try {
+        if (propertyId) {
+          const property = await apiJson(`/api/v2/inventory/${encodeURIComponent(propertyId)}`);
+          if (id && property.ProjectID && id !== property.ProjectID) throw new Error('Property belongs to a different project');
+          id = id || property.ProjectID || null;
+          if (id && !params.get('projectId')) { params.set('projectId',id); history.replaceState(null,'',`${location.pathname}?${params}`); }
+          byId('inventory-property').add(new Option(`${property.Title || property.PropertyID} (${property.PropertyID})`,property.PropertyID));
+          byId('inventory-property').value = property.PropertyID;
+          byId('project-name').textContent = property.Title || property.PropertyID;
+          byId('print-heading').textContent = `Signature Properties — ${property.Title || property.PropertyID} — Vastu Floor Plan`;
+          if (['Residential','Commercial'].includes(property.Category)) { byId('property-type').value = property.Category.toLowerCase(); configureSpaces(); }
+        }
+        if (!id) { draw(); await refreshSaved(); return; }
+        if (!propertyId) {
+          try {
+            const inventory = await apiJson(`/api/v2/inventory?projectId=${encodeURIComponent(id)}&limit=100`);
+            for (const property of inventory) byId('inventory-property').add(new Option(`${property.Title || property.PropertyID} (${property.PropertyID})`,property.PropertyID));
+          } catch (_) { /* Project-only reports remain available without Inventory access. */ }
+          byId('inventory-property').addEventListener('change', () => { analysisId = null; analysisStatus = 'draft'; refreshSaved(); });
+        }
         const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}`);
         const result = await response.json();
         if (!response.ok || !result.ok) throw new Error(result.error || 'Project unavailable');
         const project = result.data;
-        document.getElementById('project-name').textContent = project.ProjectName || id;
-        document.getElementById('print-heading').textContent = `Signature Properties — ${project.ProjectName || id} — Vastu Floor Plan`;
+        if (!propertyId) document.getElementById('project-name').textContent = project.ProjectName || id;
+        if (!propertyId) document.getElementById('print-heading').textContent = `Signature Properties — ${project.ProjectName || id} — Vastu Floor Plan`;
         document.getElementById('project-brochure').disabled = !(project.Brochures || []).some((item) => item.verified === true &&
           String(item.downloadStatus || '').toLowerCase() === 'downloaded' && (item.DriveFileID || item.DriveFileId || item.StoragePath));
         const plans = Array.isArray(project.FloorPlans) ? project.FloorPlans : [];
