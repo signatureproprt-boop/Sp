@@ -22,17 +22,27 @@
     button:disabled { opacity: .5; cursor: not-allowed; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
     .secondary { background: #eee4d5; color: #3f2618; }
-    canvas { display: block; width: 100%; max-width: 900px; height: auto; border: 1px solid #e7d9c5; border-radius: 8px; touch-action: none; cursor: crosshair; background: #f3eee7; }
+    canvas { display: block; width: 100%; max-width: none; height: auto; border: 1px solid #e7d9c5; border-radius: 8px; touch-action: none; cursor: crosshair; background: #f3eee7; }
     .canvas-wrap { overflow: auto; }
     #message { min-height: 20px; color: #8b371e; margin-top: 12px; font-size: 14px; }
+    .print-heading { display: none; }
     @media(max-width: 760px) { .layout { grid-template-columns: 1fr; } main { padding: 12px; } }
+    @media print {
+      :root { background: white; }
+      header, h1, main > .muted, .layout > .panel:first-child { display: none !important; }
+      main { max-width: none; padding: 0; }
+      .layout { display: block; margin: 0; }
+      .canvas-wrap { border: 0; padding: 0; overflow: visible; }
+      canvas { border: 0; width: auto !important; height: auto; max-width: 100%; max-height: 277mm; margin: 0 auto; }
+      .print-heading { display: block; font-weight: 700; margin-bottom: 6mm; }
+    }
   </style>
 </head>
 <body>
   <header><strong>Signature Properties</strong><a href="/builder-projects">← Builder Projects</a></header>
   <main>
     <h1>16-direction Vastu compass</h1>
-    <p class="muted">Floor plan chuniye. Plan ke center par tap karein, phir North angle set karein. North arrow / site orientation ko confirm kiye bina zones ko final na maanein.</p>
+    <p class="muted">Brochure par printed compass ho to uske center aur N arrow par tap karein; North angle calculate hoga. Phir layout crop karke overlay center auto-set hoga. Printed compass na ho to North angle manually set karein.</p>
     <div class="layout">
       <section class="panel" aria-label="Vastu controls">
         <strong id="project-name">Floor plan</strong>
@@ -43,22 +53,30 @@
         <label for="brochure-page">Select layout plan page</label>
         <select id="brochure-page" disabled><option value="">First open a brochure</option></select>
         <button id="crop" class="secondary" type="button" disabled style="margin-top:10px">Crop layout from page</button>
-        <p class="muted">Jis page par layout hai woh chuniye. Ek page par multiple plans hon to Crop dabakar layout ke around drag karein.</p>
+        <p class="muted">Page par multiple plans hon to apne layout ke around drag karke crop karein. Crop ke baad compass layout ke center mein align hoga.</p>
         <label for="project-plans">Project floor plan</label>
         <select id="project-plans"><option value="">Select a project plan</option></select>
         <label for="local-plan">Or upload JPG / PNG / WebP</label>
         <input id="local-plan" type="file" accept="image/jpeg,image/png,image/webp" />
+        <button id="align-north" class="secondary" type="button" disabled style="margin-top:14px">🧭 Align North from brochure</button>
+        <div id="north-source" class="muted">North reference not set</div>
+        <label for="preview-zoom">Preview zoom: <output id="zoom-value">100%</output></label>
+        <input id="preview-zoom" type="range" min="100" max="300" step="25" value="100" />
         <label for="north-angle">North direction: <output id="north-value">0° (up)</output></label>
         <input id="north-angle" type="range" min="0" max="359" value="0" />
         <label for="compass-size">Compass radius: <output id="size-value">40%</output></label>
         <input id="compass-size" type="range" min="15" max="70" value="40" />
         <label for="opacity">Overlay opacity: <output id="opacity-value">70%</output></label>
         <input id="opacity" type="range" min="20" max="100" value="70" />
-        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="reset" class="secondary">Reset center</button></div>
+        <label for="paper-size">Print page setup</label>
+        <select id="paper-size"><option value="A4">A4</option><option value="A3">A3</option></select>
+        <label for="paper-orientation">Orientation</label>
+        <select id="paper-orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="print" class="secondary" disabled>Print / Save PDF</button><button id="reset" class="secondary">Reset center</button></div>
         <p class="muted">0° means North is at the top of the image. Angle increases clockwise. Compass center is the marked dot; tap the plan to move it.</p>
         <div id="message" role="status"></div>
       </section>
-      <section class="panel canvas-wrap"><canvas id="plan" width="900" height="600" aria-label="Floor plan with Vastu compass"></canvas></section>
+      <section class="panel canvas-wrap"><div class="print-heading" id="print-heading">Signature Properties — Vastu Floor Plan</div><canvas id="plan" width="900" height="600" aria-label="Floor plan with Vastu compass"></canvas></section>
     </div>
   </main>
   <script>
@@ -72,7 +90,22 @@
     };
     let image = null, objectUrl = null, center = { x: .5, y: .5 };
     let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, sourceVersion = 0;
+    let alignMode = null, northOrigin = null;
     const message = (value) => { document.getElementById('message').textContent = value; };
+    function setPreviewZoom() {
+      const zoom = Number(document.getElementById('preview-zoom').value);
+      document.getElementById('zoom-value').textContent = zoom + '%';
+      const base = Math.min(900, Math.max(240, canvas.parentElement.clientWidth - 36));
+      canvas.style.width = `${Math.round(base * zoom / 100)}px`;
+    }
+    document.getElementById('preview-zoom').addEventListener('input', setPreviewZoom);
+    window.addEventListener('resize', setPreviewZoom);
+    function resetNorth() {
+      alignMode = null; northOrigin = null; controls.angle.value = '0';
+      document.getElementById('north-value').textContent = '0° (up)';
+      document.getElementById('north-source').textContent = 'North reference not set';
+      document.getElementById('align-north').textContent = '🧭 Align North from brochure';
+    }
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (!image) {
@@ -83,7 +116,17 @@
       }
       ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
       const x = center.x * canvas.width, y = center.y * canvas.height;
-      const radius = Math.min(canvas.width, canvas.height) * Number(controls.size.value) / 100;
+      if (alignMode) {
+        if (northOrigin) {
+          ctx.beginPath(); ctx.arc(northOrigin.x * canvas.width, northOrigin.y * canvas.height, 8, 0, Math.PI * 2);
+          ctx.fillStyle = '#c32618'; ctx.fill();
+        }
+        return;
+      }
+      const radius = Math.max(0, Math.min(
+        Math.min(canvas.width, canvas.height) * Number(controls.size.value) / 100,
+        x, y, canvas.width - x, canvas.height - y
+      ) - 2);
       const north = (Number(controls.angle.value) - 90) * Math.PI / 180;
       const alpha = Number(controls.opacity.value) / 100;
       ctx.save(); ctx.translate(x, y);
@@ -113,8 +156,10 @@
         const scale = Math.min(1, 1400 / next.naturalWidth, 1400 / next.naturalHeight);
         canvas.width = Math.round(next.naturalWidth * scale);
         canvas.height = Math.round(next.naturalHeight * scale);
-        center = { x: .5, y: .5 }; draw(); message('Tap the plan center and set North direction.');
+        center = { x: .5, y: .5 }; resetNorth(); draw(); message('Tap the plan center and set North direction.');
         document.getElementById('download').disabled = false;
+        document.getElementById('print').disabled = false;
+        document.getElementById('align-north').disabled = false;
       };
       next.onerror = () => message('Project image could not be opened. Upload the floor plan file instead.');
       next.src = src;
@@ -154,10 +199,12 @@
         await page.render({ canvasContext: bitmap.getContext('2d'), viewport, canvas: bitmap }).promise;
         if (version !== sourceVersion) return;
         image = bitmap; canvas.width = bitmap.width; canvas.height = bitmap.height;
-        center = { x: .5, y: .5 }; cropMode = false;
+        center = { x: .5, y: .5 }; cropMode = false; resetNorth();
         document.getElementById('crop').disabled = false;
         document.getElementById('crop').textContent = 'Crop layout from page';
         document.getElementById('download').disabled = false;
+        document.getElementById('print').disabled = false;
+        document.getElementById('align-north').disabled = false;
         draw(); message(`Page ${pageNumber} ready. Select the layout area if needed, then set North.`);
       } catch (error) { message(`Page could not be rendered: ${error.message}`); }
     }
@@ -180,6 +227,7 @@
     });
     document.getElementById('crop').addEventListener('click', () => {
       cropMode = !cropMode; cropStart = null; cropEnd = null;
+      if (cropMode) { alignMode = null; northOrigin = null; document.getElementById('align-north').textContent = '🧭 Align North from brochure'; }
       document.getElementById('crop').textContent = cropMode ? 'Cancel crop' : 'Crop layout from page';
       message(cropMode ? 'Drag from one corner of the layout to the opposite corner.' : 'Crop cancelled.'); draw();
     });
@@ -196,9 +244,31 @@
       objectUrl = URL.createObjectURL(file); controls.plans.value = ''; showImage(objectUrl, true);
     });
     controls.plans.addEventListener('change', () => { if (controls.plans.value) showImage(controls.plans.value); });
+    document.getElementById('align-north').addEventListener('click', () => {
+      alignMode = alignMode ? null : 'center'; northOrigin = null;
+      document.getElementById('align-north').textContent = alignMode ? 'Cancel North alignment' : '🧭 Align North from brochure';
+      message(alignMode ? 'Printed compass ke center par tap karein, phir N arrow/tip par tap karein.' : 'North alignment cancelled.'); draw();
+    });
     canvas.addEventListener('pointerdown', (event) => {
       if (!image) return;
       if (cropMode) { cropStart = pointerPosition(event); cropEnd = cropStart; canvas.setPointerCapture(event.pointerId); return; }
+      if (alignMode === 'center') {
+        northOrigin = pointerPosition(event); alignMode = 'north'; draw();
+        message('Ab printed compass ke N arrow/tip par tap karein.'); return;
+      }
+      if (alignMode === 'north') {
+        const tip = pointerPosition(event);
+        const dx = (tip.x - northOrigin.x) * canvas.width;
+        const dy = (tip.y - northOrigin.y) * canvas.height;
+        if (Math.hypot(dx, dy) < 12) { message('N arrow center se door hona chahiye. Dobara N par tap karein.'); return; }
+        const degrees = (Math.round(Math.atan2(dy, dx) * 180 / Math.PI + 90) + 360) % 360;
+        controls.angle.value = String(degrees);
+        document.getElementById('north-value').textContent = degrees + '°' + (degrees === 0 ? ' (up)' : '');
+        document.getElementById('north-source').textContent = 'North angle calculated from marked brochure compass';
+        alignMode = null; northOrigin = null;
+        document.getElementById('align-north').textContent = '🧭 Align North from brochure';
+        draw(); message(`North ${degrees}° set. Ab layout crop karein; compass uske center par aa jayega.`); return;
+      }
       center = pointerPosition(event); draw();
     });
     canvas.addEventListener('pointermove', (event) => {
@@ -220,10 +290,10 @@
       const cropped = document.createElement('canvas'); cropped.width = w; cropped.height = h;
       cropped.getContext('2d').drawImage(image, x, y, w, h, 0, 0, w, h);
       image = cropped; canvas.width = w; canvas.height = h; center = { x: .5, y: .5 }; draw();
-      message('Layout cropped. Tap its center and set North direction.');
+      message('Layout cropped. Compass layout center par align hai. North angle check karein.');
     });
     for (const [key, output, suffix] of [['angle','north-value','°'],['size','size-value','%'],['opacity','opacity-value','%']]) {
-      controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix + (key === 'angle' && controls[key].value === '0' ? ' (up)' : ''); draw(); });
+      controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix + (key === 'angle' && controls[key].value === '0' ? ' (up)' : ''); if (key === 'angle') document.getElementById('north-source').textContent = 'North angle set manually'; draw(); });
     }
     document.getElementById('reset').addEventListener('click', () => { center = { x: .5, y: .5 }; draw(); });
     document.getElementById('download').addEventListener('click', () => {
@@ -231,6 +301,15 @@
         const a = document.createElement('a'); a.download = 'signature-properties-vastu-plan.png';
         a.href = canvas.toDataURL('image/png'); a.click(); message('Marked plan downloaded.');
       } catch (_) { message('This project image cannot be exported because its source blocks canvas download. Upload the original JPG/PNG above, then download.'); }
+    });
+    document.getElementById('print').addEventListener('click', () => {
+      const paper = document.getElementById('paper-size').value;
+      const orientation = document.getElementById('paper-orientation').value;
+      const heightMm = paper === 'A3' ? (orientation === 'landscape' ? 277 : 400) : (orientation === 'landscape' ? 190 : 277);
+      let style = document.getElementById('print-page-style');
+      if (!style) { style = document.createElement('style'); style.id = 'print-page-style'; document.head.append(style); }
+      style.textContent = `@page { size: ${paper} ${orientation}; margin: 10mm; } @media print { canvas { max-height: ${heightMm}mm; } }`;
+      draw(); window.print();
     });
     async function loadProject() {
       const id = new URLSearchParams(location.search).get('projectId');
@@ -241,6 +320,7 @@
         if (!response.ok || !result.ok) throw new Error(result.error || 'Project unavailable');
         const project = result.data;
         document.getElementById('project-name').textContent = project.ProjectName || id;
+        document.getElementById('print-heading').textContent = `Signature Properties — ${project.ProjectName || id} — Vastu Floor Plan`;
         document.getElementById('project-brochure').disabled = !(project.Brochures || []).some((item) => item.verified === true &&
           String(item.downloadStatus || '').toLowerCase() === 'downloaded' && (item.DriveFileID || item.DriveFileId || item.StoragePath));
         const plans = Array.isArray(project.FloorPlans) ? project.FloorPlans : [];
@@ -255,7 +335,7 @@
         else { draw(); message('No floor plan stored for this project. Upload a floor plan image.'); }
       } catch (error) { draw(); message(error.message); }
     }
-    loadProject();
+    setPreviewZoom(); loadProject();
   </script>
 </body>
 </html>
