@@ -38,3 +38,12 @@ test('public brochure links reject unknown and expired tokens without exposing P
     new URL(`https://signatureproperties.cloud.run/brochure/different-project/${token}`));
   assert.equal(wrongProject.status, 404);
 });
+
+test('recipient tracking requires a name, phone and explicit share channel', () => {
+  const normalize = __test.normalizeBrochureRecipient;
+  assert.deepEqual(normalize({ recipientName: '  Asha   Shah ', recipientPhone: '+91 98765 43210', channel: 'whatsapp_text' }),
+    { name: 'Asha Shah', phone: '919876543210', channel: 'whatsapp_text' });
+  assert.equal(normalize({ recipientName: 'Asha', recipientPhone: 'no phone', channel: 'whatsapp_text' }), null);
+  assert.equal(normalize({ recipientName: '', recipientPhone: '9876543210', channel: 'pdf_share' }), null);
+  assert.equal(normalize({ recipientName: 'Asha', recipientPhone: '9876543210', channel: 'unknown' }), null);
+});

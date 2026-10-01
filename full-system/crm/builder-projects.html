@@ -265,6 +265,16 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="brochure-trace-modal">
+    <div class="modal" style="max-width:760px">
+      <div class="modal-header"><div class="modal-title">👁 Brochure share & opens</div><button class="modal-close" onclick="document.getElementById('brochure-trace-modal').classList.add('hidden')" aria-label="Close">×</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Har client ka alag link. “Sent” ko aap manually confirm karein. Link forward ho sakta hai; open karne wale ki identity verify nahi hoti. PDF attachment khulne ka count available nahi hai.</p>
+        <div id="brochure-trace-rows" style="max-height:60vh;overflow:auto"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="toolbar">
     <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
     <div class="chip active" data-testid="filter-cat-all" onclick="setCategoryFilter(this, '')">All Categories</div>
@@ -1122,8 +1132,25 @@ table td,table th{border-color:var(--v2-line)!important}
     return lines;
   }
 
-  async function createBrochureShare(id) {
-    const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`, { method: 'POST' });
+  function askBrochureRecipient() {
+    const name = prompt('Client ka naam (brochure tracking ke liye):');
+    if (name === null) return null;
+    const phone = prompt('Client ka WhatsApp number (10 digit ya country code ke saath):');
+    if (phone === null) return null;
+    const digits = phone.replace(/[\s()+-]/g, '');
+    const normalizedPhone = digits.length === 10 ? `91${digits}` : digits;
+    if (!name.trim() || !/^\d{8,15}$/.test(normalizedPhone)) {
+      alert('Client ka naam aur sahi WhatsApp number daaliye.');
+      return null;
+    }
+    return { name: name.trim(), phone: normalizedPhone };
+  }
+
+  async function createBrochureShare(id, recipient, channel) {
+    const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recipientName: recipient.name, recipientPhone: recipient.phone, channel })
+    });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || 'Brochure link could not be created');
     return result.data.url || new URL(result.data.path, window.location.origin).href;
@@ -1133,13 +1160,15 @@ table td,table th{border-color:var(--v2-line)!important}
     const p = allProjects.find(x => x.ProjectID === id);
     if (!p) return;
     const popup = window.open('about:blank', '_blank');
+    const recipient = askBrochureRecipient();
+    if (!recipient) { if (popup) popup.close(); return; }
     try {
       const lines = projectShareLines(p);
       if ((p.Brochures || []).some(isStoredBrochure)) {
-        lines.push(`📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${await createBrochureShare(id)}`);
+        lines.push(`📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${await createBrochureShare(id, recipient, 'whatsapp_text')}`);
       }
       lines.push('', '— Signature Properties');
-      const url = `https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`;
+      const url = `https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines.join('\n'))}`;
       if (popup) popup.location.href = url;
       else window.location.href = url;
     } catch (error) {
@@ -1151,8 +1180,10 @@ table td,table th{border-color:var(--v2-line)!important}
   async function shareBrochurePdf(id) {
     const p = allProjects.find(x => x.ProjectID === id);
     if (!p) return;
+    const recipient = askBrochureRecipient();
+    if (!recipient) return;
     try {
-      const link = await createBrochureShare(id);
+      const link = await createBrochureShare(id, recipient, 'pdf_share');
       const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
       if (!response.ok) throw new Error('Stored PDF could not be downloaded');
       const file = new File([await response.blob()], `${(p.ProjectName || 'project').replace(/[^a-z0-9-]/gi, '-')}-brochure.pdf`, { type: 'application/pdf' });
@@ -1172,7 +1203,7 @@ table td,table th{border-color:var(--v2-line)!important}
         a.download = file.name;
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-        alert('PDF downloaded. Attach it in WhatsApp; the brochure link is available through the Share button.');
+        alert(`PDF downloaded. ${recipient.name} ko WhatsApp mein attach kijiye; link bhi message mein bhejiye. CRM delivery confirm nahi kar sakta.`);
       }
     } catch (error) {
       if (error.name !== 'AbortError') alert(error.message);
@@ -1180,12 +1211,34 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   async function showBrochureTrace(id) {
+    const modal = document.getElementById('brochure-trace-modal');
+    const container = document.getElementById('brochure-trace-rows');
+    modal.classList.remove('hidden');
+    container.textContent = 'Loading…';
     try {
       const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`);
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Could not load brochure opens');
-      const rows = (result.data || []).slice().reverse().slice(0, 20);
-      alert(rows.length ? rows.map(row => `${new Date(row.CreatedAt).toLocaleString()} · Opened ${row.OpenCount || 0} time(s)${row.LastOpenedAt ? ` · Last: ${new Date(row.LastOpenedAt).toLocaleString()}` : ''}`).join('\n') : 'No brochure links have been shared yet.');
+      const rows = (result.data || []).slice().reverse();
+      container.innerHTML = rows.length ? rows.map(row => `
+        <div style="border:1px solid var(--clr-border);border-radius:8px;padding:12px;margin-bottom:9px">
+          <strong>${esc(row.RecipientName || 'Unassigned')}</strong> · ${esc(row.RecipientPhone || '—')}
+          <div style="font-size:12px;margin-top:5px">${row.Channel === 'pdf_share' ? 'PDF share' : 'WhatsApp link'} · ${row.ShareStatus === 'sent_confirmed_manually' ? '✓ Sent (manually confirmed)' : 'Draft prepared, send unconfirmed'}</div>
+          <div style="font-size:12px;margin-top:5px">Prepared: ${esc(new Date(row.CreatedAt).toLocaleString())} · Link opens: <strong>${Number(row.OpenCount) || 0}</strong>${row.LastOpenedAt ? ` · Last opened: ${esc(new Date(row.LastOpenedAt).toLocaleString())}` : ''}</div>
+          ${row.ShareStatus !== 'sent_confirmed_manually' ? `<button class="btn btn-ghost" style="margin-top:8px" onclick="markBrochureSent('${esc(id)}','${esc(row.ShareID)}')">✓ Mark sent</button>` : ''}
+        </div>`).join('') : 'No brochure links have been prepared yet.';
+    } catch (error) { container.textContent = error.message; }
+  }
+
+  async function markBrochureSent(projectId, shareId) {
+    if (!confirm('Kya aapne is client ko brochure bhej diya hai?')) return;
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/brochure-shares/${encodeURIComponent(shareId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sent: true })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Could not mark sent');
+      await showBrochureTrace(projectId);
     } catch (error) { alert(error.message); }
   }
 
