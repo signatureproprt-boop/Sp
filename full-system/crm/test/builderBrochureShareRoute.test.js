@@ -32,4 +32,9 @@ test('public brochure links reject unknown and expired tokens without exposing P
   const expired = response();
   await __test.handleApi(req, expired, url);
   assert.equal(expired.status, 404);
+  rows = [{ TokenHash: hash, ProjectID: 'P1', ProjectSlug: 'vesu-heights', ExpiresAt: '2099-01-01T00:00:00Z' }];
+  const wrongProject = response();
+  await __test.handleApi(req, wrongProject,
+    new URL(`https://example.com/signature-properties/different-project/brochure/${token}`));
+  assert.equal(wrongProject.status, 404);
 });
