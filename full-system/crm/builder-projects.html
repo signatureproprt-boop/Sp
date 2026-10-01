@@ -416,6 +416,10 @@ table td,table th{border-color:var(--v2-line)!important}
           <input id="f-amenities" data-testid="f-amenities" type="text" placeholder="e.g. Clubhouse, Gym, Garden, Swimming Pool" />
         </div>
         <div class="form-group full">
+          <label>Project Overview</label>
+          <textarea id="f-overview" data-testid="f-overview" rows="3" placeholder="Project details from the brochure"></textarea>
+        </div>
+        <div class="form-group full">
           <label>Notes</label>
           <textarea id="f-notes" data-testid="f-notes" rows="2" placeholder="Any additional detail"></textarea>
         </div>
@@ -1179,7 +1183,8 @@ table td,table th{border-color:var(--v2-line)!important}
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       currentSearch = document.getElementById('search-input').value.trim();
-      render();
+      currentPage = 1;
+      loadProjects();
     }, 250);
   }
 
@@ -1190,7 +1195,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('modal-title').textContent = 'Add Builder Project';
     document.getElementById('form-error').textContent = '';
     document.getElementById('autofill-status').textContent = '';
-    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-price-min','f-price-max','f-possession','f-amenities','f-notes'].forEach(id => document.getElementById(id).value = '');
+    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('f-status').value = 'Under Construction';
     document.getElementById('f-category').value = 'Residential';
     document.getElementById('media-section').style.display = 'none';
@@ -1220,6 +1225,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-price-max').value = p.PriceRange?.max ?? '';
     document.getElementById('f-possession').value = (p.PossessionDate || '').slice(0, 10);
     document.getElementById('f-amenities').value = (p.Amenities || []).join(', ');
+    document.getElementById('f-overview').value = p.Overview || p.Description || '';
     document.getElementById('f-notes').value = p.Notes || '';
     configRows = (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length)
       ? p.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '' }))
@@ -1278,6 +1284,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (d.BuilderName) document.getElementById('f-builder-name').value = d.BuilderName;
     if (d.Location1) document.getElementById('f-location1').value = d.Location1;
     if (d.Address) document.getElementById('f-address').value = d.Address;
+    if (d.Overview || d.Description) document.getElementById('f-overview').value = d.Overview || d.Description;
     if (d.RERANumber) document.getElementById('f-rera-number').value = d.RERANumber;
     if (d.Category) document.getElementById('f-category').value = d.Category;
     if (d.ProjectStatus) document.getElementById('f-status').value = d.ProjectStatus;
@@ -1320,6 +1327,7 @@ table td,table th{border-color:var(--v2-line)!important}
       PriceMax: document.getElementById('f-price-max').value || null,
       PossessionDate: document.getElementById('f-possession').value || null,
       Amenities: document.getElementById('f-amenities').value,
+      Overview: document.getElementById('f-overview').value.trim() || null,
       Notes: document.getElementById('f-notes').value.trim() || null
     };
 
