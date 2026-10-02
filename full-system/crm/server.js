@@ -2413,7 +2413,7 @@ async function handleApi(req, res, url) {
           ExpiresAt: new Date(createdAt.getTime() + 30 * 86400000).toISOString(),
           OpenCount: 0
         };
-        const shareUrl = `https://signatureproperties.cloud.run/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`;
+        const shareUrl = `${String(process.env.BROCHURE_PUBLIC_BASE_URL || 'https://signature-realty-crm-jqunfrmg7a-el.a.run.app').replace(/\/$/, '')}/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`;
         if (transactionId) {
           const { ShortlistServiceV2 } = require('./src/services/shortlistServiceV2');
           const attached = new ShortlistServiceV2(runtime.repository).attachBuilderBrochure(
