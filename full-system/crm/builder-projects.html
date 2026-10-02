@@ -1164,24 +1164,47 @@ table td,table th{border-color:var(--v2-line)!important}
     return lines;
   }
 
-  function askBrochureRecipient() {
-    const name = prompt('Client ka naam (brochure tracking ke liye):');
-    if (name === null) return null;
-    const phone = prompt('Client ka WhatsApp number (10 digit ya country code ke saath):');
-    if (phone === null) return null;
-    const digits = phone.replace(/[\s()+-]/g, '');
-    const normalizedPhone = digits.length === 10 ? `91${digits}` : digits;
-    if (!name.trim() || !/^\d{8,15}$/.test(normalizedPhone)) {
-      alert('Client ka naam aur sahi WhatsApp number daaliye.');
-      return null;
+  async function chooseBrochureLead() {
+    const search = prompt('CRM client ka naam ya mobile search karein:');
+    if (search === null) return null;
+    if (!search.trim()) throw new Error('Client search likhiye.');
+    const response = await fetch('/api/v2/clients?q=' + encodeURIComponent(search.trim()));
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Clients load nahi hue');
+    const leads = (result.data || []).filter(row => row.LeadID).slice(0, 12);
+    if (!leads.length) throw new Error('Is search se koi CRM client nahi mila.');
+    const choice = prompt(leads.map((row, index) =>
+      `${index + 1}. ${row.ClientName || row.Name || 'Client'} · ${row.PrimaryMobile || row.Phone || 'No phone'}`
+    ).join('\n') + '\n\nClient ka number select karein (1-' + leads.length + '):');
+    if (choice === null) return null;
+    const lead = leads[Number(choice) - 1];
+    if (!lead) throw new Error('List mein diya hua number select karein.');
+    const workspaceResponse = await fetch('/api/v2/clients/' + encodeURIComponent(lead.LeadID) + '/workspace');
+    const workspaceResult = await workspaceResponse.json();
+    if (!workspaceResponse.ok || !workspaceResult.ok) throw new Error(workspaceResult.error || 'Client transactions load nahi hui');
+    const transactions = (workspaceResult.data?.transactions || []).filter(row => row.TransactionID);
+    if (!transactions.length) throw new Error('Is client ki transaction/requirement nahi hai. Pehle Client Workspace mein add karein.');
+    let transaction = transactions[0];
+    if (transactions.length > 1) {
+      const txnChoice = prompt(transactions.map((row, index) =>
+        `${index + 1}. ${row.TransactionCode || row.TransactionType || row.TransactionID} · ${row.Category || ''}`
+      ).join('\n') + '\n\nShortlist ke liye transaction select karein:');
+      if (txnChoice === null) return null;
+      transaction = transactions[Number(txnChoice) - 1];
+      if (!transaction) throw new Error('Sahi transaction number select karein.');
     }
-    return { name: name.trim(), phone: normalizedPhone };
+    const client = workspaceResult.data.lead;
+    const phone = String(client.PrimaryMobile || client.Phone || '').replace(/\D/g, '');
+    const normalizedPhone = phone.length === 10 ? '91' + phone : phone;
+    if (!/^\d{8,15}$/.test(normalizedPhone)) throw new Error('CRM client mein valid WhatsApp number add karein.');
+    return { leadId: client.LeadID, transactionId: transaction.TransactionID,
+      name: client.ClientName || client.Name || 'Client', phone: normalizedPhone };
   }
 
   async function createBrochureShare(id, recipient, channel) {
     const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipientName: recipient.name, recipientPhone: recipient.phone, channel })
+      body: JSON.stringify({ leadId: recipient.leadId, transactionId: recipient.transactionId, channel })
     });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || 'Brochure link could not be created');
@@ -1191,27 +1214,27 @@ table td,table th{border-color:var(--v2-line)!important}
   async function shareProjectOnWhatsApp(id) {
     const p = allProjects.find(x => x.ProjectID === id);
     if (!p) return;
-    const recipient = askBrochureRecipient();
-    if (!recipient) return;
-    try {
-      const lines = projectShareLines(p);
-      if ((p.Brochures || []).some(isStoredBrochure)) {
-        lines.push(`📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${await createBrochureShare(id, recipient, 'whatsapp_text')}`);
-      }
-      lines.push('', '— Signature Properties');
-      const url = `https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines.join('\n'))}`;
-      window.location.assign(url);
-    } catch (error) {
-      alert(error.message);
+    if (!(p.Brochures || []).some(isStoredBrochure)) {
+      alert('Is project ka stored brochure available nahi hai. Pehle brochure upload/store karein.');
+      return;
     }
+    try {
+      const recipient = await chooseBrochureLead();
+      if (!recipient) return;
+      const lines = projectShareLines(p);
+      lines.push(`📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${await createBrochureShare(id, recipient, 'whatsapp_text')}`);
+      lines.push('', '— Signature Properties');
+      window.location.assign(`https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines.join('\n'))}`);
+    } catch (error) { alert(error.message); }
   }
 
   async function shareBrochurePdf(id) {
     const p = allProjects.find(x => x.ProjectID === id);
     if (!p) return;
-    const recipient = askBrochureRecipient();
-    if (!recipient) return;
+    let recipient;
     try {
+      recipient = await chooseBrochureLead();
+      if (!recipient) return;
       const link = await createBrochureShare(id, recipient, 'pdf_share');
       const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
       if (!response.ok) throw new Error('Stored PDF could not be downloaded');
