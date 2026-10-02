@@ -1005,15 +1005,6 @@ table td,table th{border-color:var(--v2-line)!important}
     return '₹' + n.toLocaleString('en-IN');
   }
 
-  const MEDIA_PLACEHOLDER_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
-      <rect width="640" height="360" fill="#f3eee2"/>
-      <rect x="28" y="28" width="584" height="304" rx="18" fill="#fff7e8" stroke="#d8c7a6" stroke-width="3"/>
-      <text x="320" y="166" text-anchor="middle" fill="#6b4b19" font-family="Arial,sans-serif" font-size="22" font-weight="700">Image Pending Permanent Storage</text>
-      <text x="320" y="198" text-anchor="middle" fill="#8b6a34" font-family="Arial,sans-serif" font-size="16">Migrate project media to enable internal preview</text>
-    </svg>`
-  );
-
   function hasInternalPath(value, kind) {
     const text = String(value || '').trim();
     if (!text) return false;
@@ -1035,7 +1026,7 @@ table td,table th{border-color:var(--v2-line)!important}
   function preferredPhotoUrl(project, photo) {
     if (project && isStoredPhoto(photo))
       return `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/images/${encodeURIComponent(photo.MediaID)}`;
-    return MEDIA_PLACEHOLDER_IMAGE;
+    return '';
   }
 
   function preferredBrochureUrl(project, brochure) {
@@ -1072,7 +1063,8 @@ table td,table th{border-color:var(--v2-line)!important}
       const min = fmtPrice(p.PriceRange.min), max = fmtPrice(p.PriceRange.max);
       priceText = min && max ? `${min} – ${max}` : (min || max || '—');
     }
-    const coverPhoto = (p.Photos || []).find(m => isStoredPhoto(m) && m.MediaID) || (p.Photos || [])[0];
+    const storedPhotos = (p.Photos || []).filter(isStoredPhoto);
+    const coverPhoto = storedPhotos[0];
     const coverPhotoUrl = preferredPhotoUrl(p, coverPhoto);
     const firstBrochure = (p.Brochures || []).find((m) => isStoredBrochure(m)) || (p.Brochures || [])[0];
     const firstBrochureUrl = preferredBrochureUrl(p, firstBrochure);
@@ -1089,7 +1081,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(p.Category || 'Residential')}</span>
         <div class="card-price">${priceText}</div>
         <div class="card-facts">${facts.map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
-          ${p.Photos && p.Photos.length ? `<span class="card-fact">📷 ${p.Photos.length}</span>` : ''}
+          ${storedPhotos.length ? `<span class="card-fact">📷 ${storedPhotos.length}</span>` : ''}
           ${p.Videos && p.Videos.length ? `<span class="card-fact">🎥 ${p.Videos.length}</span>` : ''}
           ${firstBrochureUrl ? `<a class="card-fact" href="${esc(firstBrochureUrl)}" target="_blank" rel="noopener" data-testid="brochure-link-${esc(p.ProjectID)}">📄 Brochure</a>` : ''}
           ${brochureDriveLink ? `<a class="card-fact" href="${esc(brochureDriveLink)}" target="_blank" rel="noopener" data-testid="brochure-drive-link-${esc(p.ProjectID)}">🗂 Drive</a>` : ''}
@@ -1534,12 +1526,12 @@ table td,table th{border-color:var(--v2-line)!important}
   const MEDIA_LIMITS = { photo: 8 * 1024 * 1024, video: 60 * 1024 * 1024, brochure: 15 * 1024 * 1024 };
 
   function renderMediaSection(p) {
-    const photos = p.Photos || [], videos = p.Videos || [], brochures = p.Brochures || [];
+    const photos = (p.Photos || []).filter(isStoredPhoto), videos = p.Videos || [], brochures = p.Brochures || [];
     document.getElementById('media-photos').innerHTML = photos.map(m => `
       <div class="media-thumb" data-testid="media-photo-${esc(m.MediaID)}">
         <img src="${esc(preferredPhotoUrl(p, m))}" alt="${esc(m.Filename)}" />
         <button class="media-del" data-testid="media-del-${esc(m.MediaID)}" onclick="deleteMedia('${esc(m.MediaID)}')">×</button>
-      </div>`).join('') || '<span style="font-size:12px;color:var(--clr-text-light)">No photos yet</span>';
+      </div>`).join('') || '<span style="font-size:12px;color:var(--clr-text-light)">No stored photos</span>';
     document.getElementById('media-videos').innerHTML = videos.map(m => `
       <div class="media-thumb" data-testid="media-video-${esc(m.MediaID)}" style="cursor:pointer" onclick="window.open('${esc(m.Url)}','_blank')">
         <video src="${esc(m.Url)}" preload="metadata" muted></video>
