@@ -98,6 +98,7 @@
         <input id="local-plan" type="file" accept="image/jpeg,image/png,image/webp" />
         <button id="align-north" class="secondary" type="button" disabled style="margin-top:14px">🧭 Align North from brochure</button>
         <div id="north-source" class="muted">North reference not set</div>
+        <p class="muted">Printed compass abhi automatic read nahi hota. Uske center aur N tip par do taps se direction verify karein; galat ho to Re-mark karein.</p>
         <label><input id="north-scope-confirm" type="checkbox" /> Printed North is the same for every layout on this page (check all layout compasses first)</label>
         <label for="preview-zoom">Preview zoom: <output id="zoom-value">100%</output></label>
         <input id="preview-zoom" type="range" min="100" max="300" step="25" value="100" />
@@ -342,7 +343,7 @@
         }
         return;
       }
-      if (!northLocked) return;
+      if (!northLocked || !currentRegion()) return; // Show the wheel only on a selected flat.
       const radius = Math.max(0, Math.min(
         Math.min(canvas.width, canvas.height) * Number(controls.size.value) / 100,
         x, y, canvas.width - x, canvas.height - y
@@ -487,7 +488,7 @@
       if (!northLocked) { message('Pehle printed brochure compass se North lock karein.'); return; }
       if (selectedRegion >= 0) selectRegion(-1);
       cropMode = !cropMode; cropStart = null; cropEnd = null; cropPointerStart = null; cropFirstTap = false;
-      if (cropMode) { alignMode = null; northOrigin = null; document.getElementById('align-north').textContent = '🧭 Align North from brochure'; }
+      if (cropMode) { alignMode = null; northOrigin = null; document.getElementById('align-north').textContent = '🧭 Re-mark printed North'; }
       document.getElementById('crop').textContent = cropMode ? 'Cancel crop' : 'Crop layout from page';
       message(cropMode ? 'Zoomed plan ko ungli se scroll karein. Flat ke pehle corner par tap karein, scroll karke opposite corner par tap karein.' : 'Crop cancelled.'); draw();
     });
@@ -555,7 +556,14 @@
       if (selectedRegion < 0) return; regions.splice(selectedRegion, 1); renderRegionSelect(); selectRegion(-1);
     });
     document.getElementById('align-north').addEventListener('click', () => {
-      if (northLocked) { message('North locked from printed compass. Page/source dobara load karne par hi reset hoga.'); return; }
+      if (analysisStatus === 'final') { message('Final report read-only hai. Naya draft analysis banayein.'); return; }
+      if (northLocked) {
+        if (regions.some((r) => r.rooms.length) && !window.confirm('North badalne par sab room directions dobara review karni hongi. Continue?')) return;
+        regions.forEach((r) => r.rooms.forEach((room) => { room.reviewStatus = 'suggested'; room.reviewNote = ''; }));
+        resetNorth();
+        byId('north-scope-confirm').checked = false;
+        renderRegionSelect();
+      }
       if (selectedRegion >= 0) selectRegion(-1);
       alignMode = alignMode ? null : 'center'; northOrigin = null;
       document.getElementById('align-north').textContent = alignMode ? 'Cancel North alignment' : '🧭 Align North from brochure';
@@ -578,10 +586,10 @@
         northReference = { centerX:northOrigin.x,centerY:northOrigin.y,tipX:tip.x,tipY:tip.y };
         controls.angle.value = String(degrees);
         document.getElementById('north-value').textContent = degrees + '°' + (degrees === 0 ? ' (up)' : '');
-        document.getElementById('north-source').textContent = 'North angle calculated from marked brochure compass';
+        document.getElementById('north-source').textContent = `Printed North: ${degrees}° clockwise from page top. Galat ho to Re-mark dabayein.`;
         northLocked = true; renderRegionSelect();
         alignMode = null; northOrigin = null;
-        document.getElementById('align-north').textContent = '🧭 Align North from brochure';
+        document.getElementById('align-north').textContent = '🧭 Re-mark printed North';
         draw(); message(`Brochure North ${degrees}° locked. Har flat ke liye Crop dabakar do opposite corners tap karein.`); return;
       }
       const region = currentRegion();
@@ -722,7 +730,8 @@
         northReference = { ...row.North }; northLocked = true;
         byId('north-scope-confirm').checked = row.North.scopeConfirmed === true;
         controls.angle.value = String(row.North.angle); byId('north-value').textContent = `${row.North.angle}°`;
-        byId('north-source').textContent = 'North locked from saved brochure compass';
+        byId('north-source').textContent = `Saved printed North: ${row.North.angle}° clockwise from page top`;
+        byId('align-north').textContent = '🧭 Re-mark printed North';
         regions = row.Layouts.map((r) => ({ ...r,rooms:r.rooms.map((m) => ({ ...m })) }));
         renderRegionSelect(); selectRegion(0);
         await refreshShares();
