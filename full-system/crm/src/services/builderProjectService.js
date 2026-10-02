@@ -391,6 +391,8 @@ class BuilderProjectService {
     if (payload.Longitude !== undefined) out.Longitude = parseNum(payload.Longitude);
     if (payload.MapUrl !== undefined) out.MapUrl = String(payload.MapUrl || '').trim() || null;
     if (payload.RERANumber !== undefined) out.RERANumber = String(payload.RERANumber || '').trim() || null;
+    if (payload.SalesPersonName !== undefined) out.SalesPersonName = String(payload.SalesPersonName || '').trim() || null;
+    if (payload.SalesPersonPhone !== undefined) out.SalesPersonPhone = String(payload.SalesPersonPhone || '').trim() || null;
     if (payload.ReraUrl !== undefined) out.ReraUrl = String(payload.ReraUrl || '').trim() || null;
     if (payload.ProjectStatus !== undefined) out.ProjectStatus = normalizeStatus(payload.ProjectStatus);
     if (payload.Category !== undefined) out.Category = payload.Category || 'Residential';
@@ -450,9 +452,13 @@ class BuilderProjectService {
         ? payload.ConfigDetails.filter((c) => c && String(c.Type || '').trim())
           .map((c) => ({
             Type: String(c.Type).trim(),
+            BHK: c.BHK != null && c.BHK !== '' ? parseIntSafe(c.BHK) : null,
             AreaSqft: c.AreaSqft != null && c.AreaSqft !== '' ? parseNum(c.AreaSqft) : null,
             CarpetAreaSqft: c.CarpetAreaSqft != null && c.CarpetAreaSqft !== '' ? parseNum(c.CarpetAreaSqft) : null,
-            BuiltUpAreaSqft: c.BuiltUpAreaSqft != null && c.BuiltUpAreaSqft !== '' ? parseNum(c.BuiltUpAreaSqft) : null
+            BuiltUpAreaSqft: c.BuiltUpAreaSqft != null && c.BuiltUpAreaSqft !== '' ? parseNum(c.BuiltUpAreaSqft) : null,
+            TerraceAreaSqft: c.TerraceAreaSqft != null && c.TerraceAreaSqft !== '' ? parseNum(c.TerraceAreaSqft) : null,
+            ParkingAllotted: c.ParkingAllotted != null && c.ParkingAllotted !== '' ? parseIntSafe(c.ParkingAllotted) : null,
+            ServantRoom: c.ServantRoom === true || c.ServantRoom === 'yes' ? true : c.ServantRoom === false || c.ServantRoom === 'no' ? false : null
           }))
         : [];
       out.Configurations = out.ConfigDetails.map((c) => c.Type);
@@ -521,6 +527,8 @@ class BuilderProjectService {
       Longitude: clean.Longitude ?? null,
       MapUrl: clean.MapUrl || null,
       RERANumber: clean.RERANumber || null,
+      SalesPersonName: clean.SalesPersonName || null,
+      SalesPersonPhone: clean.SalesPersonPhone || null,
       ReraUrl: clean.ReraUrl || null,
       ProjectStatus: clean.ProjectStatus || 'Under Construction',
       PossessionStatus: clean.PossessionStatus || null,

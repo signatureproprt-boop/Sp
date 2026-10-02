@@ -12,6 +12,8 @@ Read the document carefully and return STRICT JSON ONLY (no markdown fences, no 
   "Location1": string or null,
   "Address": string or null,
   "RERANumber": string or null,
+  "SalesPersonName": string or null,
+  "SalesPersonPhone": string or null,
   "Category": one of "Residential", "Commercial", "Industrial", "Land", or null,
   "ProjectStatus": one of "New Launch", "Under Construction", "Ready to Move", "Completed", or null,
   "TotalUnits": number or null,
@@ -19,9 +21,9 @@ Read the document carefully and return STRICT JSON ONLY (no markdown fences, no 
   "PriceMax": number or null,
   "PossessionDate": string in YYYY-MM-DD format or null,
   "Amenities": array of strings,
-  "ConfigDetails": array of objects like {"Type": "2 BHK", "AreaSqft": number}, one entry per distinct unit configuration/size mentioned in the brochure
+  "ConfigDetails": array of objects like {"Type": "Penthouse", "BHK": 4, "CarpetAreaSqft": 2100, "BuiltUpAreaSqft": 2600, "TerraceAreaSqft": 400, "ParkingAllotted": 2, "ServantRoom": true}, one entry per distinct flat, penthouse, or terrace flat configuration/size in the brochure. Use null for every unknown value
 }
-Prices must be plain numbers in INR (no commas, no "Cr"/"L" suffix; convert e.g. 1.2 Cr to 12000000). If a field is genuinely not present, use null (or an empty array for list fields). Do not invent or guess data that is not in the document.`;
+Prices must be plain numbers in INR (no commas, no "Cr"/"L" suffix; convert e.g. 1.2 Cr to 12000000). Area values are in sqft; convert only when the brochure states units clearly. ParkingAllotted means spaces allotted to that unit, not total project parking. Extract a sales phone only if explicitly printed as a sales contact. If a field is genuinely not present, use null (or an empty array for list fields). Do not invent or guess data that is not in the document.`;
 
 function parseModelJson(text) {
   const cleaned = String(text || '')
