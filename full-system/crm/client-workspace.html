@@ -1809,8 +1809,8 @@ table td,table th{border-color:var(--v2-line)!important}
 
   // ── Open "Update Transaction" (pre-filled) ────────────────────────────────────
   async function openUpdateNeedModal(reqId) {
-    const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
-    if (!req) return;
+    const req = (workspace.transactions||[]).find(r => r.TransactionID === reqId);
+    if (!req) { alert('Transaction not found. Refresh the workspace and try again.'); return; }
     currentTxnId = req.TransactionID;
     document.getElementById('req-error').textContent = '';
     document.getElementById('dynamic-fields').innerHTML = '';
