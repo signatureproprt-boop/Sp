@@ -277,6 +277,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   <div class="toolbar">
     <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
+    <select id="builder-select" class="btn" aria-label="Choose builder" onchange="selectBuilder(this.value)"><option value="">All builders</option></select>
     <div class="chip active" data-testid="filter-cat-all" onclick="setCategoryFilter(this, '')">All Categories</div>
     <div class="chip" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</div>
     <div class="chip" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</div>
@@ -574,6 +575,7 @@ table td,table th{border-color:var(--v2-line)!important}
   let allProjects = [];
   let currentStatus = '';
   let currentCategory = '';
+  let currentBuilder = '';
   let currentSearch = '';
   let currentPage = 1;
   let totalPages = 1;
@@ -609,7 +611,8 @@ table td,table th{border-color:var(--v2-line)!important}
       if (!response.ok || !report.ok) throw new Error(report.error || 'Unable to load brochure log');
       brochureStatusRows = report.rows;
       const builderSelect = document.getElementById('brochure-builder-filter');
-      const selectedBuilder = builderSelect.value;
+      const selectedBuilder = builderSelect.dataset.requestedBuilder || builderSelect.value;
+      delete builderSelect.dataset.requestedBuilder;
       const builders = [...new Set(brochureStatusRows.map(row => row.builderName || 'Unknown Builder'))].sort((a, b) => a.localeCompare(b));
       builderSelect.innerHTML = '<option value="">All builders</option>' + builders.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
       if (builders.includes(selectedBuilder)) builderSelect.value = selectedBuilder;
@@ -662,6 +665,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('dl-surat-areas').innerHTML = SURAT_AREAS.map(a => `<option value="${a}">`).join('');
     setupDrop();
     loadProjects();
+    loadBuilderDirectory();
     loadHistory();
     pollKarmaScrape();
   });
@@ -674,6 +678,7 @@ table td,table th{border-color:var(--v2-line)!important}
       params.set('limit', '50');
       if (currentStatus) params.set('status', currentStatus);
       if (currentCategory) params.set('category', currentCategory);
+      if (currentBuilder) params.set('builder', currentBuilder);
       if (currentSearch) params.set('q', currentSearch);
       for (const [id, key] of [['filter-location','location'],['filter-bhk','bhk'],['filter-carpet-min','carpetMin'],['filter-carpet-max','carpetMax'],['filter-built-min','builtUpMin'],['filter-built-max','builtUpMax']]) {
         const value = document.getElementById(id).value.trim();
@@ -689,6 +694,31 @@ table td,table th{border-color:var(--v2-line)!important}
     } catch (e) {
       document.getElementById('grid').innerHTML = `<div class="empty-state" style="color:var(--clr-danger)" data-testid="projects-load-error">Failed to load: ${esc(e.message)}<br><button class="btn btn-ghost" style="margin-top:12px" data-testid="projects-retry-btn" onclick="loadProjects()">↻ Retry</button></div>`;
     }
+  }
+
+  async function loadBuilderDirectory() {
+    const select = document.getElementById('builder-select');
+    try {
+      const response = await fetch('/api/v2/builder-projects/builders');
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Builder list unavailable');
+      select.innerHTML = '<option value="">All builders</option>' + result.data.map(row =>
+        `<option value="${esc(row.name)}">${esc(row.name)} (${Number(row.count) || 0})</option>`).join('');
+      select.value = currentBuilder;
+    } catch (error) {
+      select.innerHTML = '<option value="">All builders</option>';
+      toast('Builder list: ' + error.message, true);
+    }
+  }
+
+  function selectBuilder(name) {
+    currentBuilder = name;
+    currentPage = 1;
+    groupByBuilder = Boolean(name);
+    const toggle = document.querySelector('[data-testid="toggle-group-view"]');
+    toggle.classList.toggle('active', groupByBuilder);
+    toggle.textContent = groupByBuilder ? '▦ Individual View' : '📁 Group by Builder';
+    loadProjects();
   }
 
   let karmaScrapePoll = null;
@@ -941,7 +971,7 @@ table td,table th{border-color:var(--v2-line)!important}
       renderPagination();
       return;
     }
-    // Grouped-by-builder view
+    // Group the current page; the exact builder filter is applied before pagination on the server.
     grid.className = '';
     const groups = new Map();
     for (const p of items) {
@@ -955,12 +985,18 @@ table td,table th{border-color:var(--v2-line)!important}
       const collapsed = collapsedGroups.has(builder);
       return `
       <div class="builder-group" data-testid="builder-group-${esc(builder)}" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--clr-gold-mid);cursor:pointer" data-testid="group-header-${esc(builder)}" onclick="toggleGroupCollapse('${esc(builder)}')">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--clr-gold-mid);cursor:pointer" data-testid="group-header-${esc(builder)}" data-builder="${esc(builder)}" onclick="toggleGroupCollapse(this.dataset.builder)">
           <span style="font-size:13px;color:var(--clr-brown);transition:transform .15s;display:inline-block${collapsed ? '' : ';transform:rotate(90deg)'}">▶</span>
           <span style="font-size:16px;font-weight:800;color:var(--clr-brown)">🏢 ${esc(builder)}</span>
-          <span style="font-size:12px;background:var(--clr-gold-soft);color:var(--clr-brown-mid);padding:3px 10px;border-radius:12px;font-weight:700">${groups.get(builder).length} project${groups.get(builder).length > 1 ? 's' : ''}</span>
+          <span style="font-size:12px;background:var(--clr-gold-soft);color:var(--clr-brown-mid);padding:3px 10px;border-radius:12px;font-weight:700">${groups.get(builder).length} on this page</span>
         </div>
-        <div class="grid" id="${gid}" style="${collapsed ? 'display:none' : ''}">${groups.get(builder).map(renderCard).join('')}</div>
+        <div id="${gid}" style="${collapsed ? 'display:none' : ''}">
+          <button class="btn btn-ghost" data-builder="${esc(builder)}" onclick="openBuilderBrochureStatus(this)" style="margin-bottom:12px">📋 ${esc(builder)} brochure & missing details</button>
+          ${[...new Set(['Residential','Commercial','Industrial','Land','Uncategorized', ...groups.get(builder).map(p => p.Category || 'Uncategorized')])].map(category => {
+            const rows = groups.get(builder).filter(p => (p.Category || 'Uncategorized') === category);
+            return rows.length ? `<div style="margin:16px 0 8px;font-weight:800;color:var(--clr-brown)">${esc(category)} · ${rows.length}</div><div class="grid">${rows.map(renderCard).join('')}</div>` : '';
+          }).join('')}
+        </div>
       </div>`;
     }).join('');
     renderPagination();
@@ -1256,6 +1292,12 @@ table td,table th{border-color:var(--v2-line)!important}
     el.classList.toggle('active', groupByBuilder);
     el.textContent = groupByBuilder ? '▦ Individual View' : '📁 Group by Builder';
     render();
+  }
+
+  function openBuilderBrochureStatus(button) {
+    const select = document.getElementById('brochure-builder-filter');
+    select.dataset.requestedBuilder = button.dataset.builder;
+    openBrochureStatus();
   }
 
   // ── Builder Name Cleanup ─────────────────────────────────────────────────

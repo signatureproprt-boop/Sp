@@ -2336,6 +2336,20 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (/^\/api\/v2\/builder-projects\/builders\/?$/i.test(pathname)) {
+        if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const groups = new Map();
+        for (const row of runtime.repository.list('BuilderProjects')) {
+          if (row.Active === false || !tenantCheck(row, actor).ok) continue;
+          const name = String(row.BuilderName || '').trim() || 'Unknown Builder';
+          const key = name.toLowerCase();
+          if (!groups.has(key)) groups.set(key, { name, count: 0 });
+          groups.get(key).count += 1;
+        }
+        sendJson(res, { ok: true, data: [...groups.values()].sort((a, b) => a.name.localeCompare(b.name)) });
+        return;
+      }
+
       const brochureShareMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^/]+)\/brochure-shares\/?$/i);
       if (brochureShareMatch) {
         if (!['GET', 'POST'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
@@ -2613,6 +2627,7 @@ async function handleApi(req, res, url) {
           const serviceStartedAt = process.hrtime.bigint();
           const out = svc.listPage({
             q: url.searchParams.get('q'),
+            builder: url.searchParams.get('builder'),
             location: url.searchParams.get('location'),
             status: url.searchParams.get('status'),
             category: url.searchParams.get('category'),
