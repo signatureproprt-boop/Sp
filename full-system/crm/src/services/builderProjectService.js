@@ -308,8 +308,9 @@ class BuilderProjectService {
   }
 
   // ── CRUD ─────────────────────────────────────────────────────────────────
-  list({ q, location, status, category, bhk, carpetMin, carpetMax, builtUpMin, builtUpMax } = {}) {
+  list({ q, builder, location, status, category, bhk, carpetMin, carpetMax, builtUpMin, builtUpMax } = {}) {
     let rows = this.repo.list('BuilderProjects').filter((p) => p.Active !== false);
+    if (builder) rows = rows.filter((p) => String(p.BuilderName || 'Unknown Builder').trim().toLowerCase() === String(builder).trim().toLowerCase());
     if (location) rows = rows.filter((p) => String(p.Location1 || '').toLowerCase() === String(location).toLowerCase());
     if (status) rows = rows.filter((p) => p.ProjectStatus === status);
     if (category) rows = rows.filter((p) => p.Category === category);

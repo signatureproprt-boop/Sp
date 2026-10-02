@@ -19,6 +19,19 @@ test('filters BHK and carpet/built-up sizes within the same configuration', () =
   assert.equal(service.list({ bhk: '2 BHK' }).count, 2);
 });
 
+test('builder selection filters before pagination and combines with category', () => {
+  const service = new BuilderProjectService(repo([
+    { ProjectID: 'a1', BuilderName: 'Avadh', Category: 'Residential', Active: true },
+    { ProjectID: 'other', BuilderName: 'Different', Category: 'Commercial', Active: true },
+    { ProjectID: 'a2', BuilderName: 'Avadh', Category: 'Commercial', Active: true },
+    { ProjectID: 'a3', BuilderName: 'AVADH', Category: 'Industrial', Active: true }
+  ]));
+  const page = service.listPage({ builder: 'Avadh', page: 1, limit: 2 });
+  assert.equal(page.pagination.total, 3);
+  assert.equal(page.pagination.totalPages, 2);
+  assert.equal(service.listPage({ builder: 'Avadh', category: 'Commercial' }).data[0].ProjectID, 'a2');
+});
+
 test('manual review records who checked and becomes stale after brochure or form changes', () => {
   const project = { ProjectID: 'p1', Active: true, ProjectName: 'Home', BuilderName: 'Builder', Location1: 'Vesu', Brochures: [{ verified: true, DriveFileId: 'file-1' }] };
   const service = new BuilderProjectService(repo([project]));
