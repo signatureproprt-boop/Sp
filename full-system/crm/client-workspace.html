@@ -338,6 +338,14 @@ table td,table th{border-color:var(--v2-line)!important}
   .transaction-field-label{font-size:11px;color:#746b64;font-weight:700;text-transform:uppercase}
   .transaction-field-value{font-size:13px;font-weight:650;overflow-wrap:anywhere;margin-top:3px}
   .transaction-missing{margin-top:12px;font-size:12px;color:#746b64}
+  @media(max-width:1600px){
+    .workspace-body{grid-template-columns:minmax(0,1fr)}
+    .needs-col{min-width:0;padding:16px}
+    .info-col{order:1;border-left:0!important;border-top:1px solid #e7e3df;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px!important}
+    .info-col .card{min-width:0;margin:0}
+    .workspace-quicknav{padding:12px 16px}
+    .need-card-footer .need-action-btn{min-height:40px}
+  }
   @media(max-width:700px){
     .workspace-quicknav{padding:10px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .workspace-quicknav a{justify-content:center;text-align:center;padding:8px}
@@ -1381,7 +1389,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="transaction-field-grid">
           ${knownFields.length ? knownFields.map(f => `<div class="transaction-field"><div class="transaction-field-label">${esc(f.label)}</div><div class="transaction-field-value">${esc(f.display)}</div></div>`).join('') : '<div class="transaction-field">Details pending. Tap Update to add budget, location and property preferences.</div>'}
         </div>
-        ${unknownFields.length ? `<details class="transaction-missing"><summary style="cursor:pointer">Add missing details (${unknownFields.length})</summary><div style="margin-top:8px">${unknownFields.map(f => esc(f.label)).join(' · ')}</div><button class="need-action-btn ghost" style="margin-top:8px" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Update details</button></details>` : ''}
+        ${unknownFields.length ? `<div class="transaction-missing"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><strong>Missing details (${unknownFields.length})</strong><button class="need-action-btn primary" type="button" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Fill transaction form</button></div><div style="margin-top:8px;line-height:1.5">${unknownFields.map(f => esc(f.label)).join(' · ')}</div></div>` : ''}
 
         <!-- Next Questions — loaded async -->
         <div id="nq-${esc(reqId)}" class="next-qs" style="display:none">
