@@ -1191,9 +1191,8 @@ table td,table th{border-color:var(--v2-line)!important}
   async function shareProjectOnWhatsApp(id) {
     const p = allProjects.find(x => x.ProjectID === id);
     if (!p) return;
-    const popup = window.open('about:blank', '_blank');
     const recipient = askBrochureRecipient();
-    if (!recipient) { if (popup) popup.close(); return; }
+    if (!recipient) return;
     try {
       const lines = projectShareLines(p);
       if ((p.Brochures || []).some(isStoredBrochure)) {
@@ -1201,10 +1200,8 @@ table td,table th{border-color:var(--v2-line)!important}
       }
       lines.push('', '— Signature Properties');
       const url = `https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines.join('\n'))}`;
-      if (popup) popup.location.href = url;
-      else window.location.href = url;
+      window.location.assign(url);
     } catch (error) {
-      if (popup) popup.close();
       alert(error.message);
     }
   }
