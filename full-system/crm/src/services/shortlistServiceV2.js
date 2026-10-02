@@ -207,6 +207,49 @@ class ShortlistServiceV2 {
     return { ok: true, data: this.buildView(row) };
   }
 
+  attachBuilderBrochure(transactionId, project, share, brochureUrl, actorId = 'system') {
+    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    if (!transaction || transaction.LeadID !== share.LeadID) {
+      return { ok: false, error: 'Client transaction mismatch' };
+    }
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    db.BuilderBrochureShares = db.BuilderBrochureShares || [];
+    const propertyId = 'BUILDER-' + project.ProjectID;
+    const existing = db.Shortlists.find(row =>
+      row.TransactionID === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
+    const manualProperty = {
+      Title: project.ProjectName || 'Builder Project',
+      ProjectName: project.ProjectName || null,
+      BuilderName: project.BuilderName || null,
+      Category: project.Category || null,
+      Location1: project.Location1 || null,
+      InventorySource: 'Builder',
+      Status: project.ProjectStatus || null,
+      MediaLinks: { photos: [], videos: [], brochures: [brochureUrl] }
+    };
+    const now = this._now();
+    let row;
+    if (existing) {
+      row = { ...existing, ManualProperty: manualProperty, BuilderProjectID: project.ProjectID,
+        BrochureShareID: share.ShareID, UpdatedAt: now };
+      db.Shortlists[db.Shortlists.indexOf(existing)] = row;
+    } else {
+      row = {
+        ShortlistID: this.repo.createId('SL'), TransactionID: transactionId,
+        LeadID: share.LeadID, PropertyID: propertyId, BuilderProjectID: project.ProjectID,
+        BrochureShareID: share.ShareID, IsManual: true, ManualProperty: manualProperty,
+        MatchID: null, Status: 'Active', Priority: 'Medium', Notes: '',
+        MatchScore: null, MatchLevel: 'MANUAL', CreatedBy: actorId,
+        CreatedAt: now, UpdatedAt: now, RemovedAt: null, RemovedBy: null
+      };
+      db.Shortlists.push(row);
+    }
+    db.BuilderBrochureShares.push(share);
+    this.repo.write(db);
+    return { ok: true, alreadyShortlisted: !!existing, data: this.buildView(row) };
+  }
+
   remove(transactionId, propertyId, removedBy = 'system') {
     const existing = this._findActive(transactionId, propertyId);
     if (!existing) return { ok: false, error: 'Shortlist entry not found' };
