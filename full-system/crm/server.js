@@ -2370,6 +2370,19 @@ async function handleApi(req, res, url) {
           const { AccessControlService } = require('./src/services/accessControlService');
           if (!new AccessControlService(runtime.repository).authorizeLead(actor,lead,{permissions:['LEADS_VIEW','LEADS_READ'],hideExistence:true}).ok) { sendJson(res,{ok:false,error:'Client unavailable'},403); return; }
         }
+        const transactionId = String(bodyForV2?.transactionId || '');
+        if (leadId && !transactionId) { sendJson(res, { ok: false, error: 'Client transaction is required for shortlist' }, 400); return; }
+        if (transactionId) {
+          const transaction = runtime.repository.find('Transactions', 'TransactionID', transactionId);
+          const { AccessControlService } = require('./src/services/accessControlService');
+          const access = new AccessControlService(runtime.repository).authorizeTransaction(actor, transaction, {
+            permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE'],
+            hideExistence: true
+          });
+          if (!access.ok || transaction?.LeadID !== leadId) {
+            sendJson(res, { ok: false, error: 'Client transaction unavailable' }, 403); return;
+          }
+        }
         const recipient = normalizeBrochureRecipient(lead ? {
           recipientName:lead.ClientName || lead.Name,
           recipientPhone:lead.PrimaryMobile || lead.Phone,
@@ -2383,7 +2396,7 @@ async function handleApi(req, res, url) {
         const token = crypto.randomBytes(32).toString('hex');
         const shareId = crypto.randomUUID();
         const createdAt = new Date();
-        runtime.repository.create('BuilderBrochureShares', {
+        const shareRecord = {
           ShareID: shareId,
           TokenHash: crypto.createHash('sha256').update(token).digest('hex'),
           ProjectID: project.data.ProjectID,
@@ -2399,11 +2412,19 @@ async function handleApi(req, res, url) {
           CreatedAt: createdAt.toISOString(),
           ExpiresAt: new Date(createdAt.getTime() + 30 * 86400000).toISOString(),
           OpenCount: 0
-        });
+        };
+        const shareUrl = `https://signatureproperties.cloud.run/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`;
+        if (transactionId) {
+          const { ShortlistServiceV2 } = require('./src/services/shortlistServiceV2');
+          const attached = new ShortlistServiceV2(runtime.repository).attachBuilderBrochure(
+            transactionId, project.data, shareRecord, shareUrl, actor.userId
+          );
+          if (!attached.ok) { sendJson(res, attached, 400); return; }
+        } else runtime.repository.create('BuilderBrochureShares', shareRecord);
         sendJson(res, { ok: true, data: {
           ShareID: shareId,
           recipientPhone: recipient.phone,
-          url: `https://signatureproperties.cloud.run/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`
+          url: shareUrl
         } }, 201);
         return;
       }
