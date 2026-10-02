@@ -25,6 +25,17 @@ test('directions use North origin and actual source aspect ratio', () => {
   assert.equal(directionFor({ x:.9,y:.5 },box,90,1000,800).direction,'N');
   assert.equal(directionFor({ x:.5,y:.5 },box,0,1000,800).direction,'Center');
 });
+test('two flat centers stay independent and saved directions use each center', () => {
+  const svc = new VastuAnalysisService(repo());
+  const layouts = [
+    {...region,centerX:.2,centerY:.5,rooms:[{type:'Kitchen',x:.5,y:.5}]},
+    {...region,centerX:.8,centerY:.5,rooms:[{type:'Kitchen',x:.5,y:.5}]}
+  ];
+  const draft = svc.saveDraft({projectId:'P1',propertyType:'residential',spaceType:'Flat',layoutCount:2,source,north:{...north,scopeConfirmed:true},layouts},actor);
+  assert.equal(draft.Layouts[0].rooms[0].direction,'E');
+  assert.equal(draft.Layouts[1].rooms[0].direction,'W');
+  assert.deepEqual(draft.Layouts.map((layout) => layout.centerX),[.2,.8]);
+});
 test('draft saves and final snapshot stays immutable', () => {
   const svc = new VastuAnalysisService(repo());
   const input = { projectId:'P1',propertyType:'residential',spaceType:'Flat',layoutCount:1,source,north,layouts:[region] };

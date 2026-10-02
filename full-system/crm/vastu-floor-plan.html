@@ -118,7 +118,8 @@
         <select id="paper-size"><option value="A4">A4</option><option value="A3">A3</option></select>
         <label for="paper-orientation">Orientation</label>
         <select id="paper-orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
-        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="print" class="secondary" disabled>Print plan</button><button id="report-button" class="secondary" disabled>Print all layout reports</button><button id="reset" class="secondary">Reset center</button></div>
+        <div class="actions"><button id="download" disabled>Download marked PNG</button><button id="print" class="secondary" disabled>Print plan</button><button id="report-button" class="secondary" disabled>Print all layout reports</button><button id="set-center" class="secondary" type="button" disabled>Set flat center</button><button id="reset" class="secondary">Suggest center again</button></div>
+        <p id="center-status" class="muted">Crop a flat to suggest its center. Check the wheel before confirming.</p>
         <label for="client-search">After sending PDF, record the client</label>
         <input id="client-search" placeholder="Search client name or mobile" autocomplete="off" />
         <select id="client-select"><option value="">Select client</option></select>
@@ -148,7 +149,7 @@
     let image = null, objectUrl = null, center = { x: .5, y: .5 };
     let pdf = null, pdfjs = null, cropMode = false, cropStart = null, cropEnd = null, cropPointerStart = null, cropFirstTap = false, sourceVersion = 0;
     let alignMode = null, northOrigin = null;
-    let sourceImage = null, regions = [], selectedRegion = -1, northLocked = false;
+    let sourceImage = null, regions = [], selectedRegion = -1, northLocked = false, centerMode = false;
     let sourceHash = '', sourceName = '', sourceId = null, sourceRef = null, northReference = null, analysisId = null, analysisStatus = 'draft', finalIdentity = null, finalProjectName = '', finalGuidanceVersion = '';
     const spaceConfig = {
       residential: { units:['Flat','Penthouse','Villa','Other residential'], rooms:['Entrance','Living room','Kitchen','Master bedroom','Bedroom','Puja','Toilet','Balcony','Staircase'] },
@@ -178,6 +179,33 @@
     }
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
     function currentRegion() { return regions[selectedRegion]; }
+    function suggestCenter(crop) {
+      // Use the visible drawing's ink bounds as a suggestion, never a verified flat boundary.
+      const sample = document.createElement('canvas'); sample.width = 120;
+      sample.height = Math.max(30, Math.round(120 * crop.height / crop.width));
+      const c = sample.getContext('2d', { willReadFrequently:true });
+      c.drawImage(crop,0,0,sample.width,sample.height);
+      const pixels = c.getImageData(0,0,sample.width,sample.height).data;
+      const rows = [], cols = [];
+      for (let y = 0; y < sample.height; y++) for (let x = 0; x < sample.width; x++) {
+        const p = (y * sample.width + x) * 4;
+        if (Math.max(pixels[p],pixels[p+1],pixels[p+2]) < 190) { rows.push(y); cols.push(x); }
+      }
+      if (cols.length < sample.width * sample.height * .005) return { x:.5,y:.5,method:'crop midpoint (drawing unclear)' };
+      const extent = (values, size) => {
+        values.sort((a,b) => a-b);
+        return (values[Math.floor(values.length * .03)] + values[Math.floor(values.length * .97)]) / (2 * size);
+      };
+      return { x:clamp(extent(cols,sample.width),.1,.9),y:clamp(extent(rows,sample.height),.1,.9),method:'drawing ink bounds (verify)' };
+    }
+    function updateCenter(position, method) {
+      const region = currentRegion(); if (!region) return;
+      region.centerX = position.x; region.centerY = position.y; region.centerMethod = method;
+      center = { x:position.x,y:position.y };
+      region.rooms.forEach((room) => { room.reviewStatus = 'suggested'; room.reviewNote = ''; });
+      renderRooms(); draw();
+      byId('center-status').textContent = `Flat center: ${Math.round(center.x * 100)}%, ${Math.round(center.y * 100)}% · ${method}. Check against the flat boundary.`;
+    }
     function selectRegion(index) {
       selectedRegion = index; const region = currentRegion();
       byId('layout-select').value = index < 0 ? '' : String(index);
@@ -194,9 +222,18 @@
         crop.getContext('2d').drawImage(sourceImage, region.x * sourceImage.width, region.y * sourceImage.height,
           region.w * sourceImage.width, region.h * sourceImage.height, 0, 0, crop.width, crop.height);
         image = crop;
+        if (region.centerX == null || region.centerY == null) {
+          const suggestion = suggestCenter(crop);
+          region.centerX = suggestion.x; region.centerY = suggestion.y; region.centerMethod = suggestion.method;
+        }
       } else image = sourceImage;
       if (image) { canvas.width = image.width; canvas.height = image.height; }
-      center = { x: .5, y: .5 }; renderRooms(); draw();
+      centerMode = false;
+      center = region ? { x:region.centerX ?? .5,y:region.centerY ?? .5 } : { x:.5,y:.5 };
+      byId('set-center').disabled = !region || analysisStatus === 'final';
+      byId('set-center').textContent = 'Set flat center';
+      byId('center-status').textContent = region ? `Flat center: ${Math.round(center.x * 100)}%, ${Math.round(center.y * 100)}% · ${region.centerMethod || 'saved'}. Check against the flat boundary.` : 'Crop a flat to suggest its center. Check the wheel before confirming.';
+      renderRooms(); draw();
     }
     function renderRegionSelect() {
       byId('layout-select').replaceChildren(new Option('Full brochure page', ''));
@@ -214,6 +251,7 @@
       byId('suggest-layouts').disabled = locked || !sourceImage;
       byId('layout-confirm').disabled = locked || !currentRegion();
       byId('layout-delete').disabled = locked || !currentRegion();
+      byId('set-center').disabled = locked || !currentRegion();
     }
     function resetRegions(source) {
       sourceImage = source; regions = []; selectedRegion = -1; northLocked = false;
@@ -498,6 +536,7 @@
       if (regions.some((r) => r.confirmed || r.rooms.length)) { message('Confirmed layouts hain. Naye page par suggestions use karein, ya manual crop add karein.'); return; }
       const count = Number(byId('layout-count').value);
       regions = suggestRegions(sourceImage,count).slice(0,count); renderRegionSelect(); selectRegion(0);
+      if (currentRegion()) updateCenter(suggestCenter(image),'auto suggestion from drawing');
       message(`${regions.length}/${count} possible layout boundaries suggested. Missing layouts manually crop karein. Har boundary correct aur Confirm layout karein; suggestions automatically final nahi honge.`);
     });
     const pointerPosition = (event) => {
@@ -544,6 +583,7 @@
         message('Boundary 0–100% page ke andar honi chahiye; width/height at least 3%.'); selectRegion(selectedRegion); return;
       }
       Object.assign(region, values, { confirmed: false, rooms: [] }); renderRegionSelect(); selectRegion(selectedRegion);
+      updateCenter(suggestCenter(image),'auto suggestion from drawing');
       message('Boundary updated. Confirm layout again and mark rooms.');
     });
     byId('layout-confirm').addEventListener('click', () => {
@@ -593,14 +633,18 @@
         draw(); message(`Brochure North ${degrees}° locked. Har flat ke liye Crop dabakar do opposite corners tap karein.`); return;
       }
       const region = currentRegion();
+      if (region && centerMode) {
+        updateCenter(pointerPosition(event),'manually verified'); centerMode = false;
+        byId('set-center').textContent = 'Set flat center';
+        message('Flat center saved. Room directions updated; review rooms again.'); return;
+      }
       if (region && byId('room-type').value) {
         if (!region.confirmed || !northLocked) { message('Pehle layout boundary aur brochure North confirm karein.'); return; }
         region.rooms.push({ type: byId('room-type').value, ...pointerPosition(event) });
         renderRooms(); draw(); return;
       }
       if (!northLocked) { message('Printed compass ka center aur N tip mark karein.'); return; }
-      if (region) { message('Layout center fixed hai. Room type select karke tap karein.'); return; }
-      center = pointerPosition(event); draw();
+      if (region) { message('Center badalne ke liye Set flat center dabayein.'); return; }
     });
     canvas.addEventListener('pointermove', (event) => {
       if (!cropMode || !cropStart || !cropPointerStart) return;
@@ -631,6 +675,7 @@
       if (regions.length >= Number(byId('layout-count').value)) { message('Selected layout count reached. Setup count change karein ya next page select karein.'); draw(); return; }
       regions.push({ x: x / sourceImage.width, y: y / sourceImage.height, w: w / sourceImage.width, h: h / sourceImage.height, confirmed: false, rooms: [] });
       renderRegionSelect(); selectRegion(regions.length - 1);
+      updateCenter(suggestCenter(image),'auto suggestion from drawing');
       message('Layout boundary check karke Confirm layout dabayein. Phir full page par next layout add karein.');
     });
     canvas.addEventListener('pointercancel', () => {
@@ -641,7 +686,16 @@
     for (const [key, output, suffix] of [['size','size-value','%'],['opacity','opacity-value','%']]) {
       controls[key].addEventListener('input', () => { document.getElementById(output).textContent = controls[key].value + suffix; draw(); });
     }
-    document.getElementById('reset').addEventListener('click', () => { if (analysisStatus === 'final') return; center = { x: .5, y: .5 }; draw(); });
+    byId('set-center').addEventListener('click', () => {
+      if (analysisStatus === 'final' || !currentRegion()) return;
+      centerMode = !centerMode; byId('set-center').textContent = centerMode ? 'Cancel center placement' : 'Set flat center';
+      message(centerMode ? 'Flat ke actual center par tap karein.' : 'Center placement cancelled.');
+    });
+    document.getElementById('reset').addEventListener('click', () => {
+      if (analysisStatus === 'final' || !currentRegion()) return;
+      updateCenter(suggestCenter(image),'auto suggestion from drawing');
+      message('Suggested center updated. Flat boundary se check karein.');
+    });
     function currentPayload() {
       return {
         analysisId,projectId:new URLSearchParams(location.search).get('projectId'),propertyId:byId('inventory-property').value || null,
@@ -649,7 +703,7 @@
         layoutCount:Number(byId('layout-count').value),
         source:{ sha256:sourceHash,name:sourceName,sourceId,ref:sourceRef,page:pdf ? Number(byId('brochure-page').value) : 1,width:sourceImage?.width,height:sourceImage?.height },
         north:{ ...northReference,scopeConfirmed:byId('north-scope-confirm').checked },
-        layouts:regions.map((r) => ({ x:r.x,y:r.y,w:r.w,h:r.h,propertyId:r.PropertyID || null,unit:r.unit,tower:r.tower,floor:r.floor,confirmed:r.confirmed,rooms:r.rooms.map((m) => ({ type:m.type,x:m.x,y:m.y,reviewStatus:m.reviewStatus || 'suggested',reviewNote:m.reviewNote || '' })) }))
+        layouts:regions.map((r) => ({ x:r.x,y:r.y,w:r.w,h:r.h,centerX:r.centerX ?? .5,centerY:r.centerY ?? .5,propertyId:r.PropertyID || null,unit:r.unit,tower:r.tower,floor:r.floor,confirmed:r.confirmed,rooms:r.rooms.map((m) => ({ type:m.type,x:m.x,y:m.y,reviewStatus:m.reviewStatus || 'suggested',reviewNote:m.reviewNote || '' })) }))
       };
     }
     async function apiJson(url, options = {}) {

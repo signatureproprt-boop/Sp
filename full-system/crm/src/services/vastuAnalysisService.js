@@ -36,7 +36,7 @@ function guidanceFor(type, direction) {
 function finiteUnit(value) { return Number.isFinite(value) && value >= 0 && value <= 1; }
 function directionFor(mark, region, angle, sourceWidth = 1, sourceHeight = 1) {
   const width = region.w * sourceWidth, height = region.h * sourceHeight;
-  const dx = (mark.x - .5) * width, dy = (mark.y - .5) * height;
+  const dx = (mark.x - (region.centerX ?? .5)) * width, dy = (mark.y - (region.centerY ?? .5)) * height;
   if (Math.hypot(dx, dy) < Math.min(width, height) * .08) return { direction: 'Center', bearing: null, boundaryReview: true };
   const screen = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
   const bearing = (screen - angle + 360) % 360;
@@ -68,12 +68,13 @@ function sanitizeAnalysis(payload, project, actor, property = null, layoutProper
   if (layouts.length > 1 && north.scopeConfirmed !== true) throw new Error('Confirm printed North applies to every selected layout');
   const safeLayouts = layouts.map((r, index) => {
     if (!['x','y','w','h'].every((k) => finiteUnit(r[k])) || r.w < .03 || r.h < .03 || r.x + r.w > 1.001 || r.y + r.h > 1.001) throw new Error(`Invalid layout ${index + 1} boundary`);
+    if (r.centerX !== undefined && !finiteUnit(r.centerX) || r.centerY !== undefined && !finiteUnit(r.centerY)) throw new Error(`Invalid layout ${index + 1} center`);
     if (!Array.isArray(r.rooms) || r.rooms.length > 60) throw new Error('Too many room markers');
     const layoutProperty = layoutProperties.get(String(r.propertyId || '')) || property;
     if (r.propertyId && !layoutProperty) throw new Error(`Layout ${index + 1} property not found`);
     if (property && layoutProperty?.PropertyID !== property.PropertyID) throw new Error('Layout property differs from selected property');
     return {
-      x:r.x,y:r.y,w:r.w,h:r.h,confirmed:r.confirmed === true,
+      x:r.x,y:r.y,w:r.w,h:r.h,centerX:r.centerX ?? .5,centerY:r.centerY ?? .5,confirmed:r.confirmed === true,
       PropertyID:layoutProperty?.PropertyID || null,PropertyTitle:String(layoutProperty?.Title || ''),
       unit:String(r.unit || '').trim().slice(0,80),tower:String(r.tower || '').trim().slice(0,80),
       floor:String(r.floor || '').trim().slice(0,40),
