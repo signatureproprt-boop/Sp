@@ -2677,12 +2677,14 @@ table td,table th{border-color:var(--v2-line)!important}
     workspace._shortlist = workspace._shortlist || {};
     workspace._shortlistedIds = workspace._shortlistedIds || {};
     workspace._bookings = workspace._bookings || {};
+    workspace._shortlistErrors = workspace._shortlistErrors || {};
     try {
       const [slRes, bkRes] = await Promise.all([
         fetch(`/api/v2/shortlist/${encodeURIComponent(reqId)}?status=Active`).then(r => r.json()),
         fetch(`/api/v2/site-visit-bookings?requirementId=${encodeURIComponent(reqId)}`).then(r => r.json()).catch(() => ({ ok: true, data: [] }))
       ]);
-      if (!slRes.ok) throw new Error(slRes.error || 'Failed');
+      if (!slRes.ok) throw new Error(slRes.error || 'Shortlist could not be loaded');
+      delete workspace._shortlistErrors[reqId];
       const shortlistRows = asArray(slRes.data);
       workspace._shortlist[reqId] = shortlistRows;
       workspace._shortlistedIds[reqId] = new Set(shortlistRows.map(r => r?.PropertyID).filter(Boolean));
@@ -2690,6 +2692,7 @@ table td,table th{border-color:var(--v2-line)!important}
       return workspace._shortlist[reqId];
     } catch (e) {
       if (!silent) console.warn('Shortlist load failed', e);
+      workspace._shortlistErrors[reqId] = e.message || 'Shortlist could not be loaded';
       workspace._shortlist[reqId] = workspace._shortlist[reqId] || [];
       workspace._shortlistedIds[reqId] = workspace._shortlistedIds[reqId] || new Set();
       workspace._bookings[reqId] = workspace._bookings[reqId] || [];
@@ -2713,6 +2716,12 @@ table td,table th{border-color:var(--v2-line)!important}
     const content = document.getElementById(`sl-content-${reqId}`);
     const title = document.getElementById(`sl-title-${reqId}`);
     if (!wrap || !content) return;
+    const loadError = workspace._shortlistErrors?.[reqId];
+    if (loadError) {
+      if (title) title.textContent = '⭐ Shortlist — load failed';
+      content.innerHTML = `<div role="alert" style="padding:16px;color:#991b1b;background:#fef2f2;border-radius:8px">Shortlist load nahi hui: ${esc(loadError)}. Dobara kholkar try karein.</div>`;
+      return;
+    }
     const rows = (workspace._shortlist || {})[reqId] || [];
     const bookings = (workspace._bookings || {})[reqId] || [];
     const activeBookings = bookings.filter(b => b.Status !== 'Cancelled');
