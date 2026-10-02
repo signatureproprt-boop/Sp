@@ -325,6 +325,38 @@ table td,table th{border-color:var(--v2-line)!important}
   .client-header,.hero{border-radius:0!important;border-left:0!important;border-right:0!important}
 }
 </style>
+<style id="client-form-layout">
+  .workspace-quicknav{display:flex;gap:10px;flex-wrap:wrap;padding:14px 24px;background:#f7f7f6}
+  .workspace-quicknav a{display:inline-flex;align-items:center;padding:10px 14px;min-height:42px;border:1px solid #e7e3df;border-radius:9px;background:#fff;color:#5c3317;text-decoration:none;font-size:13px;font-weight:700}
+  .workspace-quicknav a:focus-visible,.workspace-quicknav a:hover{border-color:#b8860b;background:#fdf8ec}
+  .info-col .card,.needs-col>div{scroll-margin-top:90px}
+  .info-col .card-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .client-form-heading{grid-column:1/-1;padding:12px 0 5px;border-bottom:1px solid #e8ddd0;color:#5c3317;font-size:13px;font-weight:800}
+  .client-form-hint{grid-column:1/-1;color:#746b64;font-size:12px;line-height:1.4}
+  .transaction-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .transaction-field{padding:9px 11px;background:#faf7f2;border:1px solid #e8ddd0;border-radius:8px;min-width:0}
+  .transaction-field-label{font-size:11px;color:#746b64;font-weight:700;text-transform:uppercase}
+  .transaction-field-value{font-size:13px;font-weight:650;overflow-wrap:anywhere;margin-top:3px}
+  .transaction-missing{margin-top:12px;font-size:12px;color:#746b64}
+  @media(max-width:700px){
+    .workspace-quicknav{padding:10px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .workspace-quicknav a{justify-content:center;text-align:center;padding:8px}
+    .needs-col{padding:12px}
+    .info-col{display:grid;grid-template-columns:1fr;gap:10px;padding:12px!important;border:0!important}
+    .info-col .card{margin:0}
+    .client-header-top{flex-wrap:wrap}
+    .client-actions{width:100%}
+    .client-actions .action-btn{min-height:40px;justify-content:center}
+    .need-card-header,.need-card-body{padding:13px}
+    .need-card-footer{padding:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .need-card-footer .need-action-btn{min-height:40px;white-space:normal}
+    .transaction-field-grid{grid-template-columns:1fr}
+    #edit-modal.modal-overlay{padding:0}
+    #edit-modal .modal{width:100%;max-width:none;min-height:100dvh;max-height:100dvh;border-radius:0}
+    #edit-modal .modal-header{position:sticky;top:0;background:#fff;z-index:2}
+    #edit-modal .modal-footer{position:sticky;bottom:0;z-index:2}
+  }
+</style>
 </head>
 <body>
 
@@ -388,6 +420,13 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="kpi-card"><div class="kpi-value" id="kpi-score">—</div><div class="kpi-label">Client Score</div></div>
   </div>
 
+  <nav class="workspace-quicknav" aria-label="Client workspace sections">
+    <a href="#client-info-section">👤 Client Details</a>
+    <a href="#transactions-section">🏠 Transactions</a>
+    <a href="#sidebar-followups-card">📞 Follow-ups</a>
+    <a href="#activity-section">📝 Activity</a>
+  </nav>
+
   <!-- ── NEEDS-FIRST BODY ───────────────────────────────────────────────── -->
   <div class="workspace-body">
 
@@ -395,7 +434,7 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="needs-col">
 
       <!-- Active Needs -->
-      <div style="margin-bottom:20px">
+      <div id="transactions-section" style="margin-bottom:20px">
         <div class="section-title">
           <span>Transactions</span>
           <button onclick="openAddNeedModal()">＋ Add Transaction</button>
@@ -406,7 +445,7 @@ table td,table th{border-color:var(--v2-line)!important}
       </div>
 
       <!-- Recent Activity -->
-      <div>
+      <div id="activity-section">
         <div class="section-title">
           <span>Recent Activity</span>
           <button onclick="openAddActivityModal()">Log Activity</button>
@@ -419,8 +458,8 @@ table td,table th{border-color:var(--v2-line)!important}
     <!-- Right: Client Info Sidebar -->
     <div class="info-col">
 
-      <div class="card">
-        <div class="card-title">Client Details</div>
+      <div class="card" id="client-info-section">
+        <div class="card-title">Client Details <button class="btn btn-ghost btn-sm" onclick="openEditModal()">✏️ Edit</button></div>
         <div id="sidebar-profile"></div>
       </div>
 
@@ -429,7 +468,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div id="sidebar-summary"></div>
       </div>
 
-      <div class="card" id="sidebar-followups-card">
+      <div class="card" id="sidebar-followups-card" data-section="followups">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
           <span>Upcoming Follow-ups</span>
           <button onclick="openAddFollowupModal()" style="background:none;border:none;cursor:pointer;color:var(--clr-primary);font-size:11px;font-weight:600">+ Add</button>
@@ -499,11 +538,14 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="modal-header"><span class="modal-title">Edit Client</span><button class="modal-close" onclick="closeModal('edit-modal')">&times;</button></div>
     <div class="modal-body">
       <div class="form-grid">
+        <div class="client-form-heading">👤 Client identity</div>
+        <div class="client-form-hint">Client ka naam aur mobile yahin se update hoga; transactions alag cards mein rahengi.</div>
         <div class="form-group full"><label>Client Name</label><input id="edit-name" type="text" /></div>
         <div class="form-group"><label>Primary Mobile</label><input id="edit-mobile" type="tel" /></div>
         <div class="form-group"><label>Alternate Mobile</label><input id="edit-alt-mobile" type="tel" /></div>
         <div class="form-group"><label>WhatsApp</label><input id="edit-whatsapp" type="tel" /></div>
         <div class="form-group"><label>Email</label><input id="edit-email" type="email" /></div>
+        <div class="client-form-heading">🏷️ Client status & source</div>
         <div class="form-group"><label>City</label><input id="edit-city" type="text" /></div>
         <div class="form-group"><label>Lead Status</label>
           <select id="edit-status" onchange="toggleEditLostFields()">
@@ -525,6 +567,7 @@ table td,table th{border-color:var(--v2-line)!important}
           <label>Lost Note</label>
           <textarea id="edit-lost-note" rows="2" placeholder="Additional context"></textarea>
         </div>
+        <div class="client-form-heading">📝 Notes</div>
         <div class="form-group full"><label>Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
       </div>
       <div id="edit-error" class="form-error"></div>
@@ -1335,10 +1378,10 @@ table td,table th{border-color:var(--v2-line)!important}
       </div>
 
       <div class="need-card-body">
-        <div class="need-two-col">
-          ${knownSection(knownFields, reqId)}
-          ${discoverSection(unknownFields)}
+        <div class="transaction-field-grid">
+          ${knownFields.length ? knownFields.map(f => `<div class="transaction-field"><div class="transaction-field-label">${esc(f.label)}</div><div class="transaction-field-value">${esc(f.display)}</div></div>`).join('') : '<div class="transaction-field">Details pending. Tap Update to add budget, location and property preferences.</div>'}
         </div>
+        ${unknownFields.length ? `<details class="transaction-missing"><summary style="cursor:pointer">Add missing details (${unknownFields.length})</summary><div style="margin-top:8px">${unknownFields.map(f => esc(f.label)).join(' · ')}</div><button class="need-action-btn ghost" style="margin-top:8px" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Update details</button></details>` : ''}
 
         <!-- Next Questions — loaded async -->
         <div id="nq-${esc(reqId)}" class="next-qs" style="display:none">
@@ -2024,7 +2067,6 @@ table td,table th{border-color:var(--v2-line)!important}
     const openFuCount     = asArray(ws.followUps).map(toCanonicalFollowUp).filter(f => f && !['COMPLETED','CANCELLED'].includes(f.status)).length;
     document.getElementById('sidebar-summary').innerHTML = `
       <div class="sidebar-row"><span class="sidebar-label">Transactions</span><span class="sidebar-value" style="font-weight:700;color:var(--clr-primary)">${txns.length}</span></div>
-      <div class="sidebar-row"><span class="sidebar-label">Transactions</span><span class="sidebar-value" style="font-weight:700;color:var(--clr-primary)">${reqs.length}</span></div>
       <div class="sidebar-row"><span class="sidebar-label">Active</span><span class="sidebar-value">${activeReqCount}</span></div>
       <div class="sidebar-row"><span class="sidebar-label">Site Visits</span><span class="sidebar-value">${svs.length}</span></div>
       <div class="sidebar-row"><span class="sidebar-label">Open Negotiations</span><span class="sidebar-value">${openNegCount}</span></div>
