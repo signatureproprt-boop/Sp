@@ -769,7 +769,7 @@ class JsonRepository {
 
   readRequirement(requirementId) {
     const db = this.read();
-    return db.Requirements.find((row) => row.TransactionID === transactionId) || null;
+    return db.Requirements.find((row) => row.RequirementID === requirementId) || null;
   }
 
   updateRequirement(requirementId, changes) {
@@ -778,11 +778,11 @@ class JsonRepository {
     db.RequirementHistory = db.RequirementHistory || [];
     db.Activities = db.Activities || [];
     db.Timeline = db.Timeline || [];
-    const previous = db.Requirements.find((row) => row.TransactionID === transactionId);
+    const previous = db.Requirements.find((row) => row.RequirementID === requirementId);
     if (!previous) return null;
 
     const requirements = db.Requirements;
-    const index = requirements.findIndex((row) => row.TransactionID === transactionId);
+    const index = requirements.findIndex((row) => row.RequirementID === requirementId);
     const previousSnapshot = { ...previous };
 
     const updated = {
@@ -862,7 +862,7 @@ class JsonRepository {
 
     const hasActivity = db.Activities.some((row) =>
       row &&
-      row.TransactionID === transactionId &&
+      row.RequirementID === requirementId &&
       row.ActivityType === 'Requirement' &&
       row._transitionKey === transitionKey
     );
