@@ -414,9 +414,11 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="form-group"><label>Total Towers / Buildings</label><input id="f-total-towers" type="number" min="0" step="1" /></div>
         <div class="form-group"><label>Floors per Tower / Building</label><input id="f-total-floors" type="number" min="0" step="1" /></div>
         <div class="form-group"><label>Floor-to-floor Height (ft)</label><input id="f-floor-height" type="number" min="0" step="0.01" placeholder="e.g. 10.5" /></div>
+        <div class="form-group"><label>Sales person name</label><input id="f-sales-name" type="text" autocomplete="name" placeholder="Project sales contact" /></div>
+        <div class="form-group"><label>Sales person mobile</label><input id="f-sales-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile number" /></div>
         <div class="form-group full">
           <label>Configurations & Sizes (sqft)</label>
-          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add a Penthouse configuration here with its carpet and built-up area. Legacy unlabeled area stays separate until confirmed.</div>
+          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add each flat, penthouse or terrace flat separately. Fill BHK, carpet, built-up, terrace, allotted parking and servant room where known.</div>
           <div id="config-rows" data-testid="config-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
           <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:5px 12px;font-size:12px">+ Add Config</button>
         </div>
@@ -563,7 +565,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <datalist id="dl-config-types">
   <option value="1 BHK"></option><option value="1.5 BHK"></option><option value="2 BHK"></option><option value="2.5 BHK"></option>
   <option value="3 BHK"></option><option value="3.5 BHK"></option><option value="4 BHK"></option><option value="4.5 BHK"></option>
-  <option value="5 BHK"></option><option value="Penthouse"></option><option value="Studio"></option><option value="Shop"></option><option value="Office"></option>
+  <option value="5 BHK"></option><option value="Penthouse"></option><option value="Terrace Flat"></option><option value="Studio"></option><option value="Shop"></option><option value="Office"></option>
   <option value="Showroom"></option><option value="Godown"></option><option value="Plot"></option>
 </datalist>
 <div class="toast" id="toast"></div>
@@ -1085,7 +1087,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const catColor = catColors[p.Category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      p.ConfigDetails.forEach(c => facts.push([c.Type, c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.BuiltUpAreaSqft != null ? `${c.BuiltUpAreaSqft} built-up sqft` : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
+      p.ConfigDetails.forEach(c => facts.push([c.Type, c.BHK != null ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.BuiltUpAreaSqft != null ? `${c.BuiltUpAreaSqft} built-up sqft` : '', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       facts.push(p.Configurations.join(' / '));
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
@@ -1117,6 +1119,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(p.Category || 'Residential')}</span>
         <div class="card-price">${priceText}</div>
         <div class="card-facts">${facts.map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
+          ${p.SalesPersonName || p.SalesPersonPhone ? `<span class="card-fact">Sales: ${esc([p.SalesPersonName, p.SalesPersonPhone].filter(Boolean).join(' · '))}</span>` : ''}
           ${storedPhotos.length ? `<span class="card-fact">📷 ${storedPhotos.length}</span>` : ''}
           ${p.Videos && p.Videos.length ? `<span class="card-fact">🎥 ${p.Videos.length}</span>` : ''}
           ${firstBrochureUrl ? `<a class="card-fact" href="${esc(firstBrochureUrl)}" target="_blank" rel="noopener" data-testid="brochure-link-${esc(p.ProjectID)}">📄 Brochure</a>` : ''}
@@ -1369,7 +1372,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('modal-title').textContent = 'Add Builder Project';
     document.getElementById('form-error').textContent = '';
     document.getElementById('autofill-status').textContent = '';
-    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-project-area','f-total-towers','f-total-floors','f-floor-height','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes'].forEach(id => document.getElementById(id).value = '');
+    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-project-area','f-total-towers','f-total-floors','f-floor-height','f-sales-name','f-sales-phone','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('f-status').value = 'Under Construction';
     document.getElementById('f-category').value = 'Residential';
     document.getElementById('media-section').style.display = 'none';
@@ -1399,6 +1402,8 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-total-towers').value = p.TotalTowers ?? '';
     document.getElementById('f-total-floors').value = p.TotalFloors ?? '';
     document.getElementById('f-floor-height').value = p.FloorHeightFt ?? '';
+    document.getElementById('f-sales-name').value = p.SalesPersonName || '';
+    document.getElementById('f-sales-phone').value = p.SalesPersonPhone || '';
     document.getElementById('f-price-min').value = p.PriceRange?.min ?? '';
     document.getElementById('f-price-max').value = p.PriceRange?.max ?? '';
     document.getElementById('f-possession').value = (p.PossessionDate || '').slice(0, 10);
@@ -1406,8 +1411,8 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-overview').value = p.Overview || p.Description || '';
     document.getElementById('f-notes').value = p.Notes || '';
     configRows = (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length)
-      ? p.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '' }))
-      : (p.Configurations || []).map(t => ({ Type: t, AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '' }));
+      ? p.ConfigDetails.map(c => ({ Type: c.Type || '', BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }))
+      : (p.Configurations || []).map(t => ({ Type: t, BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }));
     renderConfigRowsUI();
     document.getElementById('media-hint').style.display = 'none';
     document.getElementById('media-section').style.display = 'block';
@@ -1422,13 +1427,17 @@ table td,table th{border-color:var(--v2-line)!important}
     el.innerHTML = configRows.length ? configRows.map((row, i) => `
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" data-testid="config-row-${i}">
         <input type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="e.g. 2 BHK" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" style="flex:1;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" max="20" step="1" value="${row.BHK ?? ''}" placeholder="BHK" aria-label="Bedrooms / BHK" data-testid="config-bhk-${i}" oninput="updateConfigRow(${i},'BHK',this.value)" style="width:75px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <input type="number" min="0" value="${row.CarpetAreaSqft ?? ''}" placeholder="Carpet sqft" aria-label="Carpet area sqft" data-testid="config-carpet-${i}" oninput="updateConfigRow(${i},'CarpetAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <input type="number" min="0" value="${row.BuiltUpAreaSqft ?? ''}" placeholder="Built-up sqft" aria-label="Built-up area sqft" data-testid="config-built-up-${i}" oninput="updateConfigRow(${i},'BuiltUpAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.TerraceAreaSqft ?? ''}" placeholder="Terrace sqft" aria-label="Terrace area sqft" data-testid="config-terrace-${i}" oninput="updateConfigRow(${i},'TerraceAreaSqft',this.value)" style="width:110px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" step="1" value="${row.ParkingAllotted ?? ''}" placeholder="Parking" aria-label="Allotted parking spaces" data-testid="config-parking-${i}" oninput="updateConfigRow(${i},'ParkingAllotted',this.value)" style="width:95px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <select aria-label="Servant room" data-testid="config-servant-${i}" onchange="updateConfigRow(${i},'ServantRoom',this.value)" style="padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px"><option value="" ${row.ServantRoom == null ? 'selected' : ''}>Servant room?</option><option value="yes" ${row.ServantRoom === true || row.ServantRoom === 'yes' ? 'selected' : ''}>Yes</option><option value="no" ${row.ServantRoom === false || row.ServantRoom === 'no' ? 'selected' : ''}>No</option></select>
         ${row.AreaSqft !== '' && row.AreaSqft != null ? `<small title="Legacy area without confirmed type">Legacy ${esc(row.AreaSqft)} sqft</small>` : ''}
         <button type="button" data-testid="config-remove-${i}" onclick="removeConfigRow(${i})" style="background:none;border:none;color:var(--clr-danger);font-size:17px;cursor:pointer">×</button>
       </div>`).join('') : '<span style="font-size:12px;color:var(--clr-text-light)">No configurations added yet</span>';
   }
-  function addConfigRow() { configRows.push({ Type: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '' }); renderConfigRowsUI(); }
+  function addConfigRow() { configRows.push({ Type: '', BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }); renderConfigRowsUI(); }
   function updateConfigRow(i, key, val) { if (configRows[i]) configRows[i][key] = val; }
   function removeConfigRow(i) { configRows.splice(i, 1); renderConfigRowsUI(); }
 
@@ -1471,12 +1480,14 @@ table td,table th{border-color:var(--v2-line)!important}
     if (d.TotalTowers != null) document.getElementById('f-total-towers').value = d.TotalTowers;
     if (d.TotalFloors != null) document.getElementById('f-total-floors').value = d.TotalFloors;
     if (d.FloorHeightFt != null) document.getElementById('f-floor-height').value = d.FloorHeightFt;
+    if (d.SalesPersonName) document.getElementById('f-sales-name').value = d.SalesPersonName;
+    if (d.SalesPersonPhone) document.getElementById('f-sales-phone').value = d.SalesPersonPhone;
     if (d.PriceMin != null) document.getElementById('f-price-min').value = d.PriceMin;
     if (d.PriceMax != null) document.getElementById('f-price-max').value = d.PriceMax;
     if (d.PossessionDate) document.getElementById('f-possession').value = String(d.PossessionDate).slice(0, 10);
     if (Array.isArray(d.Amenities) && d.Amenities.length) document.getElementById('f-amenities').value = d.Amenities.join(', ');
     if (Array.isArray(d.ConfigDetails) && d.ConfigDetails.length) {
-      configRows = d.ConfigDetails.map(c => ({ Type: c.Type || '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '' }));
+      configRows = d.ConfigDetails.map(c => ({ Type: c.Type || '', BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }));
       renderConfigRowsUI();
     }
   }
@@ -1490,6 +1501,8 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!projectName) { document.getElementById('form-error').textContent = 'Project Name is required'; return; }
     if (!builderName) { document.getElementById('form-error').textContent = 'Builder Name is required'; return; }
     if (!location1) { document.getElementById('form-error').textContent = 'Location is required'; return; }
+    const salesPhone = document.getElementById('f-sales-phone').value.trim();
+    if (salesPhone && !/^(?:\+91[\s-]?)?[6-9]\d{9}$/.test(salesPhone.replace(/[\s-]/g, ''))) { document.getElementById('form-error').textContent = 'Enter a valid 10-digit Indian sales mobile number'; return; }
 
     const payload = {
       ProjectName: projectName,
@@ -1499,10 +1512,16 @@ table td,table th{border-color:var(--v2-line)!important}
       RERANumber: document.getElementById('f-rera-number').value.trim() || null,
       ProjectStatus: document.getElementById('f-status').value,
       Category: document.getElementById('f-category').value,
+      SalesPersonName: document.getElementById('f-sales-name').value.trim() || null,
+      SalesPersonPhone: salesPhone || null,
       ConfigDetails: configRows.filter(r => r.Type && String(r.Type).trim()).map(r => ({
-        Type: String(r.Type).trim(), AreaSqft: r.AreaSqft !== '' && r.AreaSqft != null ? Number(r.AreaSqft) : null,
+        Type: String(r.Type).trim(), BHK: r.BHK !== '' && r.BHK != null ? Number(r.BHK) : null,
+        AreaSqft: r.AreaSqft !== '' && r.AreaSqft != null ? Number(r.AreaSqft) : null,
         CarpetAreaSqft: r.CarpetAreaSqft !== '' && r.CarpetAreaSqft != null ? Number(r.CarpetAreaSqft) : null,
-        BuiltUpAreaSqft: r.BuiltUpAreaSqft !== '' && r.BuiltUpAreaSqft != null ? Number(r.BuiltUpAreaSqft) : null
+        BuiltUpAreaSqft: r.BuiltUpAreaSqft !== '' && r.BuiltUpAreaSqft != null ? Number(r.BuiltUpAreaSqft) : null,
+        TerraceAreaSqft: r.TerraceAreaSqft !== '' && r.TerraceAreaSqft != null ? Number(r.TerraceAreaSqft) : null,
+        ParkingAllotted: r.ParkingAllotted !== '' && r.ParkingAllotted != null ? Number(r.ParkingAllotted) : null,
+        ServantRoom: r.ServantRoom === 'yes' || r.ServantRoom === true ? true : r.ServantRoom === 'no' || r.ServantRoom === false ? false : null
       })),
       TotalUnits: document.getElementById('f-total-units').value || null,
       ProjectArea: document.getElementById('f-project-area').value.trim() || null,

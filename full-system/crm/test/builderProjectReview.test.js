@@ -59,3 +59,23 @@ test('land, tower, floor, height and penthouse details survive project edits', (
   assert.equal(project.ConfigDetails[0].Type, 'Penthouse');
   assert.equal(project.ConfigDetails[0].BuiltUpAreaSqft, 3000);
 });
+
+test('sales contact and distinct penthouse and terrace flat details survive edits', () => {
+  const project = { ProjectID: 'p2', Active: true, ProjectName: 'Homes', BuilderName: 'Builder', Location1: 'Vesu' };
+  const service = new BuilderProjectService(repo([project]));
+  const result = service.update('p2', {
+    SalesPersonName: 'Ravi', SalesPersonPhone: '9876543210',
+    ConfigDetails: [
+      { Type: 'Penthouse', BHK: 4, CarpetAreaSqft: 2100, BuiltUpAreaSqft: 2600, TerraceAreaSqft: 400, ParkingAllotted: 2, ServantRoom: true },
+      { Type: 'Terrace Flat', BHK: 3, CarpetAreaSqft: 1500, BuiltUpAreaSqft: 1900, TerraceAreaSqft: 300, ParkingAllotted: 1, ServantRoom: false }
+    ]
+  });
+  assert.equal(result.ok, true);
+  assert.equal(project.SalesPersonPhone, '9876543210');
+  assert.equal(project.ConfigDetails[0].ParkingAllotted, 2);
+  assert.equal(project.ConfigDetails[0].ServantRoom, true);
+  assert.equal(project.ConfigDetails[1].BHK, 3);
+  assert.equal(project.ConfigDetails[1].TerraceAreaSqft, 300);
+  service.update('p2', { Notes: 'Follow up' });
+  assert.equal(service.get('p2').data.ConfigDetails[0].CarpetAreaSqft, 2100);
+});
