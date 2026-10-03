@@ -829,6 +829,7 @@ table td,table th{border-color:var(--v2-line)!important}
   const LEAD_ID = new URLSearchParams(location.search).get('id');
   let workspace = null;
   let currentTxnId = null;
+  let editingNeedId = null;
   let _inlineReqId = null;
   let _inlineField  = null;
 
@@ -1004,7 +1005,8 @@ table td,table th{border-color:var(--v2-line)!important}
       let value = el.value;
       if (typeof value === 'string') value = value.trim();
       if (value === '') {
-        delete values[key];
+        if (mode === 'need' && editingNeedId) values[key] = null;
+        else delete values[key];
         return;
       }
       if (el.type === 'number') value = Number(value);
@@ -1809,57 +1811,48 @@ table td,table th{border-color:var(--v2-line)!important}
 
   // ── Open "Update Transaction" (pre-filled) ────────────────────────────────────
   async function openUpdateNeedModal(reqId) {
-    const req = (workspace.transactions||[]).find(r => r.TransactionID === reqId);
-    if (!req) { alert('Transaction not found. Refresh the workspace and try again.'); return; }
-    currentTxnId = req.TransactionID;
-    document.getElementById('req-error').textContent = '';
-    document.getElementById('dynamic-fields').innerHTML = '';
-
-    // Txn select
-    const txns = workspace.transactions || [];
-    const sel = document.getElementById('req-txn-id');
-    sel.innerHTML = txns.map(t => `<option value="${enc(t.TransactionID)}" ${t.TransactionID===req.TransactionID?'selected':''}>${esc(t.TransactionType||t.Type||'—')}</option>`).join('');
-
-    // Category
-    document.getElementById('req-category').value = req.Category || '';
-
-    // Subcategory — rebuild options so loadFormConfig can read the value properly
-    const sub  = req.SubCategory || '';
-    const txnForReq = txns.find(t => t.TransactionID === req.TransactionID);
-    const subs = await fetchSubcategories(req.Category || '', txnForReq?.TransactionType || txnForReq?.Type || req.TransactionType || '');
-    document.getElementById('req-subcategory').innerHTML =
-      `<option value="">Select…</option>` + subs.map(s => `<option ${s===sub?'selected':''}>${esc(s)}</option>`).join('');
-    document.getElementById('req-subcategory').value = sub;
-
-    // Core flat fields
-    document.getElementById('req-budget-min').value = req.BudgetMin  != null ? req.BudgetMin : '';
-    document.getElementById('req-budget-max').value = req.BudgetMax  != null ? req.BudgetMax : '';
-    document.getElementById('req-location1').value  = req.Location1  || '';
-    document.getElementById('req-location2').value  = req.Location2  || '';
-    document.getElementById('req-urgency').value    = req.Urgency    || '';
-    document.getElementById('req-possession').value = req.Possession || '';
-    document.getElementById('req-status').value     = req.TransactionStatus || req.Status || 'Active';
-
-    // Modal title / button
-    document.querySelector('#req-modal .modal-title').textContent = 'Update Transaction';
-    const saveBtn = document.querySelector('#req-modal .btn-primary[onclick="saveRequirement()"]');
-    if (saveBtn) { saveBtn.textContent = 'Save Changes'; saveBtn.onclick = () => saveRequirementPatch(reqId); }
-
-    // Load dynamic fields then pre-fill them from existing requirement
-    if (req.Category && sub) {
-      await loadFormConfig();
+    const transaction = (workspace.transactions || []).find(t => t.TransactionID === reqId);
+    if (!transaction) { alert('Transaction not found. Refresh the workspace and try again.'); return; }
+    await openAddNeedModal();
+    editingNeedId = reqId;
+    document.querySelector('#add-need-modal .modal-title').textContent = 'Update Transaction';
+    document.getElementById('need-save-btn').textContent = 'Save Changes';
+    document.getElementById('need-txn-type').value = transaction.TransactionType || transaction.Type || 'Purchase';
+    document.getElementById('need-category').value = transaction.Category || '';
+    try {
+      await updateNeedSubcats();
+      const sub = transaction.SubCategory || '';
+      const select = document.getElementById('need-subcategory');
+      if (sub && !Array.from(select.options).some(option => option.value === sub)) {
+        select.add(new Option(sub, sub));
+      }
+      select.value = sub;
+      await needLoadDynamicForm();
+      const keys = new Set([
+        'BudgetMax', 'Location1',
+        ...Object.keys(transaction.Fields || {}),
+        ...asArray(dynamicFormState.need.config?.fields).map(field => field.FieldKey)
+      ]);
       const values = {};
-      Object.keys(req.Fields || {}).forEach((key) => {
-        const value = getRequirementValue(req, key);
+      keys.forEach(key => {
+        const value = getRequirementValue(transaction, key);
         if (value !== null && value !== undefined) values[key] = value;
-        const priority = req.Fields?.[key]?.priority;
-        if (priority) values[`__priority__${key}`] = priority;
+        const priority = transaction.Fields?.[key]?.priority || transaction.FieldPriorities?.[key];
+        if (priority) values['__priority__' + key] = priority;
       });
-      dynamicFormState.req.values = { ...dynamicFormState.req.values, ...values };
-      rerenderDynamicForm('req');
+      // Edit uses this transaction's values, rather than another need's lead prefill.
+      dynamicFormState.need.values = values;
+      if (dynamicFormState.need.config) {
+        rerenderDynamicForm('need');
+      } else {
+        ['BudgetMax', 'Location1'].forEach(key => {
+          const input = document.getElementById('need-fld-' + key);
+          if (input) input.value = values[key] ?? '';
+        });
+      }
+    } catch (error) {
+      document.getElementById('add-need-error').textContent = 'Unable to load transaction form: ' + error.message;
     }
-
-    document.getElementById('req-modal').classList.remove('hidden');
   }
 
   async function saveRequirementPatch(reqId) {
@@ -1906,6 +1899,9 @@ table td,table th{border-color:var(--v2-line)!important}
   const SURAT_AREAS_WS = ['Adajan','Althan','Anand Mahal Road','Athwa','Bhatar','Bhimrad','Causeway Road','City Light','Dumas Road','Ghod Dod Road','Jahangirpura','Kadodara','Kamrej','Katargam','LP Savani Road','Magdalla','Nanpura','New Textile Market','Nikol','Pal','Palanpur Patiya','Parle Point','Piplod','Puna','Rander','Rustampura','Salabatpura','Sarthana','Singanpore','Tapi Road','Udhna','Umra','Varachha','Vesu','VIP Road'];
 
   async function openAddNeedModal() {
+    editingNeedId = null;
+    document.querySelector('#add-need-modal .modal-title').textContent = 'Add Transaction';
+    document.getElementById('need-save-btn').textContent = 'Add Transaction';
     document.getElementById('add-need-error').textContent = '';
     document.getElementById('need-txn-type').value = 'Purchase';
     document.getElementById('need-category').value = '';
@@ -2013,8 +2009,7 @@ table td,table th{border-color:var(--v2-line)!important}
       const sub = document.getElementById('need-subcategory').value || null;
       const txnPayload = {
         TransactionType: txnType,
-        TransactionStatus: 'Open',
-        PipelineStage: 'New',
+        ...(editingNeedId ? {} : { TransactionStatus: 'Open', PipelineStage: 'New' }),
         Category: cat,
         SubCategory: sub
       };
@@ -2022,15 +2017,18 @@ table td,table th{border-color:var(--v2-line)!important}
       const fieldPriorities = extractFieldPrioritiesFromValues(dynamicValues);
       Object.entries(dynamicValues).forEach(([key, val]) => {
         if (key.startsWith('__priority__')) return;
-        if (val === '' || val == null || (Array.isArray(val) && !val.length)) return;
-        txnPayload[key] = val;
+        if (!editingNeedId && (val === '' || val == null || (Array.isArray(val) && !val.length))) return;
+        txnPayload[key] = val === '' ? null : val;
       });
       if (Object.keys(fieldPriorities).length) txnPayload.FieldPriorities = fieldPriorities;
-      const txnRes = await fetch(`/api/leads/${encodeURIComponent(LEAD_ID)}/transactions`, {
-        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(txnPayload)
+      const txnUrl = editingNeedId
+        ? `/api/v2/transactions/${encodeURIComponent(editingNeedId)}`
+        : `/api/leads/${encodeURIComponent(LEAD_ID)}/transactions`;
+      const txnRes = await fetch(txnUrl, {
+        method: editingNeedId ? 'PATCH' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(txnPayload)
       }).then(r => r.json());
       if (!txnRes.ok) {
-        document.getElementById('add-need-error').textContent = txnRes.error || 'Failed to create transaction';
+        document.getElementById('add-need-error').textContent = txnRes.error || (editingNeedId ? 'Failed to update transaction' : 'Failed to create transaction');
         return;
       }
 
@@ -2040,7 +2038,7 @@ table td,table th{border-color:var(--v2-line)!important}
       document.getElementById('add-need-error').textContent = e.message;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Add Transaction';
+      btn.textContent = editingNeedId ? 'Save Changes' : 'Add Transaction';
     }
   }
 
