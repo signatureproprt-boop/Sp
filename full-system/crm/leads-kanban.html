@@ -57,6 +57,10 @@
     <div class="page-title">📋 Leads Board</div>
     <div class="toolbar">
       <input id="search" data-testid="board-search" placeholder="🔍 Search name / mobile" oninput="applyFilter()" />
+      <select id="board-view" data-testid="board-view" onchange="renderBoard()">
+        <option value="active">Active Leads</option>
+        <option value="lost">Lost Leads</option>
+      </select>
       <select id="sort" data-testid="board-sort" onchange="renderBoard()">
         <option value="newest">Date: Newest first</option>
         <option value="oldest">Date: Oldest first</option>
@@ -70,6 +74,11 @@
 
 <script>
   const STAGES = ['New','Contacted','Follow-up','Qualified','Requirement Created','Site Visit','Negotiation','Won','Lost'];
+  function leadStage(l){
+    const status = String(l.ClientStatus || l.LeadStatus || 'New').trim();
+    const aliases = {verified:'Contacted',active:'Qualified',inactive:'Lost',blacklisted:'Lost',converted:'Won'};
+    return aliases[status.toLowerCase()] || STAGES.find(s => s.toLowerCase() === status.toLowerCase()) || 'New';
+  }
   let leads = [];
   let dragId = null;
 
@@ -92,15 +101,17 @@
     const q = (document.getElementById('search').value||'').trim().toLowerCase();
     const sort = document.getElementById('sort').value;
     const board = document.getElementById('board');
-    const filtered = leads.filter(l => !q || (l.ClientName||'').toLowerCase().includes(q) || (l.Mobile||'').toLowerCase().includes(q) || (l.LeadID||'').toLowerCase().includes(q));
+    const showLost = document.getElementById('board-view').value === 'lost';
+    const visibleStages = showLost ? ['Lost'] : STAGES.filter(s => s !== 'Lost');
+    const filtered = leads.filter(l => (leadStage(l) === 'Lost') === showLost).filter(l => !q || (l.ClientName||'').toLowerCase().includes(q) || (l.Mobile||'').toLowerCase().includes(q) || (l.LeadID||'').toLowerCase().includes(q));
     const byStage = {};
     STAGES.forEach(s => byStage[s] = []);
-    filtered.forEach(l => { const s = STAGES.includes(l.ClientStatus) ? l.ClientStatus : 'New'; byStage[s].push(l); });
+    filtered.forEach(l => { const s = leadStage(l); byStage[s].push(l); });
     Object.values(byStage).forEach(arr => arr.sort((a,b)=>{
       const da = new Date(a.CreatedAt||0).getTime()||0, db = new Date(b.CreatedAt||0).getTime()||0;
       return sort==='oldest' ? da-db : db-da;
     }));
-    board.innerHTML = STAGES.map(stage => `
+    board.innerHTML = visibleStages.map(stage => `
       <div class="col">
         <div class="col-head">${esc(stage)}<span class="col-count" data-testid="count-${esc(stage)}">${byStage[stage].length}</span></div>
         <div class="col-body" data-stage="${esc(stage)}" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'${esc(stage)}')">
@@ -129,7 +140,7 @@
       <div class="lc-date">🗓 ${fmtDate(l.CreatedAt)}</div>
       <div class="lc-actions" onclick="event.stopPropagation()">
         <select class="lc-move" data-testid="move-${esc(l.LeadID)}" onchange="moveViaSelect('${esc(l.LeadID)}', this.value)">
-          ${STAGES.map(s=>`<option value="${esc(s)}"${s===(STAGES.includes(l.ClientStatus)?l.ClientStatus:'New')?' selected':''}>${esc(s)}</option>`).join('')}
+          ${STAGES.map(s=>`<option value="${esc(s)}"${s===(leadStage(l))?' selected':''}>${esc(s)}</option>`).join('')}
         </select>
         ${wa?`<a class="lc-wa" href="${wa}" target="_blank" rel="noopener" data-testid="wa-${esc(l.LeadID)}" title="WhatsApp">💬</a>`:''}
       </div>
