@@ -364,7 +364,42 @@ table td,table th{border-color:var(--v2-line)!important}
     #edit-modal .modal-header{position:sticky;top:0;background:#fff;z-index:2}
     #edit-modal .modal-footer{position:sticky;bottom:0;z-index:2}
   }
-</style>
+
+    /* Client edit: single CRM form with linked, repeatable property needs. */
+    #edit-modal.modal-overlay { padding: 3vh 18px; align-items: center; }
+    #edit-modal .edit-client-modal { width: min(1080px, 100%); max-width: none; height: min(94dvh, 1040px); max-height: none; overflow: hidden; display: flex; flex-direction: column; }
+    #edit-modal .modal-header { position: sticky; top: 0; z-index: 3; background: #fff; }
+    #edit-modal .modal-body { min-height: 0; overflow-y: auto; flex: 1; }
+    #edit-modal .modal-footer { position: sticky; bottom: 0; z-index: 3; background: #faf6f0; }
+    .edit-client-heading { display: flex; flex-direction: column; gap: 3px; }
+    .edit-client-heading .client-form-hint { font-size: 12px; color: var(--clr-text-light); font-weight: 400; }
+    .client-requirements-panel { margin-top: 20px; padding: 16px; border: 1px solid var(--clr-border); border-radius: 12px; background: #fffdfa; }
+    .client-requirements-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .client-requirements-toolbar h3 { color: var(--clr-primary); font-size: 16px; }
+    .client-requirements-toolbar p { color: var(--clr-text-light); font-size: 12px; margin-top: 4px; }
+    .client-edit-needs-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .client-edit-need-card { min-width: 0; border: 1px solid var(--clr-border); border-radius: 10px; padding: 14px; background: #fff; }
+    .client-edit-need-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .client-edit-need-title { color: var(--clr-primary); font-size: 14px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; }
+    .client-edit-need-subtitle { color: var(--clr-text-light); font-size: 12px; margin-top: 3px; }
+    .client-edit-need-meta { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+    .client-edit-need-meta > div { min-width: 0; background: #faf7f2; border-radius: 7px; padding: 8px; }
+    .client-edit-need-meta span { display: block; color: var(--clr-text-light); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .client-edit-need-meta strong { display: block; margin-top: 3px; color: var(--clr-text); font-size: 12px; overflow-wrap: anywhere; }
+    .client-edit-need-specs { color: var(--clr-text-light); font-size: 11px; line-height: 1.5; margin: 0 0 10px; overflow-wrap: anywhere; }
+    .client-edit-need-card .btn { min-height: 40px; }
+    .client-edit-needs-empty { grid-column: 1/-1; border: 1px dashed #d6c6b7; border-radius: 10px; padding: 18px; color: var(--clr-text-light); font-size: 13px; line-height: 1.5; background: #fff; }
+    @media(max-width:760px) {
+      #edit-modal.modal-overlay { padding: 0; }
+      #edit-modal .edit-client-modal { width: 100%; height: 100dvh; min-height: 100dvh; max-height: 100dvh; border-radius: 0; }
+      #edit-modal .modal-header, #edit-modal .modal-footer { border-radius: 0; }
+      #edit-modal .modal-body { padding: 14px; }
+      .client-edit-needs-list { grid-template-columns: 1fr; }
+      .client-requirements-panel { padding: 12px; }
+      .client-requirements-toolbar > .btn { width: 100%; min-height: 44px; }
+    }
+
+  </style>
 </head>
 <body>
 
@@ -401,10 +436,10 @@ table td,table th{border-color:var(--v2-line)!important}
       <div class="client-actions">
         <a class="action-btn" id="btn-call" href="#" onclick="return callClient()">📞 Call</a>
         <a class="action-btn green" id="btn-whatsapp" href="#" onclick="return openWhatsAppAction()">💬 WhatsApp</a>
-        <button class="action-btn accent" onclick="openAddNeedModal()">＋ Add Transaction</button>
+        <button class="action-btn accent" onclick="openAddNeedModal()">＋ Add Requirement</button>
         <button class="action-btn" id="btn-mark-lost" onclick="openLeadLostModal()">🚫 Mark Lost</button>
         <button class="action-btn" id="btn-reactivate-lead" onclick="reactivateLead()" style="display:none">♻️ Reactivate</button>
-        <button class="action-btn" onclick="openEditModal()">✏️ Edit</button>
+        <button class="action-btn" onclick="openEditModal()">✏️ Edit Client &amp; Needs</button>
         <a class="action-btn" href="/duplicates">⇄ Merge Client</a>
       </div>
     </div>
@@ -445,7 +480,7 @@ table td,table th{border-color:var(--v2-line)!important}
       <div id="transactions-section" style="margin-bottom:20px">
         <div class="section-title">
           <span>Transactions</span>
-          <button onclick="openAddNeedModal()">＋ Add Transaction</button>
+          <button onclick="openAddNeedModal()">＋ Add Requirement</button>
         </div>
         <div id="needs-list">
           <div class="loader">Loading transactions…</div>
@@ -467,7 +502,7 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="info-col">
 
       <div class="card" id="client-info-section">
-        <div class="card-title">Client Details <button class="btn btn-ghost btn-sm" onclick="openEditModal()">✏️ Edit</button></div>
+        <div class="card-title">Client Details <button class="btn btn-ghost btn-sm" onclick="openEditModal()">✏️ Edit Form</button></div>
         <div id="sidebar-profile"></div>
       </div>
 
@@ -541,53 +576,68 @@ table td,table th{border-color:var(--v2-line)!important}
 <div id="inline-backdrop" style="display:none;position:fixed;inset:0;z-index:250" onclick="closeInlineEdit()"></div>
 
 <!-- ── EDIT CLIENT MODAL ────────────────────────────────────────────────── -->
-<div class="modal-overlay hidden" id="edit-modal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Edit Client</span><button class="modal-close" onclick="closeModal('edit-modal')">&times;</button></div>
+<div class="modal-overlay hidden" id="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-client-title">
+  <div class="modal edit-client-modal">
+    <div class="modal-header">
+      <div class="edit-client-heading">
+        <span class="modal-title" id="edit-client-title" tabindex="-1">Edit Client &amp; Requirements</span>
+        <span class="client-form-hint">Client details are pre-filled. Add or update each property need during your call.</span>
+      </div>
+      <button class="modal-close" type="button" aria-label="Close client form" onclick="closeModal('edit-modal')">&times;</button>
+    </div>
     <div class="modal-body">
       <div class="form-grid">
-        <div class="client-form-heading">👤 Client identity</div>
-        <div class="client-form-hint">Client ka naam aur mobile yahin se update hoga; transactions alag cards mein rahengi.</div>
-        <div class="form-group full"><label>Client Name</label><input id="edit-name" type="text" /></div>
-        <div class="form-group"><label>Primary Mobile</label><input id="edit-mobile" type="tel" /></div>
-        <div class="form-group"><label>Alternate Mobile</label><input id="edit-alt-mobile" type="tel" /></div>
-        <div class="form-group"><label>WhatsApp</label><input id="edit-whatsapp" type="tel" /></div>
-        <div class="form-group"><label>Email</label><input id="edit-email" type="email" /></div>
-        <div class="client-form-heading">🏷️ Client status & source</div>
-        <div class="form-group"><label>City</label><input id="edit-city" type="text" /></div>
-        <div class="form-group"><label>Lead Status</label>
+        <div class="client-form-heading">👤 Client identity &amp; contact</div>
+        <div class="form-group full"><label for="edit-name">Client Name</label><input id="edit-name" type="text" autocomplete="name" /></div>
+        <div class="form-group"><label for="edit-mobile">Primary Mobile</label><input id="edit-mobile" type="tel" autocomplete="tel" /></div>
+        <div class="form-group"><label for="edit-alt-mobile">Alternate Mobile</label><input id="edit-alt-mobile" type="tel" /></div>
+        <div class="form-group"><label for="edit-whatsapp">WhatsApp</label><input id="edit-whatsapp" type="tel" /></div>
+        <div class="form-group"><label for="edit-email">Email</label><input id="edit-email" type="email" autocomplete="email" /></div>
+        <div class="client-form-heading">🏷️ Client status &amp; source</div>
+        <div class="form-group"><label for="edit-city">City</label><input id="edit-city" type="text" /></div>
+        <div class="form-group"><label for="edit-status">Lead Status</label>
           <select id="edit-status" onchange="toggleEditLostFields()">
             <option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option>
             <option>Site Visit</option><option>Negotiation</option><option>Won</option><option>Lost</option>
           </select>
         </div>
-        <div class="form-group"><label>Lifecycle</label>
+        <div class="form-group"><label for="edit-lifecycle">Lifecycle</label>
           <select id="edit-lifecycle">
             <option>Prospect</option><option>Client</option><option>Past Client</option><option>Inactive</option><option>Blacklisted</option>
           </select>
         </div>
-        <div class="form-group"><label>Source</label><select id="edit-source"></select></div>
+        <div class="form-group"><label for="edit-source">Source</label><select id="edit-source"></select></div>
         <div class="form-group full" id="edit-lost-reason-wrap" style="display:none">
-          <label>Lost Reason *</label>
+          <label for="edit-lost-reason">Lost Reason *</label>
           <input id="edit-lost-reason" type="text" placeholder="Reason for losing this lead" />
         </div>
         <div class="form-group full" id="edit-lost-note-wrap" style="display:none">
-          <label>Lost Note</label>
+          <label for="edit-lost-note">Lost Note</label>
           <textarea id="edit-lost-note" rows="2" placeholder="Additional context"></textarea>
         </div>
-        <div class="client-form-heading">📝 Notes</div>
-        <div class="form-group full"><label>Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
+        <div class="client-form-heading">📝 Client notes</div>
+        <div class="form-group full"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
       </div>
-      <div id="edit-error" class="form-error"></div>
+
+      <section class="client-requirements-panel" aria-labelledby="edit-requirements-title">
+        <div class="client-requirements-toolbar">
+          <div>
+            <h3 id="edit-requirements-title">🏠 Property Requirements</h3>
+            <p>Each requirement stays linked to this client. Residential and Commercial fields load dynamically.</p>
+          </div>
+          <button class="btn btn-primary" type="button" data-testid="edit-add-requirement" onclick="openAddNeedModal()">＋ Add Requirement</button>
+        </div>
+        <div id="edit-requirements-list" class="client-edit-needs-list" aria-live="polite"></div>
+      </section>
+      <div id="edit-error" class="form-error" role="alert"></div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('edit-modal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+      <button class="btn btn-ghost" type="button" onclick="closeModal('edit-modal')">Cancel</button>
+      <button class="btn btn-primary" type="button" data-testid="save-client-edit" onclick="saveEdit()">Save Client Changes</button>
     </div>
   </div>
 </div>
-
 <div class="modal-overlay hidden" id="lead-lost-modal">
   <div class="modal" style="width:480px">
     <div class="modal-header"><span class="modal-title" style="color:#991b1b">Mark Lead Lost</span><button class="modal-close" onclick="closeModal('lead-lost-modal')">&times;</button></div>
@@ -613,20 +663,20 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="modal-overlay hidden" id="add-need-modal">
   <div class="modal" style="width:820px;max-height:92vh;overflow-y:auto">
     <div class="modal-header">
-      <span class="modal-title">Add Transaction</span>
+      <span class="modal-title">Add Property Requirement</span>
       <button class="modal-close" data-testid="close-need-modal" onclick="closeModal('add-need-modal')">&times;</button>
     </div>
     <div class="modal-body">
       <div class="form-grid">
         <div class="form-group">
-          <label>Transaction Type *</label>
+          <label>Client Need *</label>
           <select id="need-txn-type" data-testid="need-txn-type" onchange="needLoadDynamicForm()">
             <option>Purchase</option><option value="Sale">Sell</option><option>Rent</option>
             <option>Rent Out</option><option>Lease</option><option>Lease Out</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Category *</label>
+          <label>Property Category *</label>
           <select id="need-category" data-testid="need-category" onchange="updateNeedSubcats(); needLoadDynamicForm()">
             <option value="">Select…</option>
             <option>Residential</option><option>Commercial</option><option>Land</option><option>Industrial</option><option>Agriculture</option>
@@ -637,13 +687,14 @@ table td,table th{border-color:var(--v2-line)!important}
           <select id="need-subcategory" data-testid="need-subcategory" onchange="needLoadDynamicForm()"><option value="">Not sure yet</option></select>
         </div>
       </div>
+      <p class="client-form-hint" style="margin-top:12px">Choose the client need and property category. Matching residential or commercial fields will load; saved client details can prefill where available.</p>
       <!-- Fully dynamic fields render here based on V2FormRegistry -->
       <div id="need-dynamic-fields" style="margin-top:16px"></div>
       <div id="add-need-error" class="form-error" style="margin-top:10px"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" data-testid="cancel-need-btn" onclick="closeModal('add-need-modal')">Cancel</button>
-      <button class="btn btn-primary" data-testid="save-need-btn" onclick="saveAddNeed()" id="need-save-btn">Add Transaction</button>
+      <button class="btn btn-primary" data-testid="save-need-btn" onclick="saveAddNeed()" id="need-save-btn">Add Requirement</button>
     </div>
   </div>
 </div>
@@ -1257,6 +1308,8 @@ table td,table th{border-color:var(--v2-line)!important}
     renderTimeline();
     renderSiteVisitsTab();
     renderDealsTab();
+    const editor = document.getElementById('edit-modal');
+    if (editor && !editor.classList.contains('hidden')) renderEditRequirements();
   }
 
   // ── KPI STRIP ─────────────────────────────────────────────────────────────────
@@ -1815,8 +1868,8 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!transaction) { alert('Transaction not found. Refresh the workspace and try again.'); return; }
     await openAddNeedModal();
     editingNeedId = reqId;
-    document.querySelector('#add-need-modal .modal-title').textContent = 'Update Transaction';
-    document.getElementById('need-save-btn').textContent = 'Save Changes';
+    document.querySelector('#add-need-modal .modal-title').textContent = 'Edit Property Requirement';
+    document.getElementById('need-save-btn').textContent = 'Save Requirement';
     document.getElementById('need-txn-type').value = transaction.TransactionType || transaction.Type || 'Purchase';
     document.getElementById('need-category').value = transaction.Category || '';
     try {
@@ -1900,8 +1953,8 @@ table td,table th{border-color:var(--v2-line)!important}
 
   async function openAddNeedModal() {
     editingNeedId = null;
-    document.querySelector('#add-need-modal .modal-title').textContent = 'Add Transaction';
-    document.getElementById('need-save-btn').textContent = 'Add Transaction';
+    document.querySelector('#add-need-modal .modal-title').textContent = 'Add Property Requirement';
+    document.getElementById('need-save-btn').textContent = 'Add Requirement';
     document.getElementById('add-need-error').textContent = '';
     document.getElementById('need-txn-type').value = 'Purchase';
     document.getElementById('need-category').value = '';
@@ -2038,7 +2091,7 @@ table td,table th{border-color:var(--v2-line)!important}
       document.getElementById('add-need-error').textContent = e.message;
     } finally {
       btn.disabled = false;
-      btn.textContent = editingNeedId ? 'Save Changes' : 'Add Transaction';
+      btn.textContent = editingNeedId ? 'Save Requirement' : 'Add Requirement';
     }
   }
 
@@ -2217,6 +2270,72 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   // ── Modals (existing, kept for backward compat) ───────────────────────────────
+
+  function editNeedText(value) {
+    if (value === undefined || value === null || value === '') return '';
+    return Array.isArray(value) ? value.filter(Boolean).join(', ') : String(value);
+  }
+
+  function editNeedBudget(transaction) {
+    const values = ['BudgetMin', 'BudgetMax']
+      .map(key => getRequirementValue(transaction, key))
+      .filter(value => value !== undefined && value !== null && value !== '');
+    if (!values.length) return 'Not shared';
+    return values.map(value => {
+      const number = Number(value);
+      return Number.isFinite(number) ? '₹' + number.toLocaleString('en-IN') : String(value);
+    }).join(' – ');
+  }
+
+  function renderEditRequirements() {
+    const root = document.getElementById('edit-requirements-list');
+    if (!root) return;
+    const transactions = asArray(workspace?.transactions).filter(item => item && item.TransactionID);
+    if (!transactions.length) {
+      root.innerHTML = '<div class="client-edit-needs-empty">No property requirement is saved yet. Add the first one; the form will show fields for the selected client need and property category.</div>';
+      return;
+    }
+    root.innerHTML = transactions.map((transaction, index) => {
+      const id = String(transaction.TransactionID);
+      const type = editNeedText(transaction.TransactionType || transaction.Type) || 'Need';
+      const category = editNeedText(transaction.Category) || 'Category pending';
+      const subCategory = editNeedText(transaction.SubCategory || getRequirementValue(transaction, 'PropertyType'));
+      const location = [
+        getRequirementValue(transaction, 'Location1'),
+        getRequirementValue(transaction, 'Location2')
+      ].map(editNeedText).filter(Boolean).join(', ') || 'Not added';
+      const status = editNeedText(transaction.TransactionStatus || transaction.Status) || 'Open';
+      const budget = editNeedBudget(transaction);
+      const dynamicSpecs = [
+        ['BHK', 'BHK'], ['Bedrooms', 'Bedrooms'], ['Area', 'Area'],
+        ['CarpetArea', 'Carpet area'], ['BuiltUpArea', 'Built-up area'],
+        ['Furnishing', 'Furnishing'], ['BusinessUse', 'Business use'],
+        ['Frontage', 'Frontage']
+      ].map(([key, label]) => {
+        const value = editNeedText(getRequirementValue(transaction, key));
+        return value ? label + ': ' + value : '';
+      }).filter(Boolean).slice(0, 3);
+      return `<article class="client-edit-need-card">
+        <div class="client-edit-need-top">
+          <div>
+            <div class="client-edit-need-title">Requirement ${index + 1}: ${esc(type)} · ${esc(category)}</div>
+            <div class="client-edit-need-subtitle">${subCategory ? esc(subCategory) + ' · ' : ''}${esc(transaction.PipelineStage || 'New')}</div>
+          </div>
+          <span class="badge">${esc(status)}</span>
+        </div>
+        <div class="client-edit-need-meta">
+          <div><span>Location</span><strong>${esc(location)}</strong></div>
+          <div><span>Budget / Rent</span><strong>${esc(budget)}</strong></div>
+        </div>
+        ${dynamicSpecs.length ? `<p class="client-edit-need-specs">${dynamicSpecs.map(esc).join(' · ')}</p>` : ''}
+        <button class="btn btn-ghost" type="button" data-edit-transaction="${escAttr(id)}">✏️ Edit Property Details</button>
+      </article>`;
+    }).join('');
+    root.querySelectorAll('[data-edit-transaction]').forEach(button => {
+      button.addEventListener('click', () => openUpdateNeedModal(button.dataset.editTransaction));
+    });
+  }
+
   function openEditModal() {
     const lead = workspace.lead;
     document.getElementById('edit-name').value       = lead.ClientName||'';
@@ -2233,7 +2352,9 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('edit-notes').value      = lead.Notes||'';
     toggleEditLostFields();
     document.getElementById('edit-error').textContent = '';
+    renderEditRequirements();
     document.getElementById('edit-modal').classList.remove('hidden');
+    document.getElementById('edit-name').focus();
   }
 
   function toggleEditLostFields() {
