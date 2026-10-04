@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Client Workspace — Signature Properties</title>
+  <title>Client Form — Signature Properties</title>
   <style>
     :root {
       --clr-primary: #5c3317; --clr-primary-soft: #fdf8ec;
@@ -390,13 +390,54 @@ table td,table th{border-color:var(--v2-line)!important}
     .client-edit-need-card .btn { min-height: 40px; }
     .client-edit-needs-empty { grid-column: 1/-1; border: 1px dashed #d6c6b7; border-radius: 10px; padding: 18px; color: var(--clr-text-light); font-size: 13px; line-height: 1.5; background: #fff; }
     @media(max-width:760px) {
-      #edit-modal.modal-overlay { padding: 0; }
-      #edit-modal .edit-client-modal { width: 100%; height: 100dvh; min-height: 100dvh; max-height: 100dvh; border-radius: 0; }
-      #edit-modal .modal-header, #edit-modal .modal-footer { border-radius: 0; }
+      #edit-modal.modal-overlay:not(.hidden) { padding: 10px; }
+      #edit-modal .edit-client-modal { width: 100%; height: auto; min-height: 0; max-height: none; border-radius: 10px; }
+      #edit-modal .modal-header, #edit-modal .modal-footer { border-radius: 10px; }
       #edit-modal .modal-body { padding: 14px; }
       .client-edit-needs-list { grid-template-columns: 1fr; }
       .client-requirements-panel { padding: 12px; }
       .client-requirements-toolbar > .btn { width: 100%; min-height: 44px; }
+    }
+
+    /* Client entry uses the same direct, sectioned form pattern as Builder Projects. */
+    #workspace > .client-header,
+    #workspace > #kpi-strip,
+    #workspace > .workspace-quicknav,
+    #workspace > .workspace-body,
+    #workspace > .details-accordion { display: none !important; }
+    #edit-modal.modal-overlay:not(.hidden) {
+      position: relative; inset: auto; z-index: 1; display: block; overflow: visible;
+      min-height: calc(100vh - 58px); padding: 20px 14px; background: transparent;
+    }
+    #edit-modal .edit-client-modal {
+      width: min(980px, 100%); max-width: none; height: auto; max-height: none;
+      margin: 0 auto; overflow: visible; border: 1px solid var(--clr-border);
+      border-radius: 12px; box-shadow: 0 8px 24px rgba(44,20,5,.06);
+    }
+    #edit-modal .modal-header { position: sticky; top: 0; z-index: 3; }
+    #edit-modal .modal-body { overflow: visible; flex: none; }
+    #edit-modal .modal-footer { position: sticky; bottom: 0; z-index: 3; }
+    .client-form-page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .client-form-page-actions a { white-space: nowrap; }
+    .client-followup-panel { max-width: 980px; margin: 0 auto 16px; padding: 14px; border: 1px solid var(--clr-border); border-radius: 10px; background: #fff; }
+    .client-followup-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .client-followup-head h3 { color: var(--clr-primary); font-size: 14px; }
+    .client-followup-list { margin-top: 8px; }
+    .client-followup-row { display: flex; gap: 8px; padding: 7px 0; border-top: 1px solid #f1ece6; font-size: 12px; }
+    .client-followup-row strong { color: var(--clr-gold); white-space: nowrap; }
+    .details-accordion { display: block; max-width: 980px; margin: 0 auto 20px; border: 1px solid var(--clr-border); border-radius: 10px; overflow: hidden; background: #fff; }
+    .sheet-basic-panel { margin: 18px 0 0; padding: 14px; border: 1px solid #ead58b; border-radius: 10px; background: #fffcf1; }
+    .sheet-basic-panel h3 { color: #75520b; font-size: 14px; }
+    .sheet-basic-panel p { margin-top: 4px; color: var(--clr-text-light); font-size: 12px; line-height: 1.45; }
+    .sheet-basic-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+    .sheet-basic-item { min-width: 0; padding: 10px; border: 1px solid #f0e5bd; border-radius: 8px; background: #fff; }
+    .sheet-basic-item strong { display: block; font-size: 12px; color: var(--clr-primary); }
+    .sheet-basic-item span { display: block; margin-top: 4px; color: var(--clr-text-light); font-size: 11px; overflow-wrap: anywhere; }
+    @media(max-width:760px) {
+      #edit-modal.modal-overlay:not(.hidden) { min-height: calc(100vh - 54px); padding: 10px; }
+      #edit-modal .edit-client-modal { border-radius: 10px; }
+      #edit-modal .modal-header, #edit-modal .modal-footer { border-radius: 10px; }
+      .sheet-basic-list { grid-template-columns: 1fr; }
     }
 
   </style>
@@ -413,7 +454,7 @@ table td,table th{border-color:var(--v2-line)!important}
   <button class="topnav-avatar" title="Logout" aria-label="Logout" onclick="doLogout()">SA</button>
 </nav>
 
-<div id="workspace-loader" class="loader">Loading client workspace…</div>
+<div id="workspace-loader" class="loader">Loading client form…</div>
 <div id="workspace-error" class="error-state" style="display:none"></div>
 
 <div id="workspace" style="display:none">
@@ -525,7 +566,7 @@ table td,table th{border-color:var(--v2-line)!important}
   <!-- ── DETAILS ACCORDION ─────────────────────────────────────────────── -->
   <div class="details-accordion">
     <div class="details-toggle" id="details-toggle" onclick="toggleDetails()">
-      <span>📋 Activity, Follow-ups, Timeline & Deals</span>
+      <span>📋 More CRM history</span>
       <span class="arrow">▼</span>
     </div>
     <div class="details-inner" id="details-inner">
@@ -580,10 +621,16 @@ table td,table th{border-color:var(--v2-line)!important}
   <div class="modal edit-client-modal">
     <div class="modal-header">
       <div class="edit-client-heading">
-        <span class="modal-title" id="edit-client-title" tabindex="-1">Edit Client &amp; Requirements</span>
-        <span class="client-form-hint">Client details are pre-filled. Add or update each property need during your call.</span>
+        <span class="modal-title" id="edit-client-title" tabindex="-1">Client Form</span>
+        <span class="client-form-hint">Sheet details are pre-filled. Confirm the client’s property need on the call, then save it.</span>
       </div>
-      <button class="modal-close" type="button" aria-label="Close client form" onclick="closeModal('edit-modal')">&times;</button>
+      <div class="client-form-page-actions">
+        <a class="btn btn-ghost btn-sm" href="/clients">← Clients</a>
+        <a class="btn btn-ghost btn-sm" id="client-form-call" href="#" onclick="return callClient()" aria-label="Call client">📞 Call</a>
+        <a class="btn btn-ghost btn-sm" id="client-form-whatsapp" href="#" onclick="return openWhatsAppAction()" aria-label="WhatsApp client">💬 WhatsApp</a>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="openAddFollowupModal()">＋ Follow-up</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="toggleClientHistory()">More CRM</button>
+      </div>
     </div>
     <div class="modal-body">
       <div class="form-grid">
@@ -619,22 +666,35 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="form-group full"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
       </div>
 
+      <section class="sheet-basic-panel" aria-labelledby="sheet-basic-title">
+        <h3 id="sheet-basic-title">📄 Basic requirement from lead sheet</h3>
+        <p>This is preliminary information from the Sheet. Confirm it with the client before saving a property requirement.</p>
+        <div id="sheet-basic-requirements" class="sheet-basic-list" aria-live="polite"></div>
+      </section>
+
       <section class="client-requirements-panel" aria-labelledby="edit-requirements-title">
         <div class="client-requirements-toolbar">
           <div>
-            <h3 id="edit-requirements-title">🏠 Property Requirements</h3>
-            <p>Each requirement stays linked to this client. Residential and Commercial fields load dynamically.</p>
+            <h3 id="edit-requirements-title">🏠 Confirmed Property Requirements</h3>
+            <p>Save a requirement after the call. Additional needs stay under this same client.</p>
           </div>
-          <button class="btn btn-primary" type="button" data-testid="edit-add-requirement" onclick="openAddNeedModal()">＋ Add Requirement</button>
+          <button class="btn btn-primary" type="button" data-testid="edit-add-requirement" onclick="openAddNeedModal()">＋ Record Requirement</button>
         </div>
         <div id="edit-requirements-list" class="client-edit-needs-list" aria-live="polite"></div>
+      </section>
+      <section class="client-followup-panel" aria-labelledby="client-followup-title">
+        <div class="client-followup-head">
+          <div><h3 id="client-followup-title">📞 Next follow-up</h3><p class="client-form-hint">Call reminders for this client.</p></div>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="openAddFollowupModal()">＋ Add Follow-up</button>
+        </div>
+        <div id="client-followup-list" class="client-followup-list" aria-live="polite"></div>
       </section>
       <div id="edit-error" class="form-error" role="alert"></div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-ghost" type="button" onclick="closeModal('edit-modal')">Cancel</button>
-      <button class="btn btn-primary" type="button" data-testid="save-client-edit" onclick="saveEdit()">Save Client Changes</button>
+      <a class="btn btn-ghost" href="/clients">← Back to Clients</a>
+      <button class="btn btn-primary" type="button" data-testid="save-client-edit" onclick="saveEdit()">Save Client Details</button>
     </div>
   </div>
 </div>
@@ -671,7 +731,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="form-group">
           <label>Client Need *</label>
           <select id="need-txn-type" data-testid="need-txn-type" onchange="needLoadDynamicForm()">
-            <option>Purchase</option><option value="Sale">Sell</option><option>Rent</option>
+            <option value="">Select after confirming with client…</option><option>Purchase</option><option value="Sale">Sell</option><option>Rent</option>
             <option>Rent Out</option><option>Lease</option><option>Lease Out</option>
           </select>
         </div>
@@ -1220,9 +1280,16 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Init ─────────────────────────────────────────────────────────────────────
   async function init() {
     if (!LEAD_ID) { showError('No client ID provided'); return; }
+    const history = document.querySelector('#workspace > .details-accordion');
+    const clientForm = document.getElementById('edit-modal');
+    if (history && clientForm) {
+      clientForm.after(history);
+      history.hidden = true;
+    }
     buildSourceSelects();
     await loadWorkspace();
     setupTabs();
+    if (workspace?.lead) openEditModal();
   }
 
   async function loadWorkspace() {
@@ -1310,6 +1377,7 @@ table td,table th{border-color:var(--v2-line)!important}
     renderDealsTab();
     const editor = document.getElementById('edit-modal');
     if (editor && !editor.classList.contains('hidden')) renderEditRequirements();
+    renderClientFormFollowups();
   }
 
   // ── KPI STRIP ─────────────────────────────────────────────────────────────────
@@ -1956,7 +2024,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.querySelector('#add-need-modal .modal-title').textContent = 'Add Property Requirement';
     document.getElementById('need-save-btn').textContent = 'Add Requirement';
     document.getElementById('add-need-error').textContent = '';
-    document.getElementById('need-txn-type').value = 'Purchase';
+    document.getElementById('need-txn-type').value = '';
     document.getElementById('need-category').value = '';
     document.getElementById('need-subcategory').innerHTML = '<option value="">Not sure yet</option>';
     document.getElementById('need-dynamic-fields').innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Transaction + Category to load fields</div>';
@@ -2290,9 +2358,12 @@ table td,table th{border-color:var(--v2-line)!important}
   function renderEditRequirements() {
     const root = document.getElementById('edit-requirements-list');
     if (!root) return;
-    const transactions = asArray(workspace?.transactions).filter(item => item && item.TransactionID);
+    const allTransactions = asArray(workspace?.transactions).filter(item => item && item.TransactionID);
+    const sheetTransactions = allTransactions.filter(isSheetImportedTransaction);
+    const transactions = allTransactions.filter(item => !isSheetImportedTransaction(item));
+    renderSheetBasicRequirements(sheetTransactions);
     if (!transactions.length) {
-      root.innerHTML = '<div class="client-edit-needs-empty">No property requirement is saved yet. Add the first one; the form will show fields for the selected client need and property category.</div>';
+      root.innerHTML = '<div class="client-edit-needs-empty">No call-confirmed property requirement yet. Confirm the need with the client, then select “Record Requirement”.</div>';
       return;
     }
     root.innerHTML = transactions.map((transaction, index) => {
@@ -2336,8 +2407,53 @@ table td,table th{border-color:var(--v2-line)!important}
     });
   }
 
+  function isSheetImportedTransaction(transaction) {
+    const source = String(transaction?._source || transaction?.Source || '').toLowerCase();
+    const creator = String(transaction?.CreatedBy || transaction?.CreatedByName || '').toLowerCase();
+    return source.startsWith('googlesheet:') || creator.includes('googlesheetsync');
+  }
+
+  function renderSheetBasicRequirements(sheetTransactions = []) {
+    const root = document.getElementById('sheet-basic-requirements');
+    if (!root) return;
+    const leadItems = asArray(workspace?.lead?.SheetBasicRequirements);
+    const rows = sheetTransactions.length ? sheetTransactions : leadItems;
+    if (!rows.length) {
+      root.innerHTML = '<div class="sheet-basic-item"><strong>No Sheet requirement found</strong><span>Client ki call ke dauran basic need confirm karke requirement record karein.</span></div>';
+      return;
+    }
+    root.innerHTML = rows.map((item, index) => {
+      const type = editNeedText(item.TransactionType || item.Type || item.transactionType || item.type) || 'Need type to confirm';
+      const category = editNeedText(item.Category || item.category) || 'Property type to confirm';
+      const location = [getRequirementValue(item, 'Location1'), getRequirementValue(item, 'Location2')]
+        .map(editNeedText).filter(Boolean).join(', ');
+      const budget = editNeedBudget(item);
+      const size = ['BHK', 'AreaMin', 'AreaMax', 'PropertyType']
+        .map(key => editNeedText(getRequirementValue(item, key))).filter(Boolean).slice(0, 2).join(' · ');
+      const label = item.SourceTab || item.Tab || item.sourceTab || `Sheet item ${index + 1}`;
+      const details = [location, budget !== 'Not shared' ? budget : '', size].filter(Boolean).join(' · ');
+      return `<div class="sheet-basic-item">
+        <strong>${esc(type)} · ${esc(category)}</strong>
+        <span>${esc(label)} · Confirm this with the client${details ? `<br>${esc(details)}` : ''}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderClientFormFollowups() {
+    const root = document.getElementById('client-followup-list');
+    if (!root) return;
+    const rows = asArray(workspace?.followUps).map(toCanonicalFollowUp).filter(Boolean)
+      .filter(item => !['COMPLETED', 'CANCELLED'].includes(String(item.status || '').toUpperCase()))
+      .slice(0, 3);
+    root.innerHTML = rows.length ? rows.map(item => {
+      const due = followUpDueParts(item);
+      return `<div class="client-followup-row"><strong>${esc(due.dateLabel)}${due.timeLabel ? ' · ' + esc(due.timeLabel) : ''}</strong><span>${esc(item.activityType || 'Call')} · ${esc(item.notes || 'No note')}</span></div>`;
+    }).join('') : '<div style="font-size:12px;color:var(--clr-text-light);padding:6px 0">No upcoming follow-up scheduled.</div>';
+  }
+
   function openEditModal() {
     const lead = workspace.lead;
+    if (!lead) return;
     document.getElementById('edit-name').value       = lead.ClientName||'';
     document.getElementById('edit-mobile').value     = lead.PrimaryMobile||lead.Phone||'';
     document.getElementById('edit-alt-mobile').value = lead.AlternateMobile||'';
@@ -2350,11 +2466,32 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('edit-lost-reason').value = lead.LostReason || '';
     document.getElementById('edit-lost-note').value = lead.LostNote || '';
     document.getElementById('edit-notes').value      = lead.Notes||'';
+    const callLink = document.getElementById('client-form-call');
+    const whatsappLink = document.getElementById('client-form-whatsapp');
+    const phoneForCall = safePhone(lead.PrimaryMobile || lead.Phone);
+    if (callLink) {
+      callLink.href = phoneForCall ? `tel:${phoneForCall}` : '#';
+      callLink.setAttribute('aria-disabled', phoneForCall ? 'false' : 'true');
+      callLink.style.opacity = phoneForCall ? '' : '.55';
+    }
+    if (whatsappLink) {
+      whatsappLink.dataset.phone = safePhone(lead.WhatsApp || lead.PrimaryMobile || lead.Phone);
+      whatsappLink.href = '#';
+      whatsappLink.style.opacity = whatsappLink.dataset.phone ? '' : '.55';
+      whatsappLink.setAttribute('aria-disabled', whatsappLink.dataset.phone ? 'false' : 'true');
+    }
+    document.getElementById('edit-client-title').textContent = `${lead.ClientName || 'Client'} · ${lead.LeadID || ''}`;
     toggleEditLostFields();
     document.getElementById('edit-error').textContent = '';
     renderEditRequirements();
     document.getElementById('edit-modal').classList.remove('hidden');
-    document.getElementById('edit-name').focus();
+  }
+
+  function toggleClientHistory() {
+    const history = document.querySelector('.details-accordion');
+    if (!history) return;
+    history.hidden = !history.hidden;
+    if (!history.hidden) history.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function toggleEditLostFields() {
@@ -2386,7 +2523,7 @@ table td,table th{border-color:var(--v2-line)!important}
       const res = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
       }).then(r => r.json());
-      if (res.ok) { closeModal('edit-modal'); await loadWorkspace(); }
+      if (res.ok) { await loadWorkspace(); openEditModal(); }
       else document.getElementById('edit-error').textContent = res.error||'Failed to save';
     } catch(e) { document.getElementById('edit-error').textContent = e.message; }
   }
