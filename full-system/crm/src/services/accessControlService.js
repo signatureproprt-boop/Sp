@@ -106,10 +106,16 @@ class AccessControlService {
     if (role === 'ADMIN') return true;
     const effective = this._effectivePermissions(actor);
     if (effective.has('*')) return true;
-    return permissions.some((permission) => {
-      const normalized = this._normalize(permission);
-      return normalized && (effective.has(normalized) || this.repository.hasPermission(actor, normalized));
-    });
+    const requested = permissions.map((permission) => this._normalize(permission)).filter(Boolean);
+    const hasWritePermission = requested.some((permission) =>
+      /_(?:CREATE|EDIT|UPDATE|DELETE|WRITE|MANAGE|MERGE|ADMIN)$/.test(permission)
+    );
+    const required = hasWritePermission
+      ? requested.filter((permission) => !/_(?:VIEW|READ|LIST)$/.test(permission))
+      : requested;
+    return required.some((normalized) =>
+      effective.has(normalized) || this.repository.hasPermission(actor, normalized)
+    );
   }
 
   requirePermissions(actor = {}, permissions = []) {
