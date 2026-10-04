@@ -8,6 +8,7 @@ const { V2Router } = require('./src/api/v2Router');
 const { SESSION_COOKIE_NAME, getSessionMaxAgeSeconds } = require('./src/services/authService');
 const mongoStore = require('./src/data/mongoStore');
 const { PinLoginGuard } = require('./src/services/pinLoginGuard');
+const { confirmMongoPersistence } = require('./src/services/durableResponse');
 
 const LOCAL_DEV_PORT = 3000;
 const PUBLIC_HOST = '0.0.0.0';
@@ -5424,10 +5425,14 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
   }
 
   const failureBaseline = Number(res.__sigMongoWriteFailureBaseline || 0);
-  Promise.resolve(runtime?.repository?.flush?.()).then((stats) => {
+  confirmMongoPersistence({
+    enabled: mongoStore.isEnabled(),
+    initialized: mongoStore.isInitialized(),
+    failureBaseline,
+    flush: () => runtime?.repository?.flush?.()
+  }).then((result) => {
     if (res.destroyed || res.writableEnded) return;
-    const writeFailed = stats?.lastError || Number(stats?.failures || 0) > failureBaseline;
-    if (writeFailed) {
+    if (!result.ok) {
       writeResponse({
         ok: false,
         error: 'PERSISTENCE_FAILED',
@@ -5436,12 +5441,6 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
       return;
     }
     writeResponse(payload, statusCode);
-  }).catch(() => {
-    writeResponse({
-      ok: false,
-      error: 'PERSISTENCE_FAILED',
-      message: 'CRM could not confirm that this change was saved. Please retry.'
-    }, 503);
   });
 }
 
