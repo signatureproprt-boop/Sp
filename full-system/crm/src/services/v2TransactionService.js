@@ -17,6 +17,28 @@ const TRANSACTION_TYPES   = EntityConfig.Transaction.types;
 const TRANSACTION_STATUSES = EntityConfig.Transaction.statuses;
 const PIPELINE_STAGES     = EntityConfig.Transaction.pipelineStages;
 
+function transactionBudgetRange(payload = {}, existing = {}) {
+  const min = payload.BudgetMin !== undefined ? payload.BudgetMin : existing.BudgetMin;
+  const max = payload.BudgetMax !== undefined ? payload.BudgetMax : existing.BudgetMax;
+  const parse = (value) => {
+    if (value == null || value === '') return null;
+    const amount = typeof value === 'number' ? value : Number(String(value).replace(/[₹,\s]/g, ''));
+    return Number.isFinite(amount) && amount >= 0 ? amount : NaN;
+  };
+  const minAmount = parse(min);
+  const maxAmount = parse(max);
+  if (payload.BudgetMin !== undefined && Number.isNaN(minAmount)) {
+    return { ok: false, error: 'BudgetMin must be a non-negative number' };
+  }
+  if (payload.BudgetMax !== undefined && Number.isNaN(maxAmount)) {
+    return { ok: false, error: 'BudgetMax must be a non-negative number' };
+  }
+  if (minAmount != null && maxAmount != null && minAmount > maxAmount) {
+    return { ok: false, error: 'BudgetMin cannot be greater than BudgetMax' };
+  }
+  return { ok: true };
+}
+
 class V2TransactionService {
   constructor(repository) {
     if (!repository) throw new Error('V2TransactionService requires a repository');
@@ -129,6 +151,15 @@ class V2TransactionService {
       return { ok: false, error: 'LeadID is immutable on a Transaction' };
     }
 
+    const typeKey = ['TransactionType', 'transactionType', 'Type', 'type']
+      .find((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    const nextType = typeKey ? payload[typeKey] : (existing.TransactionType || existing.Type);
+    if (typeKey && !TRANSACTION_TYPES.includes(nextType)) {
+      return { ok: false, error: `Invalid TransactionType. Must be one of: ${TRANSACTION_TYPES.join(', ')}` };
+    }
+    const budgetCheck = transactionBudgetRange(payload, existing);
+    if (!budgetCheck.ok) return budgetCheck;
+
     const now = new Date().toISOString();
 
     // Status transition
@@ -156,12 +187,16 @@ class V2TransactionService {
       ...existing,
       TransactionStatus: status,
       Status:            status,
+      TransactionType:   nextType,
+      Type:              nextType,
       PipelineStage:     stage,
       Notes:             payload.Notes !== undefined ? payload.Notes : (payload.notes !== undefined ? payload.notes : existing.Notes),
       AssignedAgentID:   payload.AssignedAgentID || payload.assignedAgentId || existing.AssignedAgentID,
       Category:          payload.Category !== undefined ? payload.Category : existing.Category,
       SubCategory:       payload.SubCategory !== undefined ? payload.SubCategory : existing.SubCategory,
-      Fields:            payload.Fields !== undefined ? payload.Fields : existing.Fields,
+      Fields:            payload.Fields !== undefined
+        ? { ...(existing.Fields || {}), ...(payload.Fields || {}) }
+        : existing.Fields,
       BudgetMin:         payload.BudgetMin !== undefined ? payload.BudgetMin : existing.BudgetMin,
       BudgetMax:         payload.BudgetMax !== undefined ? payload.BudgetMax : existing.BudgetMax,
       Location1:         payload.Location1 !== undefined ? payload.Location1 : existing.Location1,
@@ -187,27 +222,94 @@ class V2TransactionService {
     const idx = (db.Transactions || []).findIndex((t) => t.TransactionID === transactionId);
     if (idx === -1) return { ok: false, error: 'Transaction not found' };
     const existing = db.Transactions[idx];
-    const reserved = new Set(['TransactionID','LeadID','CompanyID','BrokerageID','CreatedAt','CreatedBy','Version','_v2']);
-    const next = { ...existing };
-    const fields = { ...(existing.Fields || {}) };
+
+    const typeKey = ['TransactionType', 'transactionType', 'Type', 'type']
+      .find((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    const nextType = typeKey ? payload[typeKey] : (existing.TransactionType || existing.Type);
+    if (typeKey && !TRANSACTION_TYPES.includes(nextType)) {
+      return { ok: false, error: `Invalid TransactionType. Must be one of: ${TRANSACTION_TYPES.join(', ')}` };
+    }
+
+    const requirementStatus = Object.prototype.hasOwnProperty.call(payload, 'RequirementStatus')
+      ? String(payload.RequirementStatus || '').trim()
+      : '';
+    const legacyStatusMap = { Draft: 'Open', Active: 'Active', Paused: 'Hold', Hold: 'Hold', Closed: 'Closed', Lost: 'Lost', Archived: 'Closed' };
+    const statusKey = ['TransactionStatus', 'transactionStatus', 'Status', 'status']
+      .find((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    const requestedStatus = statusKey
+      ? payload[statusKey]
+      : (requirementStatus ? legacyStatusMap[requirementStatus] : undefined);
+    if (requirementStatus && !legacyStatusMap[requirementStatus]) {
+      return { ok: false, error: `Invalid RequirementStatus: ${requirementStatus}` };
+    }
+    let status = existing.TransactionStatus || existing.Status || 'Open';
+    if (requestedStatus !== undefined && requestedStatus !== status) {
+      const allowed = WorkflowConfig.transactionStatus.transitions[status] || [];
+      if (!allowed.includes(requestedStatus)) {
+        return { ok: false, error: `Transaction status transition from '${status}' to '${requestedStatus}' is not allowed` };
+      }
+      status = requestedStatus;
+    }
+
+    const stageKey = ['PipelineStage', 'pipelineStage'].find((key) => Object.prototype.hasOwnProperty.call(payload, key));
+    let stage = existing.PipelineStage || 'New';
+    if (stageKey && payload[stageKey] !== stage) {
+      if (!PIPELINE_STAGES.includes(payload[stageKey])) {
+        return { ok: false, error: `Invalid PipelineStage: ${payload[stageKey]}` };
+      }
+      stage = payload[stageKey];
+    }
+
+    const budgetCheck = transactionBudgetRange(payload, existing);
+    if (!budgetCheck.ok) return budgetCheck;
+
+    const reserved = new Set([
+      'TransactionID', 'LeadID', 'CompanyID', 'companyId', 'BrokerageID', 'brokerageId',
+      'CompanyId', 'BrokerageId', 'CreatedAt', 'CreatedBy', 'Version', '_v2',
+      'TransactionType', 'transactionType', 'Type', 'type',
+      'TransactionStatus', 'transactionStatus', 'Status', 'status',
+      'PipelineStage', 'pipelineStage', 'RequirementStatus', 'FieldPriorities', 'Fields'
+    ]);
+    const next = {
+      ...existing,
+      TransactionType: nextType,
+      Type: nextType,
+      TransactionStatus: status,
+      Status: status,
+      PipelineStage: stage
+    };
+    if (requirementStatus) next.RequirementStatus = requirementStatus;
+    const fields = { ...(existing.Fields || {}), ...(payload.Fields && typeof payload.Fields === 'object' ? payload.Fields : {}) };
     for (const [key, value] of Object.entries(payload || {})) {
       if (reserved.has(key)) continue;
-      if (key === 'FieldPriorities') continue;
-      if (['TransactionType','transactionType','Type','type'].includes(key)) continue;
       next[key] = value;
-      if (!['Category','SubCategory','TransactionStatus','Status','PipelineStage','Notes','RequirementStatus'].includes(key)) {
+      if (!['Category', 'SubCategory', 'Notes', 'HoldReason', 'LostReason', 'CloseReason', 'ClosedReason', 'StatusReason', 'Reason', 'LostNote'].includes(key)) {
         fields[key] = value === null || value === ''
           ? { state: 'UNKNOWN', value: null, priority: payload.FieldPriorities?.[key] || fields[key]?.priority || null }
           : { state: 'KNOWN', value, priority: payload.FieldPriorities?.[key] || fields[key]?.priority || null };
       }
     }
+    const reason = payload.RequirementStatusReason ?? payload.StatusReason ?? payload.Reason;
+    if (reason !== undefined) {
+      if (status === 'Hold') next.HoldReason = reason;
+      else if (status === 'Lost') next.LostReason = reason;
+      else if (status === 'Closed') next.CloseReason = reason;
+    }
     next.Fields = fields;
+    next.BudgetMin = payload.BudgetMin !== undefined ? payload.BudgetMin : existing.BudgetMin;
+    next.BudgetMax = payload.BudgetMax !== undefined ? payload.BudgetMax : existing.BudgetMax;
     next.UpdatedBy = actor.userId || 'system';
     next.UpdatedAt = new Date().toISOString();
     next.Version = Number(existing.Version || 1) + 1;
     db.Transactions[idx] = next;
     this.repository.write(db);
-    this.repository.addTimelineEntry(existing.LeadID, 'Transaction', transactionId, 'TRANSACTION_DETAILS_UPDATED', 'Transaction details updated', { Category: next.Category, SubCategory: next.SubCategory });
+    this.repository.addTimelineEntry(existing.LeadID, 'Transaction', transactionId, 'TRANSACTION_DETAILS_UPDATED', 'Transaction details updated', {
+      TransactionType: next.TransactionType,
+      TransactionStatus: status,
+      PipelineStage: stage,
+      Category: next.Category,
+      SubCategory: next.SubCategory
+    });
     return { ok: true, data: next };
   }
 

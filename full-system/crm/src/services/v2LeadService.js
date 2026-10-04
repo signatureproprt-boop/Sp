@@ -307,8 +307,10 @@ class V2LeadService {
       PropertyType:    payload.PropertyType || payload.propertyType || payload.SubCategory || payload.subCategory || existing.PropertyType || null,
       RequirementType: payload.RequirementType || payload.requirementType || payload.TransactionType || payload.transactionType || existing.RequirementType || null,
       AssignedAgentID: payload.AssignedAgentID || payload.assignedAgentId || existing.AssignedAgentID,
-      CompanyID: payload.CompanyID || payload.companyId || existing.CompanyID || actor.companyId || actor.companyID || null,
-      BrokerageID: payload.BrokerageID || payload.brokerageId || existing.BrokerageID || actor.brokerageId || actor.brokerageID || null,
+      // Tenant ownership is immutable through client edits. Only backfill
+      // legacy tenantless records from the authenticated actor.
+      CompanyID: existing.CompanyID || existing.CompanyId || actor.companyId || actor.companyID || null,
+      BrokerageID: existing.BrokerageID || existing.BrokerageId || actor.brokerageId || actor.brokerageID || null,
       Tags:            tags,
       Notes:           payload.Notes !== undefined ? payload.Notes : (payload.notes !== undefined ? payload.notes : existing.Notes),
       UpdatedBy:       actor.userId || 'system',

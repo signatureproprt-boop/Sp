@@ -5648,18 +5648,31 @@ class JsonRepository {
     if (!settings.Timezone) warnings.push('Timezone not configured');
     if (!settings.Currency) warnings.push('Currency not configured');
 
-    const writable = (() => {
-      try {
-        fs.accessSync(path.dirname(this.dbFile), fs.constants.W_OK);
-        return true;
-      } catch (_) {
-        return false;
-      }
-    })();
+    const mongoStats = mongoStore.stats();
+    const mongoWriteStatus = !mongoStats.enabled
+      ? 'NOT_APPLICABLE'
+      : !mongoStats.initialized
+        ? 'UNAVAILABLE'
+        : mongoStats.lastError
+          ? 'FAILED'
+          : Number(mongoStats.successes || 0) > 0
+            ? 'HEALTHY'
+            : 'UNKNOWN';
+    const writable = mongoStats.enabled
+      ? mongoWriteStatus === 'HEALTHY'
+      : (() => {
+        try {
+          fs.accessSync(path.dirname(this.dbFile), fs.constants.W_OK);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      })();
 
     const checks = {
       databaseReadable: true,
       databaseWritable: writable,
+      mongoWriteStatus,
       schemaValid: missingCollections.length === 0,
       requiredCollectionsPresent: missingCollections.length === 0,
       apiReachable: true,
@@ -5670,7 +5683,10 @@ class JsonRepository {
 
     const problems = [
       ...missingCollections.map((item) => `Missing collection: ${item}`),
-      ...warnings
+      ...warnings,
+      ...(mongoWriteStatus === 'FAILED' ? ['Mongo snapshot writes are failing'] : []),
+      ...(mongoWriteStatus === 'UNAVAILABLE' ? ['MongoDB is not initialized'] : []),
+      ...(mongoWriteStatus === 'UNKNOWN' ? ['Mongo write readiness is not established yet'] : [])
     ];
 
     return {
