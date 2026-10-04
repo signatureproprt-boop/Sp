@@ -283,9 +283,17 @@ class GoogleSheetSyncService {
     let created = false;
     if (!lead) {
       // Create new
-      const leadId = leadData.LegacyID
-        ? leadData.LegacyID   // preserve sheet ID if provided
-        : `L${String(++db._V2Counters.Lead).padStart(6,'0')}`;
+      // Sheet IDs are source references, not guaranteed-unique CRM identities.
+      // Keep a legacy ID as the CRM ID only when it is not already owned by
+      // another lead. Otherwise allocate a unique internal ID and retain the
+      // sheet value in LegacyID.
+      const occupiedLeadIds = new Set(db.Leads.map((item) => String(item?.LeadID || '')));
+      let leadId = String(leadData.LegacyID || '').trim();
+      if (!leadId || occupiedLeadIds.has(leadId)) {
+        do {
+          leadId = `L${String(++db._V2Counters.Lead).padStart(6,'0')}`;
+        } while (occupiedLeadIds.has(leadId));
+      }
       lead = {
         LeadID: leadId,
         LegacyID: leadData.LegacyID || null,
