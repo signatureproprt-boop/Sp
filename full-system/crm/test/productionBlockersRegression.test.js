@@ -149,3 +149,34 @@ test('transaction detail status updates use validated lifecycle transitions', ()
   const invalid = service.updateTransactionDetails('T-1', { TransactionStatus: 'Invalid' }, { userId: 'U-1' });
   assert.equal(invalid.ok, false);
 });
+
+
+test('mutation response durability check waits for Mongo snapshot persistence', async () => {
+  const { confirmMongoPersistence } = require('../src/services/durableResponse');
+  const baselineFailures = 2;
+
+  const success = await confirmMongoPersistence({
+    enabled: true,
+    initialized: true,
+    failureBaseline: baselineFailures,
+    flush: async () => ({ failures: 2, lastError: null })
+  });
+  assert.equal(success.ok, true);
+
+  const failed = await confirmMongoPersistence({
+    enabled: true,
+    initialized: true,
+    failureBaseline: baselineFailures,
+    flush: async () => ({ failures: 3, lastError: null })
+  });
+  assert.equal(failed.ok, false);
+
+  const unavailable = await confirmMongoPersistence({
+    enabled: true,
+    initialized: false,
+    failureBaseline: baselineFailures,
+    flush: async () => { throw new Error('must not run'); }
+  });
+  assert.equal(unavailable.ok, true);
+  assert.equal(unavailable.skipped, true);
+});
