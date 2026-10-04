@@ -2417,7 +2417,15 @@ table td,table th{border-color:var(--v2-line)!important}
     const root = document.getElementById('sheet-basic-requirements');
     if (!root) return;
     const leadItems = asArray(workspace?.lead?.SheetBasicRequirements);
-    const rows = sheetTransactions.length ? sheetTransactions : leadItems;
+    const rowsBySource = new Map();
+    const sourceKey = (item, index) => {
+      const tab = item.SourceTab || item.Tab || item.sourceTab || String(item._source || '').split(':').pop();
+      return String(tab || item.TransactionID || `sheet-item-${index}`);
+    };
+    sheetTransactions.forEach((item, index) => rowsBySource.set(sourceKey(item, index), item));
+    // The lead's latest sync snapshot takes precedence over legacy imported rows.
+    leadItems.forEach((item, index) => rowsBySource.set(sourceKey(item, index), item));
+    const rows = Array.from(rowsBySource.values());
     if (!rows.length) {
       root.innerHTML = '<div class="sheet-basic-item"><strong>No Sheet requirement found</strong><span>Client ki call ke dauran basic need confirm karke requirement record karein.</span></div>';
       return;
