@@ -22,7 +22,7 @@ function transactionBudgetRange(payload = {}, existing = {}) {
   const max = payload.BudgetMax !== undefined ? payload.BudgetMax : existing.BudgetMax;
   const parse = (value) => {
     if (value == null || value === '') return null;
-    const amount = typeof value === 'number' ? value : Number(String(value).replace(/[₹,\\s]/g, ''));
+    const amount = typeof value === 'number' ? value : Number(String(value).replace(/[₹,\s]/g, ''));
     return Number.isFinite(amount) && amount >= 0 ? amount : NaN;
   };
   const minAmount = parse(min);
@@ -98,9 +98,7 @@ class V2TransactionService {
       TransactionType:   txnType,
       Type:              txnType, // backward compat
       TransactionStatus: status,
-      Status:            status,
-      TransactionType:   nextType,
-      Type:              nextType,  // backward compat
+      Status:            status,  // backward compat
       PipelineStage:     stage,
       Notes:             payload.Notes || payload.notes || '',
       // Transaction is the single business object. Property-need criteria live here.
@@ -189,6 +187,8 @@ class V2TransactionService {
       ...existing,
       TransactionStatus: status,
       Status:            status,
+      TransactionType:   nextType,
+      Type:              nextType,
       PipelineStage:     stage,
       Notes:             payload.Notes !== undefined ? payload.Notes : (payload.notes !== undefined ? payload.notes : existing.Notes),
       AssignedAgentID:   payload.AssignedAgentID || payload.assignedAgentId || existing.AssignedAgentID,
