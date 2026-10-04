@@ -19,3 +19,16 @@ test('client workspace inline browser script parses as JavaScript', () => {
     'client workspace inline script must parse'
   );
 });
+
+
+test('client route opens as a prefilled form and separates unconfirmed Sheet basics', () => {
+  const htmlPath = path.join(__dirname, '..', 'client-workspace.html');
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  assert.match(html, /<title>Client Form/i);
+  assert.match(html, /if \(workspace\?\.lead\) openEditModal\(\)/);
+  assert.match(html, /SheetBasicRequirements/);
+  assert.match(html, /Select after confirming with client/);
+  assert.match(html, /Confirm it with the client before saving a property requirement/);
+  assert.match(html, /Confirmed Property Requirements/);
+  assert.match(html, /toggleClientHistory/);
+});
