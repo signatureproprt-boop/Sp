@@ -323,54 +323,47 @@ class GoogleSheetSyncService {
       lead.LeadStatus   = lead.ClientStatus;
     }
 
-    // 4. Upsert transaction (one per lead per source tab)
-    let txn = db.Transactions.find(t => t.LeadID === lead.LeadID && t._source === `GoogleSheet:${tab}`);
-    if (!txn) {
-      const txnId = `T${String(++db._V2Counters.Transaction).padStart(6,'0')}`;
-      txn = {
-        TransactionID: txnId,
-        LeadID: lead.LeadID,
-        Status: 'Active',
-        PipelineStage: 'New',
-        CreatedAt: new Date().toISOString(),
-        CreatedBy: 'GoogleSheetSync',
-        _v2: true,
-        _source: `GoogleSheet:${tab}`
+    // 4. Keep Sheet property details as preliminary lead information.
+    // A Sheet row is an incoming lead/basic need; it is not a call-confirmed
+    // property requirement and must not create an active transaction.
+    const now = new Date().toISOString();
+    const sourceTab = String(tab || '').trim();
+    const sourceNeed = {
+      ...txnData,
+      ...reqData,
+      SourceTab: sourceTab,
+      Source: 'GoogleSheet',
+      ConfirmationStatus: 'UNCONFIRMED',
+      CreatedBy: 'GoogleSheetSync',
+      UpdatedAt: now
+    };
+    const sheetBasicRequirements = Array.isArray(lead.SheetBasicRequirements)
+      ? lead.SheetBasicRequirements
+      : [];
+    const existingNeedIndex = sheetBasicRequirements.findIndex(
+      (item) => String(item?.SourceTab || '') === sourceTab
+    );
+    if (existingNeedIndex >= 0) {
+      const existingNeed = sheetBasicRequirements[existingNeedIndex];
+      sheetBasicRequirements[existingNeedIndex] = {
+        ...existingNeed,
+        ...sourceNeed,
+        CreatedAt: existingNeed.CreatedAt || now
       };
-      db.Transactions.push(txn);
+    } else {
+      sheetBasicRequirements.push({ ...sourceNeed, CreatedAt: now });
     }
-    Object.assign(txn, txnData);
-    txn.UpdatedAt = new Date().toISOString();
-
-    // 5. Upsert requirement (one per transaction)
-    let req = db.Requirements.find(r => r.TransactionID === txn.TransactionID);
-    if (!req) {
-      const reqId = `R${String(++db._V2Counters.Requirement).padStart(6,'0')}`;
-      req = {
-        RequirementID: reqId,
-        LeadID: lead.LeadID,
-        TransactionID: txn.TransactionID,
-        TransactionType: txn.TransactionType,
-        Category: txn.Category,
-        RequirementStatus: 'Active',
-        FormVersion: '2.0',
-        CreatedAt: new Date().toISOString(),
-        CreatedBy: 'GoogleSheetSync',
-        _v2: true,
-        _source: `GoogleSheet:${tab}`
-      };
-      db.Requirements.push(req);
-    }
-    Object.assign(req, reqData);
-    req.UpdatedAt = new Date().toISOString();
+    lead.SheetBasicRequirements = sheetBasicRequirements;
+    const sourceTabs = Array.isArray(lead.SheetSourceTabs) ? lead.SheetSourceTabs.slice() : [];
+    if (sourceTab && !sourceTabs.includes(sourceTab)) sourceTabs.push(sourceTab);
+    lead.SheetSourceTabs = sourceTabs;
 
     return {
       ok: true,
       action: created ? 'CREATED' : 'UPDATED',
       leadId: lead.LeadID,
       legacyId: lead.LegacyID,
-      transactionId: txn.TransactionID,
-      requirementId: req.RequirementID
+      basicRequirementTab: sourceTab
     };
   }
 }
