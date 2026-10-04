@@ -5392,27 +5392,57 @@ function elapsedMs(startedAt) {
 }
 
 function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
-  const body = JSON.stringify(payload);
-  res.writeHead(statusCode, withSecurityHeaders({
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    ...extraHeaders
-  }));
-  res.end(body);
-  const perf = res.__sigPerf;
-  if (perf) {
-    console.log('[perf]', JSON.stringify({
-      endpoint: perf.endpoint,
-      method: perf.method,
-      statusCode,
-      totalMs: Number(elapsedMs(perf.startedAt).toFixed(2)),
-      serviceMs: perf.serviceMs == null ? null : Number(perf.serviceMs.toFixed(2)),
-      authorizationMs: perf.authorizationMs == null ? null : Number(perf.authorizationMs.toFixed(2)),
-      payloadBytes: Buffer.byteLength(body, 'utf8'),
-      rows: Array.isArray(payload?.data) ? payload.data.length : null,
-      totalRows: Number.isFinite(Number(payload?.pagination?.total)) ? Number(payload.pagination.total) : null
+  const writeResponse = (responsePayload, responseStatus) => {
+    if (res.destroyed || res.writableEnded) return;
+    const body = JSON.stringify(responsePayload);
+    res.writeHead(responseStatus, withSecurityHeaders({
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...extraHeaders
     }));
+    res.end(body);
+    const perf = res.__sigPerf;
+    if (perf) {
+      console.log('[perf]', JSON.stringify({
+        endpoint: perf.endpoint,
+        method: perf.method,
+        statusCode: responseStatus,
+        totalMs: Number(elapsedMs(perf.startedAt).toFixed(2)),
+        serviceMs: perf.serviceMs == null ? null : Number(perf.serviceMs.toFixed(2)),
+        authorizationMs: perf.authorizationMs == null ? null : Number(perf.authorizationMs.toFixed(2)),
+        payloadBytes: Buffer.byteLength(body, 'utf8'),
+        rows: Array.isArray(responsePayload?.data) ? responsePayload.data.length : null,
+        totalRows: Number.isFinite(Number(responsePayload?.pagination?.total)) ? Number(responsePayload.pagination.total) : null
+      }));
+    }
+  };
+
+  const isSuccessfulMutation = res.__sigRequireMongoDurability && statusCode >= 200 && statusCode < 400;
+  if (!isSuccessfulMutation || !mongoStore.isEnabled() || !mongoStore.isInitialized()) {
+    writeResponse(payload, statusCode);
+    return;
   }
+
+  const failureBaseline = Number(res.__sigMongoWriteFailureBaseline || 0);
+  Promise.resolve(runtime?.repository?.flush?.()).then((stats) => {
+    if (res.destroyed || res.writableEnded) return;
+    const writeFailed = stats?.lastError || Number(stats?.failures || 0) > failureBaseline;
+    if (writeFailed) {
+      writeResponse({
+        ok: false,
+        error: 'PERSISTENCE_FAILED',
+        message: 'CRM could not confirm that this change was saved. Please retry.'
+      }, 503);
+      return;
+    }
+    writeResponse(payload, statusCode);
+  }).catch(() => {
+    writeResponse({
+      ok: false,
+      error: 'PERSISTENCE_FAILED',
+      message: 'CRM could not confirm that this change was saved. Please retry.'
+    }, 503);
+  });
 }
 
 function escapeHtml(value) {
@@ -5429,6 +5459,9 @@ function sendHtml(res, body, statusCode = 200) {
 
 appServer = http.createServer(async (req, res) => {
   const url = parseRequestUrl(req);
+  res.__sigRequireMongoDurability =
+    url.pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
+  res.__sigMongoWriteFailureBaseline = Number(mongoStore.stats?.().failures || 0);
 
   if (!enforceApiRateLimit(req, res, url)) return;
   if (url.pathname.startsWith('/api/') && Number(req.headers['content-length'] || 0) > MAX_JSON_BODY_BYTES) {
