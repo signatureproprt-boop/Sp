@@ -28,7 +28,7 @@ const EntityConfig = {
     pluralName: 'Transactions',
     idField: 'TransactionID',
     types: ['Purchase', 'Sale', 'Rent', 'Rent Out', 'Lease', 'Lease Out'],
-    statuses: ['Open', 'Active', 'Closed', 'Cancelled'],
+    statuses: ['Open', 'Active', 'Hold', 'Lost', 'Closed', 'Cancelled'],
     defaultStatus: 'Open',
     pipelineStages: ['New', 'Matching', 'Shortlisted', 'Site Visit', 'Negotiation', 'Token', 'Deal'],
     defaultStage: 'New',
@@ -131,8 +131,10 @@ const WorkflowConfig = {
   },
   transactionStatus: {
     transitions: {
-      Open:      ['Active', 'Closed', 'Cancelled'],
-      Active:    ['Closed', 'Cancelled'],
+      Open:      ['Active', 'Hold', 'Lost', 'Closed', 'Cancelled'],
+      Active:    ['Hold', 'Lost', 'Closed', 'Cancelled'],
+      Hold:      ['Open', 'Active', 'Lost', 'Closed', 'Cancelled'],
+      Lost:      ['Open', 'Active', 'Closed', 'Cancelled'],
       Closed:    [],
       Cancelled: []
     }
