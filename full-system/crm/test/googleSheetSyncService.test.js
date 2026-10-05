@@ -56,3 +56,35 @@ test('Sheet sync stores preliminary needs on one client without creating transac
   assert.equal(db.Transactions.length, 0, 'Sheet sync must never create an active transaction');
   assert.equal(db.Requirements.length, 0, 'Sheet sync must never create a confirmed requirement');
 });
+
+test('Sheet legacy ID collision gets a unique CRM identity', async () => {
+  const repository = makeRepository({
+    Leads: [{
+      LeadID: 'LEAD-0030',
+      LegacyID: 'LEAD-0030',
+      ClientName: 'Kenil Saha',
+      PrimaryMobile: '+91 98765 43210'
+    }]
+  });
+  const service = new GoogleSheetSyncService(repository, { syncToken: 'test-token' });
+
+  const [result] = await service.syncRows('Sale', [{
+    'Lead ID': 'LEAD-0030',
+    Name: 'Arohi Shah',
+    Phone: '+91 91234 56789'
+  }]);
+
+  const leads = repository.snapshot().Leads;
+  const kenil = leads.find((lead) => lead.ClientName === 'Kenil Saha');
+  const arohi = leads.find((lead) => lead.ClientName === 'Arohi Shah');
+
+  assert.equal(result.ok, true);
+  assert.equal(leads.length, 2);
+  assert.ok(arohi);
+  assert.ok(arohi.LeadID);
+  assert.notEqual(arohi.LeadID, kenil.LeadID);
+  assert.equal(arohi.LegacyID, 'LEAD-0030');
+  assert.equal(kenil.PrimaryMobile, '+91 98765 43210');
+  assert.equal(result.leadId, arohi.LeadID);
+  assert.equal(new Set(leads.map((lead) => lead.LeadID)).size, leads.length);
+});

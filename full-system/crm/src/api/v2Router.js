@@ -209,15 +209,32 @@ class V2Router {
       const requestedLeadId = wsMatch[1];
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
-      let lead = this.repo.readLead(requestedLeadId);
+      const leadsById = new Map();
+      for (const candidate of this.repo.list('Leads') || []) {
+        const candidateId = String(candidate?.LeadID || '');
+        if (!candidateId) continue;
+        const matches = leadsById.get(candidateId) || [];
+        matches.push(candidate);
+        leadsById.set(candidateId, matches);
+      }
+      const ambiguousIdError = {
+        ok: false,
+        error: 'Client ID matches multiple client records. Ask an administrator to resolve it before opening this workspace.',
+        code: 'AMBIGUOUS_CLIENT_ID'
+      };
+      const requestedMatches = leadsById.get(String(requestedLeadId)) || [];
+      if (requestedMatches.length > 1) return this._json(409, ambiguousIdError);
+      let lead = requestedMatches[0] || null;
       if (!lead) return this._json(404, { ok: false, error: 'Client not found' });
 
-      // A historical Client ID remains valid after merge, but always resolves
-      // to the surviving master workspace. Guard against malformed merge loops.
+      // Historical Client IDs may resolve to a surviving master, but every ID
+      // in that merge chain must be unique before the workspace can be opened.
       const visited = new Set();
       while (lead?.MergedIntoClientID && !visited.has(lead.LeadID)) {
         visited.add(lead.LeadID);
-        const master = this.repo.readLead(lead.MergedIntoClientID);
+        const masterMatches = leadsById.get(String(lead.MergedIntoClientID)) || [];
+        if (masterMatches.length > 1) return this._json(409, ambiguousIdError);
+        const master = masterMatches[0];
         if (!master) break;
         lead = master;
       }
