@@ -240,6 +240,7 @@ class GoogleSheetSyncService {
       summary.failed += results.filter((row) => !row.ok).length;
       summary.total += rows.length;
     }
+    if (summary.failed > 0) summary.ok = false;
     return summary;
   }
 
@@ -255,6 +256,18 @@ class GoogleSheetSyncService {
   }
 
   _syncOneRowInDb(db, tab, row) {
+    // Never use a spreadsheet error or an empty/truncated phone key as identity.
+    // Validate the raw value before parseValue/normalisePhoneKey strip characters.
+    const rawPhone = String(row.Phone ?? '').trim();
+    if (!rawPhone) return { ok: false, error: 'Missing Phone', legacyId: row['Lead ID'] };
+    const phoneDigits = rawPhone.replace(/\D/g, '');
+    const supportedPhone = /^[+\d\s().-]+$/.test(rawPhone)
+      && (/^\d{10}$/.test(phoneDigits) || /^91\d{10}$/.test(phoneDigits)
+        || /^0\d{10}$/.test(phoneDigits));
+    if (!supportedPhone) {
+      return { ok: false, error: 'Invalid Phone: use a 10-digit number with optional +91 or 0 prefix',
+        legacyId: row['Lead ID'] };
+    }
     // 1. Extract data grouped by target entity
     const leadData = {};
     const txnData  = {};
