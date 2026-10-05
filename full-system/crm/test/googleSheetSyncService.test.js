@@ -88,3 +88,40 @@ test('Sheet legacy ID collision gets a unique CRM identity', async () => {
   assert.equal(result.leadId, arohi.LeadID);
   assert.equal(new Set(leads.map((lead) => lead.LeadID)).size, leads.length);
 });
+
+
+test('invalid Sheet phones never create clients or overwrite an empty-key client', async () => {
+  const repository = makeRepository({ Leads: [
+    { LeadID: 'OLD', ClientName: 'Existing invalid record', PrimaryMobile: '#ERROR!' },
+    { LeadID: 'VALID', ClientName: 'Existing valid record', PrimaryMobile: '+91 98765 43210' }
+  ] });
+  const before = repository.snapshot();
+  const service = new GoogleSheetSyncService(repository);
+  for (const Phone of ['#ERROR!', '#N/A', '#REF!', 'None', 'abc9876543210', '123', '9999876543210', '', null]) {
+    const [result] = await service.syncRows('Rent', [{ Phone, Name: 'Unrelated client', Budget: '1L' }]);
+    assert.equal(result.ok, false, String(Phone));
+    assert.deepEqual(repository.snapshot(), before, String(Phone));
+  }
+});
+
+test('valid Indian phone formats continue to match one client across tabs', async () => {
+  const repository = makeRepository();
+  const service = new GoogleSheetSyncService(repository);
+  for (const Phone of ['9876543210', '+91 98765 43210', '91-98765-43210', '09876543210']) {
+    const [result] = await service.syncRows('Rent', [{ Phone, Name: 'Same client' }]);
+    assert.equal(result.ok, true);
+  }
+  assert.equal(repository.snapshot().Leads.length, 1);
+});
+
+test('public Sheet sync reports rejected rows while importing valid rows', async () => {
+  const repository = makeRepository();
+  const service = new GoogleSheetSyncService(repository, { fetchImpl: async () => ({
+    ok: true, text: async () => 'Name,Phone\nBad,#ERROR!\nValid,9876543210\n'
+  }) });
+  const summary = await service.syncPublicSheet({ sheetId: 'fixture', tabs: { Rent: '0' } });
+  assert.equal(summary.ok, false);
+  assert.equal(summary.failed, 1);
+  assert.equal(summary.created, 1);
+  assert.equal(repository.snapshot().Leads[0].ClientName, 'Valid');
+});
