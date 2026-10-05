@@ -27,14 +27,14 @@ def validate(payload):
     txns = payload.get("Transactions")
     if not isinstance(leads, list) or not isinstance(txns, list):
         raise ValueError("Expected Leads and Transactions arrays were not found.")
-    if any(not isinstance(t, dict) or not t.get("TransactionID") for t in txns):
-        raise ValueError("Malformed transactions found; no records removed.")
-    ids = {str(t["TransactionID"]) for t in txns}
+    # The authorized operation clears the entire Transactions array, including
+    # legacy/malformed entries. An ID is not needed to select those entries.
+    # Block any live cross-collection reference, even if its target lacks an ID.
     dependencies = {}
     for name, rows in payload.items():
         if name in ("Transactions", "Timeline", "Audit") or not isinstance(rows, list):
             continue
-        count = sum(isinstance(row, dict) and str(row.get("TransactionID", "")) in ids
+        count = sum(isinstance(row, dict) and row.get("TransactionID") not in (None, "")
                     for row in rows)
         if count:
             dependencies[name] = count
