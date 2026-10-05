@@ -42,7 +42,7 @@ def validate(payload):
         raise ValueError("Linked records need a scoped cleanup first: " + json.dumps(dependencies))
     return leads, txns
 
-def run(apply):
+def run(apply, status_only=False):
     from pymongo import MongoClient
     from pymongo.errors import DuplicateKeyError, PyMongoError
     from pymongo.write_concern import WriteConcern
@@ -66,13 +66,31 @@ def run(apply):
     uri = setting("MONGO_URL")
     if not uri:
         raise ValueError("MONGO_URL is missing.")
-    client = MongoClient(uri, serverSelectionTimeoutMS=20000, socketTimeoutMS=20000)
+    client = MongoClient(uri, serverSelectionTimeoutMS=30000, connectTimeoutMS=30000, socketTimeoutMS=60000)
     owner = "transaction-cleanup-" + uuid.uuid4().hex
     acquired = False
     db = client[setting("MONGO_DB", "signature_properties")]
     locks = db.get_collection("distributed_locks", write_concern=WriteConcern(w="majority"))
     snapshots = db.get_collection("db_snapshot", write_concern=WriteConcern(w="majority"))
+    stage = "connecting"
     try:
+        client.admin.command("ping")
+        if status_only:
+            stage = "reading_counts"
+            rows = list(snapshots.aggregate([
+                {"$match": {"_id": "singleton"}},
+                {"$project": {"_id": 0,
+                    "clients": {"$cond": [{"$isArray": "$payload.Leads"},
+                                          {"$size": "$payload.Leads"}, None]},
+                    "transactions": {"$cond": [{"$isArray": "$payload.Transactions"},
+                                               {"$size": "$payload.Transactions"}, None]}
+                }}
+            ], maxTimeMS=30000))
+            if len(rows) != 1 or any(rows[0].get(k) is None for k in ("clients", "transactions")):
+                raise ValueError("Expected CRM snapshot arrays not found.")
+            print(json.dumps({"status": "READ_ONLY", **rows[0]}))
+            return
+        stage = "acquiring_write_lock"
         if apply:
             for attempt in range(15):
                 now = datetime.now(timezone.utc)
@@ -90,6 +108,7 @@ def run(apply):
                 time.sleep(1)
             if not acquired:
                 raise ValueError("CRM is busy writing; no transactions removed.")
+        stage = "reading_snapshot"
         snap = snapshots.find_one({"_id": "singleton"})
         if not snap:
             raise ValueError("CRM snapshot not found.")
@@ -101,10 +120,12 @@ def run(apply):
             return
         query = {"_id": "singleton", "payload.Transactions": txns,
                  "updatedAt": snap.get("updatedAt")}
+        stage = "removing_transactions"
         result = snapshots.update_one(query, {"$set": {
             "payload.Transactions": [], "updatedAt": datetime.now(timezone.utc)}})
         if result.matched_count != 1:
             raise ValueError("Snapshot changed concurrently; no cleanup applied.")
+        stage = "confirming_result"
         after = snapshots.find_one({"_id": "singleton"})["payload"]
         unchanged = all(after.get(k) == v for k, v in payload.items() if k != "Transactions")
         if after.get("Transactions") != [] or not unchanged:
@@ -114,7 +135,7 @@ def run(apply):
                           "otherCollectionsUnchanged": True}))
     except PyMongoError as error:
         # Never print a Mongo URL or credentials in an exception.
-        raise ValueError("Database operation failed (" + type(error).__name__ +
+        raise ValueError("Database operation failed at " + stage + " (" + type(error).__name__ +
                          ", code=" + str(getattr(error, "code", None)) + "). Cleanup not confirmed.")
     finally:
         if acquired:
@@ -127,7 +148,10 @@ def run(apply):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--status", action="store_true", help="Read counts only, without acquiring any write lock")
     args = parser.parse_args()
+    if args.apply and args.status:
+        parser.error("--apply and --status cannot be combined")
     try:
         import pymongo
     except ImportError:
@@ -137,7 +161,7 @@ def main():
             subprocess.run([python, "-m", "pip", "install", "--quiet", "pymongo[srv]==4.10.1"], check=True)
             return subprocess.call([python, str(Path(__file__).resolve()), *sys.argv[1:]])
     try:
-        run(args.apply)
+        run(args.apply, args.status)
         return 0
     except ValueError as error:
         print("STOPPED: " + str(error), file=sys.stderr)
