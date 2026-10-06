@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {planMigration,SOURCE_ID} = require('../src/services/sheetMigrationService');
+const {planMigration: buildPlan,SOURCE_ID} = require('../src/services/sheetMigrationService');
+const planMigration = (db,source,actor={role:'ADMIN',userId:'test-admin'}) => buildPlan(db,source,actor);
 const input = (...records) => ({spreadsheetId:SOURCE_ID,records});
 const row = (phone='9876543210',extra={}) => ({tab:'Comm',sourceRow:2,row:{'Lead ID':'COMM-1',Name:'Client',Phone:phone,Budget:'1L',...extra}});
 test('fills blanks while preserving CRM work and existing requirements',()=>{
@@ -24,4 +25,14 @@ test('invalid phones and conflicting source versions cannot mutate clients',()=>
 test('preview token changes if client work changes and scope is enforced',()=>{
  const db={Leads:[{LeadID:'COMM-1',PrimaryMobile:'9876543210',CompanyID:'A'}]};const src=input(row());const first=planMigration(db,src,{companyId:'B'});assert.equal(first.report.updated,0);assert.equal(first.report.issues.length,1);
  const changed=structuredClone(db);changed.Leads[0].Notes='new';assert.notEqual(planMigration(db,src).report.token,planMigration(changed,src).report.token);
+});
+test('uses canonical admin access for legacy clients without tenant columns',()=>{
+ const db={Leads:[{LeadID:'COMM-1',PrimaryMobile:'9876543210',AssignedAgentID:'USR-0001'}]};
+ const result=planMigration(db,input(row()),{role:'ADMIN',userId:'admin',companyId:'C1',brokerageId:'B1'});
+ assert.equal(result.report.updated,1);assert.equal(result.report.issues.length,0);
+});
+test('multiple source tabs count one updated client',()=>{
+ const db={Leads:[{LeadID:'COMM-1',PrimaryMobile:'9876543210'}]};
+ const sale=row();sale.tab='Sale';const result=planMigration(db,input(row(),sale));
+ assert.equal(result.report.updated,1);assert.equal(result.report.changes.length,2);
 });

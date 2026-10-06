@@ -1,6 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const { GoogleSheetSyncService } = require('./googleSheetSyncService');
+const { AccessControlService } = require('./accessControlService');
 const SOURCE_ID = '1nkjzrMRDCMoWFnzxxovvxu-fzILv6Li-VfBY4VLr-QI';
 const empty = value => value == null || value === '';
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -20,6 +21,11 @@ function planMigration(db, input, actor = {}) {
   const next = copy(db);
   next.Leads ||= [];
   next._V2Counters ||= { Lead: 0, Transaction: 0, Requirement: 0 };
+  const access = new AccessControlService({
+    readLead: id => next.Leads.find(lead => lead.LeadID === id),
+    getUser: id => (next.Users || []).find(user => user.UserID === id),
+    getTransaction: id => (next.Transactions || []).find(tx => tx.TransactionID === id)
+  });
   const issues = [], changes = [], seen = new Map(), sourceVariants = new Map();
   for (const item of input.records) {
     const key = `${item?.tab}:${phone(item?.row?.Phone)}`;
@@ -54,7 +60,7 @@ function planMigration(db, input, actor = {}) {
     if (!parsed.ok) { issue(parsed.error); continue; }
     const source = staged.Leads[0];
     let lead = matches[0], created = false;
-    if (lead && ((actor.companyId && lead.CompanyID !== actor.companyId) || (actor.brokerageId && lead.BrokerageID !== actor.brokerageId))) { issue('Client is outside the administrator scope'); continue; }
+    if (lead && !access.canAccessLeadRecord(lead, actor)) { issue('Client is outside the administrator scope'); continue; }
     if (!lead) {
       let id = ref.legacyId;
       if (!id || next.Leads.some(l => l.LeadID === id)) {
@@ -93,7 +99,7 @@ function planMigration(db, input, actor = {}) {
   }
   // Ignore generated timestamps in the preview token, but bind all client data and source rows.
   const token = digest({ source: input, clients: db.Leads || [], counters: db._V2Counters || {}, actor });
-  return { next, report: { token, sourceRows: input.records.length, created: changes.filter(x=>x.action === 'CREATED').length,
-    updated: changes.filter(x=>x.action !== 'CREATED').length, issues, changes, clientsBefore: (db.Leads || []).length, clientsAfter: next.Leads.length } };
+  return { next, report: { token, sourceRows: input.records.length, created: new Set(changes.filter(x=>x.action === 'CREATED').map(x=>x.leadId)).size,
+    updated: new Set(changes.filter(x=>x.action !== 'CREATED').map(x=>x.leadId)).size, issues, changes, clientsBefore: (db.Leads || []).length, clientsAfter: next.Leads.length } };
 }
 module.exports = { planMigration, SOURCE_ID, phone };
