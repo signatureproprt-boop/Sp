@@ -3088,6 +3088,25 @@ async function handleApi(req, res, url) {
       return;
     }
 
+    // Explicit original-Sheet migration. Preview and commit share a client/source token.
+    const sheetMigrationMatch = pathname.match(/^\/api\/sync\/sheet-migration\/(preview|commit)\/?$/i);
+    if (sheetMigrationMatch && req.method === 'POST') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+      const { planMigration } = require('./src/services/sheetMigrationService');
+      const sessionActor = getAuthenticatedActor(req, url);
+      const actor = { userId: sessionActor.userId, companyId: sessionActor.companyId, brokerageId: sessionActor.brokerageId };
+      const body = bodyForV2 || {};
+      const plan = planMigration(runtime.repository.read(), body.source, actor);
+      if (sheetMigrationMatch[1] === 'commit') {
+        if (typeof body.token !== 'string' || body.token !== plan.report.token) {
+          sendJson(res, { ok: false, error: 'CRM changed. Preview the import again.' }, 409); return;
+        }
+        if (plan.report.changes.length) runtime.repository.write(plan.next);
+      }
+      sendJson(res, { ok: true, data: plan.report });
+      return;
+    }
+
     // Separate, authenticated CRM-owned reporting workbook; legacy exports stay disabled.
     if (/^\/api\/sync\/crm-report\/?$/i.test(pathname) && ['GET', 'POST'].includes(req.method)) {
       if (!ensureAdminPermissionOrRespond(req, res, url, req.method === 'GET' ? 'ADMIN_READ' : 'ADMIN_UPDATE')) return;
