@@ -66,6 +66,8 @@ let shutdownInProgress = false;
 let shutdownCompleted = false;
 let shutdownForceExitTimer = null;
 let googleSheetSyncInterval = null;
+const { createReportRunner } = require('./src/services/crmSheetReportRunner');
+const crmSheetReportRunner = createReportRunner({ mongoStore });
 let serverBinding = null;
 
 const MIME_TYPES = {
@@ -3086,6 +3088,17 @@ async function handleApi(req, res, url) {
       return;
     }
 
+    // Separate, authenticated CRM-owned reporting workbook; legacy exports stay disabled.
+    if (/^\/api\/sync\/crm-report\/?$/i.test(pathname) && ['GET', 'POST'].includes(req.method)) {
+      if (!ensureAdminPermissionOrRespond(req, res, url, req.method === 'GET' ? 'ADMIN_READ' : 'ADMIN_UPDATE')) return;
+      if (req.method === 'GET') sendJson(res, { ok: true, data: crmSheetReportRunner.status() });
+      else {
+        const result = await crmSheetReportRunner.run();
+        sendJson(res, result, result.ok ? 200 : result.state === 'BUSY' ? 409 : 503);
+      }
+      return;
+    }
+
     // ── Simple sheet setup instructions endpoint ─────────────────────────────
     if (/^\/api\/sync\/google-sheet\/setup\/?$/i.test(pathname) && req.method === 'GET') {
       if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_READ')) return;
@@ -5448,6 +5461,8 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
       return;
     }
     writeResponse(payload, statusCode);
+    // Best-effort immediate refresh after a durably saved CRM mutation.
+    void crmSheetReportRunner.run();
   });
 }
 
@@ -5798,7 +5813,7 @@ async function startServer() {
 
   const syncGoogleSheet = async () => {
     try {
-      if (!mongoStore.isInitialized()) return;
+      if (!mongoStore.isInitialized() || process.env.CRM_REPORT_SHEET_ID) return;
       const lock = await mongoStore.withDistributedLock('google-sheet-sync', async () => {
         try {
           const { GoogleSheetSyncService } = require('./src/services/googleSheetSyncService');
@@ -5844,6 +5859,8 @@ async function startServer() {
           }
         }, 0);
       }
+      void crmSheetReportRunner.run();
+      registerRecurringBackgroundTimer(setInterval(() => { void crmSheetReportRunner.run(); }, 60 * 1000));
       syncGoogleSheet();
       googleSheetSyncInterval = registerRecurringBackgroundTimer(setInterval(syncGoogleSheet, 5 * 60 * 1000));
     }
