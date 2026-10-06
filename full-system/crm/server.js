@@ -3095,7 +3095,9 @@ async function handleApi(req, res, url) {
         data: {
           webhookUrl: `${appUrl}/api/sync/google-sheet`,
           syncTokenConfigured: Boolean(String(process.env.SHEET_SYNC_TOKEN || '').trim() && String(process.env.SHEET_SYNC_TOKEN || '').trim() !== 'CHANGE_ME_SECRET'),
-          instructions: 'Copy /app/scripts/apps-script-webhook.gs code and paste in your Google Sheet Extensions → Apps Script'
+          direction: 'SHEET_TO_CRM_ONLY',
+          sheetWritebackEnabled: false,
+          instructions: 'Import Sheet data into CRM only. Disable any Apps Script that pulls CRM exports or writes CRM data back to the Sheet.'
         }
       });
       return;
@@ -3103,8 +3105,13 @@ async function handleApi(req, res, url) {
 
     if (/^\/api\/sync\/google-sheet\/export\/?$/i.test(pathname) && req.method === 'GET') {
       if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_READ')) return;
-      const leads = typeof runtime.repository.listLeads === 'function' ? runtime.repository.listLeads() : [];
-      sendJson(res, { ok: true, data: leads });
+      // Sheet integration is import-only. Do not expose CRM rows to legacy
+      // Apps Script pull/export jobs that can append them back to the Sheet.
+      sendJson(res, {
+        ok: false,
+        code: 'SHEET_WRITEBACK_DISABLED',
+        error: 'CRM-to-Sheet export is disabled. This integration only imports Sheet data into CRM.'
+      }, 410);
       return;
     }
 
