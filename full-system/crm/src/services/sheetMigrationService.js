@@ -83,6 +83,12 @@ function planMigration(db, input, actor = {}) {
     }
     const tabs = Array.isArray(lead.SheetSourceTabs) ? lead.SheetSourceTabs : [];
     if (!tabs.includes(tab)) { lead.SheetSourceTabs = [...tabs,tab]; fields.push('SheetSourceTabs'); }
+    // Retain all original columns as source details, without applying Sheet work state to CRM.
+    const imported = Array.isArray(lead.ImportedSheetDetails) ? lead.ImportedSheetDetails : [];
+    if (!imported.some(detail => detail.SpreadsheetID === SOURCE_ID && detail.SourceTab === tab)) {
+      lead.ImportedSheetDetails = [...imported, { SpreadsheetID: SOURCE_ID, SourceTab: tab, SourceRow: item.sourceRow, Columns: copy(row), ImportedAt: now }];
+      fields.push('ImportedSheetDetails');
+    }
     if (fields.length || created) { lead.UpdatedAt = now; changes.push({ ...ref, leadId: lead.LeadID, action: created ? 'CREATED' : 'FILLED_MISSING', fields }); }
   }
   // Ignore generated timestamps in the preview token, but bind all client data and source rows.
