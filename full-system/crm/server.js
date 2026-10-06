@@ -3094,7 +3094,7 @@ async function handleApi(req, res, url) {
       if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
       const { planMigration } = require('./src/services/sheetMigrationService');
       const sessionActor = getAuthenticatedActor(req, url);
-      const actor = { userId: sessionActor.userId, companyId: sessionActor.companyId, brokerageId: sessionActor.brokerageId };
+      const actor = { userId: sessionActor.userId, role: sessionActor.role, companyId: sessionActor.companyId, brokerageId: sessionActor.brokerageId };
       const body = bodyForV2 || {};
       const plan = planMigration(runtime.repository.read(), body.source, actor);
       if (sheetMigrationMatch[1] === 'commit') {
