@@ -197,6 +197,7 @@ class GoogleSheetSyncService {
    * Returns per-row result.
    */
   async syncRows(tab, rows) {
+    if (process.env.CRM_REPORT_SHEET_ID) throw new Error('Sheet imports paused: CRM is the source of truth for the reporting workbook');
     const results = [];
     const db = this.repository.read();
     db.Leads         = db.Leads || [];
@@ -217,6 +218,7 @@ class GoogleSheetSyncService {
   }
 
   async syncPublicSheet(options = {}) {
+    if (process.env.CRM_REPORT_SHEET_ID) throw new Error('Sheet imports paused: CRM is the source of truth for the reporting workbook');
     const sheetId = String(options.sheetId || process.env.GOOGLE_SHEET_ID || DEFAULT_PUBLIC_SHEET_ID).trim();
     const tabs = options.tabs || DEFAULT_PUBLIC_SHEET_TABS;
     if (!sheetId) throw new Error('Google Sheet ID is required');
