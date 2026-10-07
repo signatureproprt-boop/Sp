@@ -4,6 +4,7 @@ test('client form keeps identity and edits a dynamic requirement without a trans
   let lead = {LeadID: 'L1', ClientName: 'Sample Client', PrimaryMobile: '9876543210', ClientStatus: 'New', ClientLifecycle: 'Prospect', Source: 'Manual', BudgetMax: 7000000};
   const requirements = [];
   const writes = [];
+  await page.route('**/client-workspace.html?*', route => route.fulfill({path: require('path').join(__dirname, '../client-workspace.html'), contentType: 'text/html'}));
   await page.route('**/api/**', async route => {
     const req = route.request(), url = new URL(req.url()), body = req.postDataJSON() || {};
     let response = {ok: true, data: []};
