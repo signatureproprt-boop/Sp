@@ -77,7 +77,7 @@ function buildProjection(db, snapshotAt) {
     const category = row.Category || req.Category || '';
     const result = [key, leadKey, lead.ClientName || lead.Name, lead.PrimaryMobile || lead.Phone, txnKey, kind,
       type, category, status, stage, value('BudgetMin'), value('BudgetMax'), value('Location1'), value('BHK'),
-      value('PropertyType') || value('SubCategory'), lead.AssignedAgentID, lead.NextFollowUp,
+      value('PropertyType') || value('SubCategory'), lead.AssignedAgentID, lead.NextFollowUpAt || lead.NextFollowUp,
       row.LostReason || req.LostReason || '', row.Notes || req.Notes || req.Preferences || '', row.UpdatedAt || lead.UpdatedAt];
     out.Work.push(result);
     const states = [status, stage].map(v => str(v).trim().toLowerCase());
@@ -112,6 +112,7 @@ function buildProjection(db, snapshotAt) {
       if (represented) continue;
       const clientStatus = str(lead.ClientStatus || lead.LeadStatus).toLowerCase();
       const currentBasic = { ...basic };
+      if (lead.RequirementType) currentBasic.TransactionType = lead.RequirementType;
       for (const k of ['TransactionType', 'Category', 'BudgetMin', 'BudgetMax', 'Location1', 'BHK', 'PropertyType', 'SubCategory', 'Notes']) {
         if (field(lead, k) !== '') currentBasic[k] = field(lead, k);
       }
@@ -133,22 +134,22 @@ function buildProjection(db, snapshotAt) {
       follow.Notes || follow.Note, follow.UpdatedAt]);
   }
   // One client row and fixed summary columns, independent of number of needs.
-  const needKeys = ['TransactionType', 'Category', 'PropertyType', 'SubCategory', 'BudgetMin', 'BudgetMax', 'Location1', 'Location2', 'Location3', 'BHK', 'BHKMin', 'BHKMax', 'AreaMin', 'AreaMax', 'Furnishing', 'BusinessUse', 'PossessionTimeline', 'Preferences', 'SpecialNotes', 'Notes'];
+  const needKeys = ['RequirementType', 'TransactionType', 'Category', 'PropertyType', 'SubCategory', 'BudgetMin', 'BudgetMax', 'Location1', 'Location2', 'Location3', 'BHK', 'BHKMin', 'BHKMax', 'AreaMin', 'AreaMax', 'Furnishing', 'BusinessUse', 'PossessionTimeline', 'Preferences', 'SpecialNotes', 'Notes'];
   const describe = row => needKeys.map(k => {
     const v = field(row, k); return v === '' || v == null ? '' : `${k}: ${str(v)}`;
   }).filter(Boolean).join(' | ');
   for (const [key, lead] of leads) {
     const confirmed = out.Requirements.filter(r => id(r[1]) === key)
       .map(r => requirements.get(id(r[0]))).sort((a,b) => id(a.RequirementID).localeCompare(id(b.RequirementID)));
-    const current = describe(lead);
-    const needs = confirmed.length ? confirmed.map(r => `${r.RequirementID}: ${describe(r)}`)
+    const current = describe({ ...(lead.RequirementProfile || {}), ...lead });
+    const needs = confirmed.length ? [current, ...confirmed.map(r => `${r.RequirementID}: ${describe(r)}`)]
       : current ? [current] : (lead.SheetBasicRequirements || []).map(r => `Unconfirmed: ${describe(r)}`);
     const work = {};
     for (const collection of ['Transactions', 'FollowUps', 'Shortlists', 'SiteVisits', 'Activities']) {
       work[collection] = (db[collection] || []).filter(r => id(r.LeadID || r.ClientID) === key);
     }
     out.Clients.push([key, lead.ClientName || lead.Name, lead.PrimaryMobile || lead.Phone, lead.Email,
-      lead.ClientStatus || lead.LeadStatus, lead.AssignedAgentID, lead.NextFollowUp, lead.LeadSource || lead.Source || lead._source,
+      lead.ClientStatus || lead.LeadStatus, lead.AssignedAgentID, lead.NextFollowUpAt || lead.NextFollowUp, lead.LeadSource || lead.Source || lead._source,
       lead.Notes, lead.UpdatedAt, needs.filter(Boolean).join('\n'), work]);
   }
   // Deduplicate issue keys without suppressing distinct reasons.

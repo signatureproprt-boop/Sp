@@ -110,3 +110,8 @@ test('legacy reporting Clients headers upgrade once; future syncs keep fixed sch
   await svc.sync(fixture(),'v1'); assert.deepEqual(fake.values.Clients[0],HEADERS.Clients);
   await svc.sync(fixture(),'v2'); assert.equal(fake.values.Clients.length,2);
 });
+
+test('profile details and current follow-up are included alongside confirmed needs', () => {
+ const db=fixture();Object.assign(db.Leads[0],{RequirementType:'Rent',NextFollowUpAt:'2026-10-12',RequirementProfile:{Location2:'Vesu'}});
+ const p=buildProjection(db);assert.equal(p.Clients[0][6],'2026-10-12');assert.match(p.Clients[0][10],/Vesu/);assert.match(p.Clients[0][10],/R1:/);
+});
