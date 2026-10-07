@@ -5498,7 +5498,7 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
     initialized: mongoStore.isInitialized(),
     failureBaseline,
     flush: () => runtime?.repository?.flush?.()
-  }).then((result) => {
+  }).then(async (result) => {
     if (res.destroyed || res.writableEnded) return;
     if (!result.ok) {
       writeResponse({
@@ -5508,10 +5508,14 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
       }, 503);
       return;
     }
-    writeResponse(payload, statusCode);
+    // Cloud Run can suspend background CPU after res.end(). Complete this
+    // narrow Sheet write while a client/requirement save request is active.
+    const sheetRequirementSync = res.__sigSyncRequirementCell && existingRequirementRunner.status().configured
+      ? await existingRequirementRunner.run() : null;
+    writeResponse(sheetRequirementSync && payload && typeof payload === 'object'
+      ? { ...payload, sheetRequirementSync } : payload, statusCode);
     // Best-effort immediate refresh after a durably saved CRM mutation.
     void crmSheetReportRunner.run();
-    void existingRequirementRunner.run();
   });
 }
 
@@ -5532,6 +5536,7 @@ appServer = http.createServer(async (req, res) => {
   res.__sigRequireMongoDurability =
     url.pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
   res.__sigMongoWriteFailureBaseline = Number(mongoStore.stats?.().failures || 0);
+  res.__sigSyncRequirementCell = /^\/api\/v2\/(clients(?:\/|$)|requirements(?:\/|$)|quick-capture\/?$)/.test(url.pathname);
 
   if (!enforceApiRateLimit(req, res, url)) return;
   if (url.pathname.startsWith('/api/') && Number(req.headers['content-length'] || 0) > MAX_JSON_BODY_BYTES) {
