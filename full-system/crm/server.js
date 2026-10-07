@@ -3088,6 +3088,27 @@ async function handleApi(req, res, url) {
       return;
     }
 
+    // Recoverable administrator cleanup of client work; client/basic identities are retained.
+    const workCleanupMatch = pathname.match(/^\/api\/v2\/admin\/client-work-cleanup\/(status|preview|commit)\/?$/i);
+    if (workCleanupMatch && ['GET','POST'].includes(req.method)) {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+      const db = runtime.repository.read();
+      if (workCleanupMatch[1] === 'status' && req.method === 'GET') {
+        const backup = (db.ClientWorkCleanupBackups || []).filter(b => !b.RestoredAt).slice(-1)[0];
+        sendJson(res, {ok:true,data:{backupId:backup?.BackupID || null}}); return;
+      }
+      if (req.method !== 'POST' || workCleanupMatch[1] === 'status') {sendJson(res,{ok:false,error:'Method not allowed'},405);return;}
+      const {planClientWorkCleanup} = require('./src/services/clientWorkCleanupService');
+      const actor = getAuthenticatedActor(req, url);
+      const body = bodyForV2 || {};
+      const plan = planClientWorkCleanup(db, body.source, actor);
+      if (workCleanupMatch[1] === 'commit') {
+        if (body.token !== plan.report.token) {sendJson(res,{ok:false,error:'CRM changed. Preview cleanup again.'},409);return;}
+        if(plan.report.changed) runtime.repository.write(plan.next);
+      }
+      sendJson(res,{ok:true,data:plan.report}); return;
+    }
+
     // Explicit original-Sheet migration. Preview and commit share a client/source token.
     const sheetMigrationMatch = pathname.match(/^\/api\/sync\/sheet-migration\/(preview|commit)\/?$/i);
     if (sheetMigrationMatch && req.method === 'POST') {
