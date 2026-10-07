@@ -45,7 +45,7 @@ test('client form keeps identity and edits a dynamic requirement without a trans
   await page.locator('#need-fld-BusinessType').fill('Office');
   await page.getByTestId('save-need-btn').click();
   await expect(page.locator('#add-need-modal')).toHaveClass(/hidden/);
-  await expect(page.locator('[data-edit-transaction="R1"]')).toBeVisible();
+  await expect(page.locator('[data-edit-transaction="R1"]')).toBeVisible().catch(async error => { console.log('FORM DIAGNOSTIC', await page.locator('#workspace-error').textContent(), JSON.stringify(requirements), await page.locator('#edit-requirements-list').textContent()); throw error; });
   await page.locator('[data-edit-transaction="R1"]').click();
   await expect(page.locator('#need-fld-BusinessType')).toHaveValue('Office');
   await page.locator('#need-fld-BudgetMax').fill('9000000');
