@@ -300,12 +300,13 @@ class V2LeadService {
       NextActionNote:  payload.NextActionNote ?? payload.nextActionNote ?? existing.NextActionNote ?? null,
       NextFollowUpAt:  payload.NextFollowUpAt ?? payload.nextFollowUpAt ?? existing.NextFollowUpAt ?? null,
       LastContactChannel: payload.LastContactChannel ?? payload.lastContactChannel ?? existing.LastContactChannel ?? null,
+      BHK: Object.prototype.hasOwnProperty.call(payload, "BHK") ? payload.BHK : (existing.BHK ?? null),
       RequirementProfile: payload.RequirementProfile || payload.requirementProfile || existing.RequirementProfile || null,
-      BudgetMax:       payload.BudgetMax || payload.budgetMax || payload.Budget || payload.budget || existing.BudgetMax || null,
-      BudgetMin:       payload.BudgetMin || payload.budgetMin || existing.BudgetMin || null,
-      Location1:       payload.Location1 || payload.location1 || payload.Location || payload.location || existing.Location1 || null,
-      PropertyType:    payload.PropertyType || payload.propertyType || payload.SubCategory || payload.subCategory || existing.PropertyType || null,
-      RequirementType: payload.RequirementType || payload.requirementType || payload.TransactionType || payload.transactionType || existing.RequirementType || null,
+      BudgetMax: Object.prototype.hasOwnProperty.call(payload, "BudgetMax") ? payload.BudgetMax : (payload.budgetMax ?? payload.Budget ?? payload.budget ?? existing.BudgetMax ?? null),
+      BudgetMin: Object.prototype.hasOwnProperty.call(payload, "BudgetMin") ? payload.BudgetMin : (payload.budgetMin ?? existing.BudgetMin ?? null),
+      Location1: Object.prototype.hasOwnProperty.call(payload, "Location1") ? payload.Location1 : (payload.location1 ?? payload.Location ?? payload.location ?? existing.Location1 ?? null),
+      PropertyType: Object.prototype.hasOwnProperty.call(payload, "PropertyType") ? payload.PropertyType : (payload.propertyType ?? payload.SubCategory ?? payload.subCategory ?? existing.PropertyType ?? null),
+      RequirementType: Object.prototype.hasOwnProperty.call(payload, "RequirementType") ? payload.RequirementType : (payload.requirementType ?? payload.TransactionType ?? payload.transactionType ?? existing.RequirementType ?? null),
       AssignedAgentID: payload.AssignedAgentID || payload.assignedAgentId || existing.AssignedAgentID,
       // Tenant ownership is immutable through client edits. Only backfill
       // legacy tenantless records from the authenticated actor.
@@ -317,6 +318,12 @@ class V2LeadService {
       UpdatedAt:       now,
       Version:         (existing.Version || 1) + 1
     };
+
+    const profilePatch = {};
+    for (const key of ['BudgetMin', 'BudgetMax', 'Location1', 'BHK', 'PropertyType', 'RequirementType']) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) profilePatch[key] = updated[key];
+    }
+    if (Object.keys(profilePatch).length) updated.RequirementProfile = { ...(updated.RequirementProfile || {}), ...profilePatch };
 
     const wasLost = previousStatus === 'Lost';
     const isLost = clientStatus === 'Lost';
@@ -336,7 +343,7 @@ class V2LeadService {
       'Source', 'LeadSource', 'LeadStatus', 'Phone', 'City', 'Area', 'PreferredLanguage', 'PreferredContactMode',
       'ClientIntent', 'Occupation', 'ReferralBy', 'SourceDetail', 'Priority', 'NextActionType', 'NextActionNote',
       'NextFollowUpAt', 'LastContactChannel', 'RequirementProfile', 'BudgetMax', 'BudgetMin',
-      'Location1', 'PropertyType', 'RequirementType', 'AssignedAgentID', 'CompanyID', 'BrokerageID', 'Notes',
+      'Location1', 'BHK', 'PropertyType', 'RequirementType', 'AssignedAgentID', 'CompanyID', 'BrokerageID', 'Notes',
       'LostReason', 'LostNote', 'LostAt', 'ReactivatedAt'
     ].some((key) => JSON.stringify(existing[key] ?? null) !== JSON.stringify(updated[key] ?? null))
       || JSON.stringify(existing.Tags || []) !== JSON.stringify(updated.Tags || []);

@@ -811,6 +811,41 @@ class V2Router {
         return this._json(result.ok ? 200 : 404, result);
       }
 
+      // Client requirements are independent of deal transactions.
+      if (sub === 'requirements' && ['GET', 'POST'].includes(method)) {
+        const auth = this._requireActor(req, url);
+        if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+        const lead = this.repo.readLead(leadId);
+        const access = this.accessSvc.authorizeLead(auth.actor, lead, { permissions: method === 'POST'
+          ? ['LEADS_EDIT', 'LEADS_UPDATE'] : ['LEADS_VIEW', 'LEADS_READ'] });
+        if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+        if (method === 'GET') return this._ok({ ok: true, data: this.reqSvc.listRequirementsByLead(leadId) });
+        const result = this.reqSvc.createClientRequirement(leadId, body || {}, auth.actor);
+        return this._json(result.ok ? (result.reused ? 200 : 201) : 400, result);
+      }
+      if (sub === 'start-deal' && method === 'POST') {
+        const auth = this._requireActor(req, url);
+        if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+        const access = this.accessSvc.authorizeLead(auth.actor, this.repo.readLead(leadId), { permissions: ['LEADS_EDIT', 'LEADS_UPDATE'] });
+        if (!access.ok) return this._json(access.statusCode, { ok: false, error: access.error });
+        const requirement = this.reqSvc.getRequirement(body?.RequirementID);
+        if (!requirement.ok || requirement.data.LeadID !== leadId) return this._json(404, { ok: false, error: 'Requirement not found for this client' });
+        const r = requirement.data;
+        if (['Lost', 'Closed', 'Archived'].includes(r.RequirementStatus)) return this._json(400, { ok: false, error: 'Reopen the requirement before starting a deal' });
+        const existing = this.txnSvc.listTransactionsByLead(leadId).find(t => t.SourceRequirementID === r.RequirementID);
+        if (existing) return this._ok({ ok: true, data: existing, reused: true });
+        const result = this.txnSvc.createTransaction(leadId, { TransactionType: r.TransactionType, Category: r.Category, SubCategory: r.SubCategory,
+          BudgetMin: r.BudgetMin, BudgetMax: r.BudgetMax, Location1: r.Location1, PipelineStage: 'Negotiation' }, auth.actor);
+        if (result.ok) {
+          const db = this.repo.read();
+          const row = db.Transactions.find(t => t.TransactionID === result.data.TransactionID);
+          row.SourceRequirementID = r.RequirementID;
+          this.repo.write(db);
+          result.data = row;
+        }
+        return this._json(result.ok ? 201 : 400, result);
+      }
+
       // Transactions
       if (sub === 'transactions') {
         if (method === 'GET') {
@@ -1455,6 +1490,7 @@ class V2Router {
 
     const transactions = this.txnSvc.listTransactionsByLead(leadId);
     const txnWithReqs = transactions;
+    const requirements = this.reqSvc.listRequirementsByLead(leadId);
 
     const db       = this.repo.read();
     const activities = (db.Activities || []).filter((a) => a.LeadID === leadId).sort((a, b) => new Date(b.CreatedAt).getTime() - new Date(a.CreatedAt).getTime());
@@ -1496,15 +1532,16 @@ class V2Router {
       if (row.TransactionID && transactionIds.has(row.TransactionID)) return true;
       return false;
     });
-    const matching = (db.Matches || []).filter((row) => transactionIds.has(row.TransactionID || row.RequirementID));
-    const shortlist = (db.Shortlists || []).filter((row) => transactionIds.has(row.TransactionID || row.RequirementID));
+    const requirementIds = new Set(requirements.map(r => r.RequirementID));
+    const matching = (db.Matches || []).filter((row) => requirementIds.has(row.RequirementID) || transactionIds.has(row.TransactionID));
+    const shortlist = (db.Shortlists || []).filter((row) => requirementIds.has(row.RequirementID) || transactionIds.has(row.TransactionID));
 
     return {
       ok:   true,
       data: {
         lead,
         transactions:  txnWithReqs,
-        requirements: transactions,
+        requirements,
         activities,
         followUps,
         timeline,
@@ -1518,8 +1555,8 @@ class V2Router {
         shortlist,
         summary: {
           transactionCount:  transactions.length,
-          requirementCount:  transactions.length,
-          activeRequirements: transactions.filter((r) => !['Closed','Won','Lost','Cancelled'].includes(r.TransactionStatus || r.Status)).length,
+          requirementCount:  requirements.length,
+          activeRequirements: requirements.filter((r) => !['Closed','Lost','Archived'].includes(r.RequirementStatus || r.Status)).length,
           pendingFollowUps:   followUps.filter((f) => !['COMPLETED', 'CANCELLED'].includes(String(f.status || f.Status || '').toUpperCase())).length
         }
       }

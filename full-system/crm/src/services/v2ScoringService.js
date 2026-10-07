@@ -297,8 +297,16 @@ class V2ScoringService {
   /**
    * Recalculate RequirementScore and persist it on the Requirement record.
    */
-  recalculateRequirementScore(transactionId) {
-    return this.recalculateTransactionScore(transactionId);
+  recalculateRequirementScore(requirementId) {
+    const db = this.repository.read();
+    const idx = (db.Requirements || []).findIndex(r => r.RequirementID === requirementId);
+    if (idx === -1) return { ok: false, error: 'Requirement not found' };
+    const result = this.calculateRequirementScore(db.Requirements[idx]);
+    if (!result.ok) return result;
+    db.Requirements[idx] = { ...db.Requirements[idx], RequirementScore: result.score,
+      ScoreBreakdown: result, ScoreCalculationVersion: result.calculationVersion, ScoreCalculatedAt: result.calculatedAt };
+    this.repository.write(db);
+    return { ok: true, requirementId, ...result };
   }
 
   recalculateTransactionScore(transactionId) {
@@ -331,7 +339,7 @@ class V2ScoringService {
 
     const lead     = db.Leads[idx];
     const txnCount = (db.Transactions || []).filter((t) => t.LeadID === leadId).length;
-    const reqCount = txnCount;
+    const reqCount = (db.Requirements || []).filter(r => r.LeadID === leadId).length;
 
     const result = this.calculateClientScore(lead, txnCount, reqCount);
     if (!result.ok) return result;

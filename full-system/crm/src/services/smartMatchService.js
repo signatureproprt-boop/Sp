@@ -322,7 +322,8 @@ class SmartMatchService {
     return {
       ok: true,
       data: {
-        transactionId: transaction.TransactionID,
+        requirementId: transaction.RequirementID || null,
+        transactionId: transaction.TransactionID || null,
         leadId: transaction.LeadID,
         criteria: { reqTxn, reqCat, reqSub, reqLocs, reqBudgetMin, reqBudgetMax, reqAreas },
         total: filtered.length,
@@ -335,8 +336,8 @@ class SmartMatchService {
   matchByRequirementId(requirementId, options = {}) {
     const db = this.repository.read();
     const legacy = (db.Requirements || []).find((row) => row.RequirementID === requirementId);
-    if (!legacy?.TransactionID) return { ok: false, error: 'Transaction not found for legacy requirement' };
-    return this.matchByTransactionId(legacy.TransactionID, options);
+    if (!legacy) return { ok: false, error: 'Requirement not found' };
+    return this.match(legacy, options);
   }
 
   matchByTransactionId(transactionId, options = {}) {

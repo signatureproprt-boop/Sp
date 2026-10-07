@@ -1,3 +1,4 @@
+const { workKey, resolveClientWork, workLinks } = require('./clientWorkContext');
 'use strict';
 
 /**
@@ -28,7 +29,7 @@ class ShortlistServiceV2 {
     db.Shortlists = db.Shortlists || [];
     return db.Shortlists.find(
       (s) =>
-        s.TransactionID === transactionId &&
+        workKey(s) === transactionId &&
         s.PropertyID === propertyId &&
         s.Status === 'Active'
     ) || null;
@@ -70,10 +71,11 @@ class ShortlistServiceV2 {
   }
 
   buildView(row) {
-    const transaction = this.repo.find('Transactions', 'TransactionID', row.TransactionID);
+    const transaction = resolveClientWork(this.repo, workKey(row));
     const prop = row.IsManual ? null : this.repo.find('Inventory', 'PropertyID', row.PropertyID);
     return {
       ShortlistID: row.ShortlistID,
+      RequirementID: row.RequirementID || null,
       TransactionID: row.TransactionID,
       PropertyID: row.PropertyID,
       LeadID: row.LeadID,
@@ -94,7 +96,7 @@ class ShortlistServiceV2 {
     const db = this.repo.read();
     db.Shortlists = db.Shortlists || [];
     const rows = db.Shortlists
-      .filter((s) => s.TransactionID === transactionId && (!status || s.Status === status))
+      .filter((s) => workKey(s) === transactionId && (!status || s.Status === status))
       .sort((a, b) => new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0));
     return rows.map((r) => this.buildView(r));
   }
@@ -104,7 +106,7 @@ class ShortlistServiceV2 {
     if (!transactionId) return { ok: false, error: 'transactionId required' };
     if (!propertyId) return { ok: false, error: 'propertyId required' };
 
-    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    const transaction = resolveClientWork(this.repo, transactionId);
     if (!transaction) return { ok: false, error: 'Transaction not found' };
 
     const prop = this.repo.find('Inventory', 'PropertyID', propertyId);
@@ -129,7 +131,7 @@ class ShortlistServiceV2 {
 
     const row = {
       ShortlistID: this.repo.createId('SL'),
-      TransactionID: transactionId,
+      ...workLinks(transaction),
       LeadID: transaction.LeadID,
       PropertyID: propertyId,
       MatchID: null,
@@ -155,7 +157,7 @@ class ShortlistServiceV2 {
 
   addManual(transactionId, payload = {}) {
     if (!transactionId) return { ok: false, error: 'transactionId required' };
-    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    const transaction = resolveClientWork(this.repo, transactionId);
     if (!transaction) return { ok: false, error: 'Transaction not found' };
 
     const db = this.repo.read();
@@ -166,7 +168,7 @@ class ShortlistServiceV2 {
     const propertyId = 'MANUAL-' + this.repo.createId('SL');
     const row = {
       ShortlistID: this.repo.createId('SL'),
-      TransactionID: transactionId,
+      ...workLinks(transaction),
       LeadID: transaction.LeadID,
       PropertyID: propertyId,
       IsManual: true,
@@ -208,7 +210,7 @@ class ShortlistServiceV2 {
   }
 
   attachBuilderBrochure(transactionId, project, share, brochureUrl, actorId = 'system') {
-    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    const transaction = resolveClientWork(this.repo, transactionId);
     if (!transaction || transaction.LeadID !== share.LeadID) {
       return { ok: false, error: 'Client transaction mismatch' };
     }
@@ -217,7 +219,7 @@ class ShortlistServiceV2 {
     db.BuilderBrochureShares = db.BuilderBrochureShares || [];
     const propertyId = 'BUILDER-' + project.ProjectID;
     const existing = db.Shortlists.find(row =>
-      row.TransactionID === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
+      workKey(row) === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
     const manualProperty = {
       Title: project.ProjectName || 'Builder Project',
       ProjectName: project.ProjectName || null,
@@ -236,7 +238,7 @@ class ShortlistServiceV2 {
       db.Shortlists[db.Shortlists.indexOf(existing)] = row;
     } else {
       row = {
-        ShortlistID: this.repo.createId('SL'), TransactionID: transactionId,
+        ShortlistID: this.repo.createId('SL'), ...workLinks(transaction),
         LeadID: share.LeadID, PropertyID: propertyId, BuilderProjectID: project.ProjectID,
         BrochureShareID: share.ShareID, IsManual: true, ManualProperty: manualProperty,
         MatchID: null, Status: 'Active', Priority: 'Medium', Notes: '',

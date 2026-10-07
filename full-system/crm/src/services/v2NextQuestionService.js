@@ -278,9 +278,9 @@ class V2NextQuestionService {
     if (!req) return { ok: false, error: `Requirement not found: ${requirementId}` };
 
     const txn = (db.Transactions || []).find((t) => t.TransactionID === req.TransactionID);
-    if (!txn) return { ok: false, error: `Transaction not found for Requirement ${requirementId}` };
+    if (!txn && req.TransactionID) return { ok: false, error: `Transaction not found for Requirement ${requirementId}` };
 
-    return { ok: true, requirement: req, transaction: txn };
+    return { ok: true, requirement: req, transaction: txn || { TransactionType: req.TransactionType, LeadID: req.LeadID } };
   }
 
   // ── Internal — field config ───────────────────────────────────────────────

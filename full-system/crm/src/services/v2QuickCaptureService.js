@@ -4,7 +4,7 @@
  * Phase 13 — Quick Capture
  *
  * Creates the minimum useful client workflow atomically:
- * Lead → Transaction. Transaction owns all property criteria.
+ * Lead with preliminary criteria. A call or client creation never starts a deal.
  * The JSON repository has no database transaction, so the original snapshot
  * is restored if any step fails.
  */
@@ -100,40 +100,15 @@ class V2QuickCaptureService {
         Category: category,
         locations
       });
-      const txnResult = this.txnSvc.createTransaction(lead.LeadID, transactionPayload, actor);
-      if (!txnResult.ok) throw this._stepError('Transaction', txnResult.error);
+      const basic = { RequirementType: transactionType, PropertyType: category,
+        BudgetMin: transactionPayload.BudgetMin ?? null, BudgetMax: transactionPayload.BudgetMax ?? null,
+        Location1: transactionPayload.Location1 || null, BHK: transactionPayload.BHK || null,
+        RequirementProfile: { ...transactionPayload } };
+      const saved = this.leadSvc.updateLead(lead.LeadID, basic, actor);
+      if (!saved.ok) throw this._stepError('Client details', saved.error);
+      return { ok: true, client: { leadId: lead.LeadID, name: saved.data.ClientName,
+        created: createdLead, reused: !createdLead }, transaction: null, nextQuestions: [] };
 
-      const scoreResult = this.scoringSvc?.recalculateClientScore(lead.LeadID);
-      if (scoreResult && !scoreResult.ok) throw this._stepError('Client score', scoreResult.error);
-      const currentLead = this.repository.readLead(lead.LeadID) || lead;
-      const currentTransaction = this.txnSvc.getTransaction(txnResult.data.TransactionID).data || txnResult.data;
-      const next = this.nextQSvc?.getNextQuestionsByTransaction?.(currentTransaction.TransactionID, { limit: 3 });
-
-      return {
-        ok: true,
-        client: {
-          leadId: currentLead.LeadID,
-          name: currentLead.ClientName,
-          created: createdLead,
-          reused: !createdLead
-        },
-        transaction: {
-          transactionId: txnResult.data.TransactionID,
-          transactionType: txnResult.data.TransactionType
-        },
-        transactionDetails: {
-          category: currentTransaction.Category,
-          subCategory: currentTransaction.SubCategory || null,
-          locations: [currentTransaction.Location1, currentTransaction.Location2, currentTransaction.Location3].filter(Boolean),
-          budgetMin: currentTransaction.BudgetMin ?? null,
-          budgetMax: currentTransaction.BudgetMax ?? null
-        },
-        scores: {
-          clientScore: scoreResult?.score ?? currentLead.ClientScore ?? 0,
-          transactionScore: currentTransaction.TransactionScore ?? 0
-        },
-        nextQuestions: next?.ok ? next.questions : []
-      };
     } catch (error) {
       this.repository.write(snapshot);
       return {

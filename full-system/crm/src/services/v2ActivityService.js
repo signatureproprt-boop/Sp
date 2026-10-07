@@ -54,6 +54,11 @@ class V2ActivityService {
     }
 
     // Validate TransactionID belongs to Lead (if provided)
+    if (payload.RequirementID) {
+      const need = (db.Requirements || []).find(r => r.RequirementID === payload.RequirementID);
+      if (!need || need.LeadID !== payload.LeadID) return { ok: false, error: 'Requirement does not belong to this client', code: 'RELATIONSHIP_VIOLATION' };
+    }
+
     if (payload.TransactionID) {
       const txn = (db.Transactions || []).find(t => t.TransactionID === payload.TransactionID);
       if (!txn) return { ok: false, error: 'Transaction not found', code: 'TXN_NOT_FOUND' };
@@ -91,6 +96,7 @@ class V2ActivityService {
     const activity = {
       ActivityID:        this.repo.createId('ACT'),
       LeadID:            payload.LeadID,
+      RequirementID:     payload.RequirementID || null,
       TransactionID:     payload.TransactionID     || null,
       ActivityType:      actType,
       ActivityDirection: dir || null,
@@ -136,7 +142,7 @@ class V2ActivityService {
     // Conversation-captured fields update the Transaction directly.
     let transactionPatch = null;
     if (payload.TransactionID && payload.FieldUpdates && Object.keys(payload.FieldUpdates).length > 0 && this.txnSvc?.updateTransactionDetails) {
-      transactionPatch = this.reqSvc.updateTransactionDetails(payload.TransactionID, payload.FieldUpdates, actor);
+      transactionPatch = this.txnSvc.updateTransactionDetails(payload.TransactionID, payload.FieldUpdates, actor);
     }
 
     return { ok: true, data: activity, transactionPatch };
@@ -152,6 +158,11 @@ class V2ActivityService {
     const lead = (db.Leads || []).find((row) => row.LeadID === existing.LeadID);
     if (!lead) return { ok: false, error: 'Lead not found', code: 'LEAD_NOT_FOUND' };
 
+    const nextRequirementId = patch.RequirementID !== undefined ? patch.RequirementID : existing.RequirementID;
+    if (nextRequirementId) {
+      const need = (db.Requirements || []).find(r => r.RequirementID === nextRequirementId);
+      if (!need || need.LeadID !== existing.LeadID) return { ok: false, error: 'Requirement does not belong to this client' };
+    }
     const nextTransactionId = patch.TransactionID !== undefined ? patch.TransactionID : existing.TransactionID;
     if (nextTransactionId) {
       const txn = (db.Transactions || []).find((row) => row.TransactionID === nextTransactionId);
@@ -165,6 +176,7 @@ class V2ActivityService {
 
     const updated = {
       ...existing,
+      RequirementID: nextRequirementId || null,
       TransactionID: nextTransactionId || null,
       Summary: patch.Summary !== undefined ? patch.Summary : (patch.summary !== undefined ? patch.summary : existing.Summary),
       Details: patch.Details !== undefined ? patch.Details : (patch.details !== undefined ? patch.details : (patch.Notes !== undefined ? patch.Notes : (patch.notes !== undefined ? patch.notes : existing.Details))),
@@ -211,6 +223,14 @@ class V2ActivityService {
     return { ok: true, data: acts.slice(0, limit), total: acts.length };
   }
 
+
+  listActivitiesByRequirement(requirementId, opts = {}) {
+    const need = this.repo.find('Requirements', 'RequirementID', requirementId);
+    if (!need) return { ok: false, error: 'Requirement not found' };
+    const result = this.listActivitiesByLead(need.LeadID, opts);
+    if (result.ok) result.data = result.data.filter(row => row.RequirementID === requirementId);
+    return result;
+  }
 
   listActivitiesByTransaction(transactionId) {
     const db  = this.repo.read();

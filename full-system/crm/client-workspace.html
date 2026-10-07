@@ -495,7 +495,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   <!-- ── KPI STRIP ─────────────────────────────────────────────────────── -->
   <div class="kpi-strip" id="kpi-strip">
-    <div class="kpi-card"><div class="kpi-value" id="kpi-reqs">—</div><div class="kpi-label">Transactions</div></div>
+    <div class="kpi-card"><div class="kpi-value" id="kpi-reqs">—</div><div class="kpi-label">Requirements</div></div>
     <div class="kpi-card"><div class="kpi-value" id="kpi-active">—</div><div class="kpi-label">Active</div></div>
     <div class="kpi-card"><div class="kpi-value" id="kpi-visits">—</div><div class="kpi-label">Site Visits</div></div>
     <div class="kpi-card"><div class="kpi-value" id="kpi-negs">—</div><div class="kpi-label">Negotiations</div></div>
@@ -506,7 +506,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   <nav class="workspace-quicknav" aria-label="Client workspace sections">
     <a href="#client-info-section">👤 Client Details</a>
-    <a href="#transactions-section">🏠 Transactions</a>
+    <a href="#transactions-section">🏠 Requirements</a>
     <a href="#sidebar-followups-card">📞 Follow-ups</a>
     <a href="#activity-section">📝 Activity</a>
   </nav>
@@ -520,7 +520,7 @@ table td,table th{border-color:var(--v2-line)!important}
       <!-- Active Needs -->
       <div id="transactions-section" style="margin-bottom:20px">
         <div class="section-title">
-          <span>Transactions</span>
+          <span>Client Requirements</span>
           <button onclick="openAddNeedModal()">＋ Add Requirement</button>
         </div>
         <div id="needs-list">
@@ -662,6 +662,13 @@ table td,table th{border-color:var(--v2-line)!important}
           <label for="edit-lost-note">Lost Note</label>
           <textarea id="edit-lost-note" rows="2" placeholder="Additional context"></textarea>
         </div>
+        <div class="client-form-heading">🏠 Basic property details</div>
+        <div class="form-group"><label for="edit-purpose">Purpose</label><select id="edit-purpose"><option value="">Not confirmed</option><option>Purchase</option><option>Sale</option><option>Rent</option><option>Rent Out</option><option>Lease</option></select></div>
+        <div class="form-group"><label for="edit-property-type">Property type</label><input id="edit-property-type" type="text" /></div>
+        <div class="form-group"><label for="edit-budget-min">Budget Min (₹)</label><input id="edit-budget-min" type="number" min="0" /></div>
+        <div class="form-group"><label for="edit-budget-max">Budget / Rent Max (₹)</label><input id="edit-budget-max" type="number" min="0" /></div>
+        <div class="form-group"><label for="edit-location">Preferred location</label><input id="edit-location" type="text" /></div>
+        <div class="form-group"><label for="edit-bhk">BHK / Size</label><input id="edit-bhk" type="text" /></div>
         <div class="client-form-heading">📝 Client notes</div>
         <div class="form-group full"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
       </div>
@@ -678,7 +685,7 @@ table td,table th{border-color:var(--v2-line)!important}
             <h3 id="edit-requirements-title">🏠 Confirmed Property Requirements</h3>
             <p>Save a requirement after the call. Additional needs stay under this same client.</p>
           </div>
-          <button class="btn btn-primary" type="button" data-testid="edit-add-requirement" onclick="openAddNeedModal()">＋ Record Requirement</button>
+          <button class="btn btn-primary" type="button" data-testid="edit-add-requirement" onclick="openAddNeedModal()">＋ Add Another Requirement</button>
         </div>
         <div id="edit-requirements-list" class="client-edit-needs-list" aria-live="polite"></div>
       </section>
@@ -730,14 +737,14 @@ table td,table th{border-color:var(--v2-line)!important}
       <div class="form-grid">
         <div class="form-group">
           <label>Client Need *</label>
-          <select id="need-txn-type" data-testid="need-txn-type" onchange="needLoadDynamicForm()">
+          <select id="need-txn-type" data-testid="need-txn-type" onchange="onNeedScopeChange()">
             <option value="">Select after confirming with client…</option><option>Purchase</option><option value="Sale">Sell</option><option>Rent</option>
             <option>Rent Out</option><option>Lease</option><option>Lease Out</option>
           </select>
         </div>
         <div class="form-group">
           <label>Property Category *</label>
-          <select id="need-category" data-testid="need-category" onchange="updateNeedSubcats(); needLoadDynamicForm()">
+          <select id="need-category" data-testid="need-category" onchange="onNeedScopeChange()">
             <option value="">Select…</option>
             <option>Residential</option><option>Commercial</option><option>Land</option><option>Industrial</option><option>Agriculture</option>
           </select>
@@ -1370,6 +1377,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
     renderKpiStrip();
     renderNeedsFirst();
+    renderTransactions();
     renderSidebar();
     renderRecentActivity();
     renderActivities();
@@ -1385,19 +1393,19 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── KPI STRIP ─────────────────────────────────────────────────────────────────
   function renderKpiStrip() {
     const txns  = workspace.transactions || [];
-    const reqs  = txns;
+    const reqs  = workspace.requirements || [];
     const fus   = asArray(workspace.followUps).map(toCanonicalFollowUp).filter(Boolean);
     const svs   = workspace.siteVisits   || [];
     const negs  = workspace.negotiations || [];
     const deals = workspace.deals        || [];
     const lead  = workspace.lead;
 
-    const activeReqs  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus));
+    const activeReqs  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
     const openFollowups = fus.filter(f => !['COMPLETED','CANCELLED'].includes(f.status));
     const openNegs    = negs.filter(n => !['Closed','Won','Lost'].includes(n.Status||n.NegotiationStatus));
     const score       = typeof lead.ClientScore === 'object' ? lead.ClientScore?.total : lead.ClientScore;
 
-    document.getElementById('kpi-reqs').textContent    = txns.length;
+    document.getElementById('kpi-reqs').textContent    = reqs.length;
     document.getElementById('kpi-active').textContent  = activeReqs.length;
     document.getElementById('kpi-visits').textContent  = svs.length;
     document.getElementById('kpi-negs').textContent    = openNegs.length;
@@ -1409,14 +1417,14 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── TRANSACTIONS — single client operating surface ───────────────────────────
   function renderNeedsFirst() {
     const txns = workspace.transactions || [];
-    const reqs = workspace.transactions || [];
+    const reqs = workspace.requirements || [];
     const container = document.getElementById('needs-list');
 
     if (!reqs.length && !txns.length) {
       container.innerHTML = `<div class="empty-state">
         <div class="empty-icon">🏠</div>
-        <p>No transactions yet.<br>Add the client's first purchase, sale, rent or property transaction.</p>
-        <button class="btn btn-primary" onclick="openAddNeedModal()">＋ Add First Transaction</button>
+        <p>No confirmed requirement yet.<br>Update basic details above, or add the client's property requirement.</p>
+        <button class="btn btn-primary" onclick="openAddNeedModal()">＋ Add First Requirement</button>
       </div>`;
       return;
     }
@@ -1425,23 +1433,19 @@ table td,table th{border-color:var(--v2-line)!important}
     const findTxn = r => txns.find(t => t.TransactionID === r.TransactionID) || { TransactionType: r.TransactionType };
 
     // Split active vs. closed/lost
-    const activeReqs = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus));
-    const closedReqs = reqs.filter(r =>  ['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus));
+    const activeReqs = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
+    const closedReqs = reqs.filter(r =>  ['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
 
     let html = '';
 
     if (!activeReqs.length && closedReqs.length) {
       html += `<div class="empty-state" style="padding:20px 0">
-        <p style="font-size:13px;color:var(--clr-text-light)">No active transactions.</p>
+        <p style="font-size:13px;color:var(--clr-text-light)">No active requirements.</p>
       </div>`;
     }
 
     // One operating card per transaction. Detail rows stay internal for compatibility.
-    const activeTxnIds = new Set(activeReqs.map(r => r.TransactionID));
-    html += txns.filter(t => activeTxnIds.has(t.TransactionID)).map(t => {
-      const detail = activeReqs.find(r => r.TransactionID === t.TransactionID);
-      return detail ? needCard(t, detail) : '';
-    }).join('');
+    html += activeReqs.map(r => needCard(findTxn(r), r)).join('');
 
     // Closed / Lost requirements — compact collapsed section
     if (closedReqs.length) {
@@ -1459,8 +1463,22 @@ table td,table th{border-color:var(--v2-line)!important}
 
     // Load next-questions async for active requirements
     for (const req of activeReqs) {
-      loadNextQuestionsForCard(req.TransactionID);
+      loadNextQuestionsForCard(req.RequirementID);
     }
+  }
+
+  async function startClientDeal(reqId, button) {
+    if (!confirm('Start an actual deal for this requirement?')) return;
+    if (button) button.disabled = true;
+    try {
+      const result = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}/start-deal`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({RequirementID: reqId})
+      }).then(r => r.json());
+      if (!result.ok) throw new Error(result.error || 'Could not start deal');
+      await loadWorkspace();
+      renderTransactions();
+    } catch (error) { alert(error.message); }
+    finally { if (button) button.disabled = false; }
   }
 
   function lostReqCard(txn, r) {
@@ -1470,7 +1488,7 @@ table td,table th{border-color:var(--v2-line)!important}
     return `<div style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:11px 15px;margin-bottom:8px;opacity:.82">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span style="font-size:13px;font-weight:700;color:#991b1b">${titleParts.map(esc).join(' • ')||'Requirement'}</span>
-        <span style="font-size:11px;color:#b0a0a0">${esc(r.TransactionID)}</span>
+        <span style="font-size:11px;color:#b0a0a0">${esc(r.RequirementID)}</span>
         <span style="background:#fee2e2;color:#991b1b;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px">${esc(lostReason)}</span>
         ${budgetStr && budgetStr!=='—' ? `<span style="font-size:12px;color:#9ca3af">${esc(budgetStr)}</span>` : ''}
         ${r.LostNotes ? `<span style="font-size:11px;color:#b0a0a0;font-style:italic">${esc(r.LostNotes)}</span>` : ''}
@@ -1479,8 +1497,8 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function needCard(txn, r) {
-    const reqId  = r.TransactionID;
-    const score  = typeof r.TransactionScore === 'object' ? r.TransactionScore?.total : r.TransactionScore;
+    const reqId  = r.RequirementID;
+    const score  = typeof r.RequirementScore === 'object' ? r.RequirementScore?.total : r.RequirementScore;
     const scoreCls = score == null ? '' : score >= 70 ? 'high' : score >= 40 ? 'mid' : 'low';
     const stage  = txn.PipelineStage || r.PipelineStage || 'New';
 
@@ -1505,7 +1523,7 @@ table td,table th{border-color:var(--v2-line)!important}
           ${pipelineBar(stage)}
         </div>
         ${score != null ? `<div class="need-card-score">
-          <div class="score-ring ${scoreCls}" title="Transaction score — click to see breakdown" onclick="viewScoreBreakdown('${esc(reqId)}')" style="cursor:pointer">${score}</div>
+          <div class="score-ring ${scoreCls}" title="Requirement score — click to see breakdown" onclick="viewScoreBreakdown('${esc(reqId)}')" style="cursor:pointer">${score}</div>
           <div class="need-card-score-label">Score</div>
         </div>` : ''}
       </div>
@@ -1514,7 +1532,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="transaction-field-grid">
           ${knownFields.length ? knownFields.map(f => `<div class="transaction-field"><div class="transaction-field-label">${esc(f.label)}</div><div class="transaction-field-value">${esc(f.display)}</div></div>`).join('') : '<div class="transaction-field">Details pending. Tap Update to add budget, location and property preferences.</div>'}
         </div>
-        ${unknownFields.length ? `<div class="transaction-missing"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><strong>Missing details (${unknownFields.length})</strong><button class="need-action-btn primary" type="button" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Fill transaction form</button></div><div style="margin-top:8px;line-height:1.5">${unknownFields.map(f => esc(f.label)).join(' · ')}</div></div>` : ''}
+        ${unknownFields.length ? `<div class="transaction-missing"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><strong>Missing details (${unknownFields.length})</strong><button class="need-action-btn primary" type="button" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Fill requirement form</button></div><div style="margin-top:8px;line-height:1.5">${unknownFields.map(f => esc(f.label)).join(' · ')}</div></div>` : ''}
 
         <!-- Next Questions — loaded async -->
         <div id="nq-${esc(reqId)}" class="next-qs" style="display:none">
@@ -1543,6 +1561,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <button class="need-action-btn ghost"   data-testid="req-matches-${esc(reqId)}" onclick="toggleSmartMatches('${esc(reqId)}')">🎯 Smart Match</button>
         <button class="need-action-btn ghost"   data-testid="req-shortlist-${esc(reqId)}" onclick="toggleShortlist('${esc(reqId)}')">⭐ Shortlist</button>
         <button class="need-action-btn ghost"   data-testid="req-share-${esc(reqId)}" onclick="openNetworkShareModal('${esc(reqId)}')">👥 Share with Network</button>
+        <button class="need-action-btn ghost" data-testid="start-deal-${esc(reqId)}" onclick="startClientDeal('${esc(reqId)}', this)">${(workspace.transactions || []).some(t => t.SourceRequirementID === reqId) ? 'Deal started' : 'Start Deal'}</button>
         <button class="need-action-btn ghost"   onclick="openSiteVisitsContext('${esc(reqId)}')">🏠 Site Visits</button>
         <button class="need-action-btn ghost"   onclick="openAddFollowupForRequirement('${esc(reqId)}')">📞 Follow-up</button>
         <button class="need-action-btn ghost"   onclick="openRequirementStatusModal('${esc(reqId)}','Paused')">⏸ Hold</button>
@@ -1689,7 +1708,7 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Next Questions (read-only, async) ─────────────────────────────────────────
   async function loadNextQuestionsForCard(reqId) {
     try {
-      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}/next-questions?limit=3`).then(r => r.json());
+      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}/next-questions?limit=3`).then(r => r.json());
       const container = document.getElementById(`nq-content-${reqId}`);
       const wrapper   = document.getElementById(`nq-${reqId}`);
       if (!res.ok || !res.questions || !res.questions.length) return;
@@ -1721,7 +1740,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
     let inputHtml = '';
     if (fieldKey === 'budget' || fieldKey === 'BudgetMin' || fieldKey === 'BudgetMax') {
-      const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
+      const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
       const bmin = req?.BudgetMin ?? (req?.Fields?.BudgetMin?.state === 'KNOWN' ? req.Fields.BudgetMin.value : '');
       const bmax = req?.BudgetMax ?? (req?.Fields?.BudgetMax?.state === 'KNOWN' ? req.Fields.BudgetMax.value : '');
       _inlineField = 'budget_range';
@@ -1730,7 +1749,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="form-group"><label>Max (₹)</label><input id="ie-budget-max" type="number" value="${esc(String(bmax||''))}" /></div>
       </div>`;
     } else if (fieldKey === 'Location1') {
-      const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
+      const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
       const loc1 = req?.Location1 || req?.Fields?.Location1?.value || '';
       const loc2 = req?.Location2 || req?.Fields?.Location2?.value || '';
       const loc3 = req?.Location3 || req?.Fields?.Location3?.value || '';
@@ -1808,7 +1827,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
     document.getElementById('inline-edit-error').textContent = '';
     try {
-      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}`, {
+      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1837,7 +1856,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function markLostReq(reqId) {
     _markLostReqId = reqId;
-    const req = (workspace.requirements||[]).find(r => r.TransactionID === reqId);
+    const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
     const txn = (workspace.transactions||[]).find(t => t.TransactionID === req?.TransactionID) || {};
     const label = [txn.TransactionType||req?.TransactionType, req?.Category, req?.SubCategory].filter(Boolean).join(' • ') || reqId;
     document.getElementById('lost-req-label').textContent = label + ' — ' + reqId;
@@ -1852,7 +1871,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!reason) { document.getElementById('lost-error').textContent = 'Please select a reason'; return; }
     const notes  = document.getElementById('lost-notes').value.trim();
     try {
-      const res = await fetch(`/api/requirements/${encodeURIComponent(_markLostReqId)}`, {
+      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(_markLostReqId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ RequirementStatus: 'Lost', LostReason: reason, LostNotes: notes || null })
@@ -1873,7 +1892,7 @@ table td,table th{border-color:var(--v2-line)!important}
   let _requirementStatusTarget = null;
 
   function openRequirementStatusModal(reqId, targetStatus) {
-    const req = (workspace.transactions || []).find(r => r.TransactionID === reqId);
+    const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
     if (!req) return;
     _requirementStatusReqId = reqId;
     _requirementStatusTarget = targetStatus;
@@ -1902,7 +1921,7 @@ table td,table th{border-color:var(--v2-line)!important}
       ? { RequirementStatus: target, HoldReason: reason, HoldNotes: notes || null }
       : { RequirementStatus: target, ClosedReason: reason, ClosedNotes: notes || null };
     try {
-      const res = await fetch('/api/v2/transactions/' + encodeURIComponent(reqId), {
+      const res = await fetch('/api/v2/requirements/' + encodeURIComponent(reqId), {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (!res.ok) {
@@ -1917,25 +1936,25 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function openAddFollowupForRequirement(reqId) {
-    const req = (workspace.transactions || []).find(r => r.TransactionID === reqId);
+    const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
     openAddFollowupModal({ requirementId: reqId, transactionId: req?.TransactionID || '' });
   }
 
   // ── Score breakdown ───────────────────────────────────────────────────────────
   async function viewScoreBreakdown(reqId) {
     try {
-      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}/score`).then(r => r.json());
+      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}/score`).then(r => r.json());
       if (!res.ok) { alert('Could not load score breakdown'); return; }
       const pos = (res.positiveContributions||[]).map(f => `✓ ${f.label||f.field}: +${f.contribution}`).join('\n');
       const unk = (res.unknownFactors||[]).map(f => `? ${f.label||f.field}`).join('\n');
-      alert(`Transaction Score: ${res.score}/100 (${res.band})\n\nKnown factors:\n${pos||'—'}\n\nTo discover (affects score if answered):\n${unk||'—'}`);
+      alert(`Requirement Score: ${res.score}/100 (${res.band})\n\nKnown factors:\n${pos||'—'}\n\nTo discover (affects score if answered):\n${unk||'—'}`);
     } catch(e) { alert('Could not load score breakdown'); }
   }
 
   // ── Open "Update Transaction" (pre-filled) ────────────────────────────────────
   async function openUpdateNeedModal(reqId) {
-    const transaction = (workspace.transactions || []).find(t => t.TransactionID === reqId);
-    if (!transaction) { alert('Transaction not found. Refresh the workspace and try again.'); return; }
+    const transaction = (workspace.requirements || []).find(t => t.RequirementID === reqId);
+    if (!transaction) { alert('Requirement not found. Refresh the workspace and try again.'); return; }
     await openAddNeedModal();
     editingNeedId = reqId;
     document.querySelector('#add-need-modal .modal-title').textContent = 'Edit Property Requirement';
@@ -1974,7 +1993,7 @@ table td,table th{border-color:var(--v2-line)!important}
         });
       }
     } catch (error) {
-      document.getElementById('add-need-error').textContent = 'Unable to load transaction form: ' + error.message;
+      document.getElementById('add-need-error').textContent = 'Unable to load requirement form: ' + error.message;
     }
   }
 
@@ -2001,7 +2020,7 @@ table td,table th{border-color:var(--v2-line)!important}
     });
     if (Object.keys(fieldPriorities).length) payload.FieldPriorities = fieldPriorities;
     try {
-      const res = await fetch(`/api/v2/transactions/${encodeURIComponent(reqId)}`, {
+      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (res.ok) {
@@ -2021,7 +2040,9 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Surat area presets (autocomplete datalist) ────────────────────────────
   const SURAT_AREAS_WS = ['Adajan','Althan','Anand Mahal Road','Athwa','Bhatar','Bhimrad','Causeway Road','City Light','Dumas Road','Ghod Dod Road','Jahangirpura','Kadodara','Kamrej','Katargam','LP Savani Road','Magdalla','Nanpura','New Textile Market','Nikol','Pal','Palanpur Patiya','Parle Point','Piplod','Puna','Rander','Rustampura','Salabatpura','Sarthana','Singanpore','Tapi Road','Udhna','Umra','Varachha','Vesu','VIP Road'];
 
+  let needRequestId = null;
   async function openAddNeedModal() {
+    needRequestId = crypto.randomUUID();
     editingNeedId = null;
     document.querySelector('#add-need-modal .modal-title').textContent = 'Add Property Requirement';
     document.getElementById('need-save-btn').textContent = 'Add Requirement';
@@ -2029,9 +2050,14 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('need-txn-type').value = '';
     document.getElementById('need-category').value = '';
     document.getElementById('need-subcategory').innerHTML = '<option value="">Not sure yet</option>';
-    document.getElementById('need-dynamic-fields').innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Transaction + Category to load fields</div>';
+    document.getElementById('need-dynamic-fields').innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Purpose + Category to load fields</div>';
     dynamicFormState.need = { ...dynamicFormState.need, config: null, rules: [], values: {} };
     document.getElementById('add-need-modal').classList.remove('hidden');
+  }
+
+  async function onNeedScopeChange() {
+    await updateNeedSubcats();
+    await needLoadDynamicForm();
   }
 
   async function updateNeedSubcats() {
@@ -2043,18 +2069,26 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   // ── Fully-dynamic form loading (uses /api/v2/form-config — 154 fields) ────
+  let needFormLoadVersion = 0;
   async function needLoadDynamicForm() {
+    const loadVersion = ++needFormLoadVersion;
     const txnType = document.getElementById('need-txn-type').value;
     const cat     = document.getElementById('need-category').value;
     const sub     = document.getElementById('need-subcategory').value || '';
     const dyn     = document.getElementById('need-dynamic-fields');
-    if (!txnType || !cat) { dyn.innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Transaction + Category to load fields</div>'; return; }
+    const formScope = [txnType, cat, sub].join('|');
+    if (dynamicFormState.need.scope !== formScope) {
+      dynamicFormState.need = { ...dynamicFormState.need, config: null, rules: [], values: {}, scope: formScope };
+      dyn.innerHTML = '';
+    }
+    if (!txnType || !cat) { dyn.innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Purpose + Category to load fields</div>'; return; }
     try {
       const url = `/api/v2/form-config?transactionType=${encodeURIComponent(txnType)}&category=${encodeURIComponent(cat)}${sub ? '&subCategory='+encodeURIComponent(sub) : ''}`;
       const [res, depRes] = await Promise.all([
         fetch(url).then(r => r.json()),
         fetch(`/api/v2/dependencies?transactionType=${encodeURIComponent(txnType)}&category=${encodeURIComponent(cat)}${sub ? '&subCategory=' + encodeURIComponent(sub) : ''}`).then(r => r.json())
       ]);
+      if (loadVersion !== needFormLoadVersion) return;
       if (!res.ok || !res.data) { dyn.innerHTML = needBasicFields(); return; }
       const HEADER = new Set(['TransactionType','Category','SubCategory','LeadSource','ClientName','PrimaryMobile','Email','City']);
       const fields = asArray(res.data.fields).filter(f => f && f.Active !== false && !HEADER.has(f.FieldKey));
@@ -2067,6 +2101,7 @@ table td,table th{border-color:var(--v2-line)!important}
       };
       rerenderDynamicForm('need');
     } catch(e) {
+      if (loadVersion !== needFormLoadVersion) return;
       dyn.innerHTML = needBasicFields();
     }
   }
@@ -2117,10 +2152,11 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   async function saveAddNeed() {
+    if (document.getElementById('need-save-btn').disabled) return;
     const cat = document.getElementById('need-category').value;
     if (!cat) { document.getElementById('add-need-error').textContent = 'Category is required'; return; }
     const txnType = document.getElementById('need-txn-type').value;
-    if (!txnType) { document.getElementById('add-need-error').textContent = 'Transaction type is required'; return; }
+    if (!txnType) { document.getElementById('add-need-error').textContent = 'Purpose is required'; return; }
 
     const btn = document.getElementById('need-save-btn');
     btn.disabled = true;
@@ -2128,11 +2164,11 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('add-need-error').textContent = '';
 
     try {
-      // Create one Transaction with all dynamic property criteria.
+      // Save criteria directly under this client. Start Deal is separate.
       const sub = document.getElementById('need-subcategory').value || null;
       const txnPayload = {
         TransactionType: txnType,
-        ...(editingNeedId ? {} : { TransactionStatus: 'Open', PipelineStage: 'New' }),
+        ...(editingNeedId ? {} : { RequirementStatus: 'Active', PipelineStage: 'New', ClientRequestID: needRequestId }),
         Category: cat,
         SubCategory: sub
       };
@@ -2145,13 +2181,13 @@ table td,table th{border-color:var(--v2-line)!important}
       });
       if (Object.keys(fieldPriorities).length) txnPayload.FieldPriorities = fieldPriorities;
       const txnUrl = editingNeedId
-        ? `/api/v2/transactions/${encodeURIComponent(editingNeedId)}`
-        : `/api/leads/${encodeURIComponent(LEAD_ID)}/transactions`;
+        ? `/api/v2/requirements/${encodeURIComponent(editingNeedId)}`
+        : `/api/v2/clients/${encodeURIComponent(LEAD_ID)}/requirements`;
       const txnRes = await fetch(txnUrl, {
         method: editingNeedId ? 'PATCH' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(txnPayload)
       }).then(r => r.json());
       if (!txnRes.ok) {
-        document.getElementById('add-need-error').textContent = txnRes.error || (editingNeedId ? 'Failed to update transaction' : 'Failed to create transaction');
+        document.getElementById('add-need-error').textContent = txnRes.error || (editingNeedId ? 'Failed to update requirement' : 'Failed to create requirement');
         return;
       }
 
@@ -2191,7 +2227,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const svs  = ws.siteVisits   || [];
     const negs = ws.negotiations  || [];
     const dels = ws.deals         || [];
-    const activeReqCount  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.TransactionStatus||r.TransactionStatus)).length;
+    const activeReqCount  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status)).length;
     const openNegCount    = negs.filter(n => !['Closed','Won','Lost'].includes(n.Status||n.NegotiationStatus)).length;
     const openFuCount     = asArray(ws.followUps).map(toCanonicalFollowUp).filter(f => f && !['COMPLETED','CANCELLED'].includes(f.status)).length;
     document.getElementById('sidebar-summary').innerHTML = `
@@ -2241,7 +2277,7 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Transactions (details tab) ────────────────────────────────────────────────
   function renderTransactions() {
     const txns = workspace.transactions || [];
-    const reqs = workspace.transactions || [];
+    const reqs = workspace.requirements || [];
     const html = txns.length ? txns.map(txn => {
       const txnReqs = reqs.filter(r => r.TransactionID === txn.TransactionID);
       const typeCls  = 'type-' + (txn.TransactionType||txn.Type||'').toLowerCase().replace(/[\s]/g,'');
@@ -2254,7 +2290,7 @@ table td,table th{border-color:var(--v2-line)!important}
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <span class="stage-badge">${esc(txn.PipelineStage||'New')}</span>
-            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddReqModal('${esc(txn.TransactionID)}')">＋ Req</button>
+            <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openAddNeedModal()">＋ Req</button>
             <span style="color:#94a3b8" id="txn-arrow-${esc(txn.TransactionID)}">▾</span>
           </div>
         </div>
@@ -2279,17 +2315,17 @@ table td,table th{border-color:var(--v2-line)!important}
     const status = r.TransactionStatus || r.TransactionStatus || '—';
     const budget = formatBudget(r.BudgetMin, r.BudgetMax);
     const loc    = r.Location1 || '';
-    const score  = typeof r.TransactionScore === 'object' ? r.TransactionScore?.total : r.TransactionScore;
+    const score  = typeof r.RequirementScore === 'object' ? r.RequirementScore?.total : r.RequirementScore;
     return `<div class="req-row">
       <div class="req-row-left">
-        <div class="req-id">${esc(r.TransactionID)}</div>
+        <div class="req-id">${esc(r.RequirementID)}</div>
         <div class="req-summary">${esc(r.Category||'—')} ${r.SubCategory?'· '+esc(r.SubCategory):''}</div>
         <div class="req-meta">${esc(budget)} ${loc?'· '+esc(loc):''}</div>
       </div>
       <div class="req-right">
         <span class="badge badge-${status.toLowerCase()}">${esc(status)}</span>
         ${score != null ? `<span style="font-size:11px;color:#64748b">⭐${score}</span>` : ''}
-        <button class="need-action-btn ghost" style="font-size:11px;padding:3px 8px" onclick="openUpdateNeedModal('${esc(r.TransactionID)}')">Edit</button>
+        <button class="need-action-btn ghost" style="font-size:11px;padding:3px 8px" onclick="openUpdateNeedModal('${esc(r.RequirementID)}')">Edit</button>
       </div>
     </div>`;
   }
@@ -2360,16 +2396,16 @@ table td,table th{border-color:var(--v2-line)!important}
   function renderEditRequirements() {
     const root = document.getElementById('edit-requirements-list');
     if (!root) return;
-    const allTransactions = asArray(workspace?.transactions).filter(item => item && item.TransactionID);
+    const allTransactions = asArray(workspace?.requirements).filter(item => item && item.RequirementID);
     const sheetTransactions = allTransactions.filter(isSheetImportedTransaction);
     const transactions = allTransactions.filter(item => !isSheetImportedTransaction(item));
     renderSheetBasicRequirements(sheetTransactions);
     if (!transactions.length) {
-      root.innerHTML = '<div class="client-edit-needs-empty">No call-confirmed property requirement yet. Confirm the need with the client, then select “Record Requirement”.</div>';
+      root.innerHTML = '<div class="client-edit-needs-empty">No call-confirmed property requirement yet. Confirm the need with the client, then select “Add Another Requirement”.</div>';
       return;
     }
     root.innerHTML = transactions.map((transaction, index) => {
-      const id = String(transaction.TransactionID);
+      const id = String(transaction.RequirementID);
       const type = editNeedText(transaction.TransactionType || transaction.Type) || 'Need';
       const category = editNeedText(transaction.Category) || 'Category pending';
       const subCategory = editNeedText(transaction.SubCategory || getRequirementValue(transaction, 'PropertyType'));
@@ -2377,7 +2413,7 @@ table td,table th{border-color:var(--v2-line)!important}
         getRequirementValue(transaction, 'Location1'),
         getRequirementValue(transaction, 'Location2')
       ].map(editNeedText).filter(Boolean).join(', ') || 'Not added';
-      const status = editNeedText(transaction.TransactionStatus || transaction.Status) || 'Open';
+      const status = editNeedText(transaction.RequirementStatus || transaction.Status) || 'Open';
       const budget = editNeedBudget(transaction);
       const dynamicSpecs = [
         ['BHK', 'BHK'], ['Bedrooms', 'Bedrooms'], ['Area', 'Area'],
@@ -2482,6 +2518,14 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('edit-lost-reason').value = lead.LostReason || '';
     document.getElementById('edit-lost-note').value = lead.LostNote || '';
     document.getElementById('edit-notes').value      = lead.Notes||'';
+    const basic = {purpose: lead.RequirementType, 'property-type': lead.PropertyType,
+      'budget-min': lead.BudgetMin, 'budget-max': lead.BudgetMax, location: lead.Location1,
+      bhk: lead.BHK || lead.RequirementProfile?.BHK || ''};
+    Object.entries(basic).forEach(([key, value]) => {
+      const input = document.getElementById('edit-' + key);
+      if (input.tagName === 'SELECT' && value && !Array.from(input.options).some(o => o.value === value)) input.add(new Option(value, value));
+      input.value = value ?? '';
+    });
     const callLink = document.getElementById('client-form-call');
     const whatsappLink = document.getElementById('client-form-whatsapp');
     const phoneForCall = safePhone(lead.PrimaryMobile || lead.Phone);
@@ -2516,7 +2560,9 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('edit-lost-note-wrap').style.display = isLost ? '' : 'none';
   }
 
+  let savingClientDetails = false;
   async function saveEdit() {
+    if (savingClientDetails) return;
     const payload = {
       ClientName:     document.getElementById('edit-name').value.trim(),
       PrimaryMobile:  document.getElementById('edit-mobile').value.trim(),
@@ -2529,6 +2575,12 @@ table td,table th{border-color:var(--v2-line)!important}
       Source:         document.getElementById('edit-source').value,
       LostReason:     document.getElementById('edit-status').value === 'Lost' ? document.getElementById('edit-lost-reason').value.trim() : null,
       LostNote:       document.getElementById('edit-status').value === 'Lost' ? document.getElementById('edit-lost-note').value.trim() : null,
+      RequirementType: document.getElementById('edit-purpose').value || null,
+      PropertyType: document.getElementById('edit-property-type').value.trim() || null,
+      BudgetMin: numOrNull(document.getElementById('edit-budget-min').value),
+      BudgetMax: numOrNull(document.getElementById('edit-budget-max').value),
+      Location1: document.getElementById('edit-location').value.trim() || null,
+      BHK: document.getElementById('edit-bhk').value.trim() || null,
       Notes:          document.getElementById('edit-notes').value.trim()
     };
     if (payload.ClientStatus === 'Lost' && !payload.LostReason) {
@@ -2536,12 +2588,14 @@ table td,table th{border-color:var(--v2-line)!important}
       return;
     }
     try {
+      savingClientDetails = true;
       const res = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (res.ok) { await loadWorkspace(); openEditModal(); }
       else document.getElementById('edit-error').textContent = res.error||'Failed to save';
     } catch(e) { document.getElementById('edit-error').textContent = e.message; }
+    finally { savingClientDetails = false; }
   }
 
   function openAddTxnModal() {
@@ -2557,7 +2611,7 @@ table td,table th{border-color:var(--v2-line)!important}
       Notes:             document.getElementById('txn-notes').value.trim()
     };
     try {
-      const res = await fetch(`/api/leads/${encodeURIComponent(LEAD_ID)}/transactions`, {
+      const res = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}/transactions`, {
         method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (res.ok) { closeModal('txn-modal'); await loadWorkspace(); }
@@ -2646,7 +2700,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const txns = asArray(workspace.transactions);
     const reqs = asArray(workspace.requirements);
     document.getElementById('act-txn').innerHTML = `<option value="">None</option>` + txns.map(t => `<option value="${enc(t.TransactionID)}">${esc(t.TransactionType||t.Type)} — ${esc(t.TransactionID)}</option>`).join('');
-    document.getElementById('act-req').innerHTML = `<option value="">None</option>` + reqs.map(r => `<option value="${enc(r.TransactionID)}">${esc(r.RequirementCode||r.TransactionID)} — ${esc(r.Category||'Requirement')}</option>`).join('');
+    document.getElementById('act-req').innerHTML = `<option value="">None</option>` + reqs.map(r => `<option value="${enc(r.RequirementID)}">${esc(r.RequirementCode||r.RequirementID)} — ${esc(r.Category||'Requirement')}</option>`).join('');
     document.getElementById('act-txn').value = selectedTxn || '';
     document.getElementById('act-req').value = selectedReq || '';
   }
@@ -2750,6 +2804,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function openAddFollowupModal(options = {}) {
     const modal = document.getElementById('followup-modal');
+    modal.dataset.requestId = crypto.randomUUID();
     modal.dataset.requirementId = options.requirementId || '';
     modal.dataset.transactionId = options.transactionId || '';
     document.getElementById('fu-error').textContent = '';
@@ -2769,6 +2824,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const modal = document.getElementById('followup-modal');
     const payload = {
       LeadID: LEAD_ID,
+      ClientRequestID: modal.dataset.requestId,
       TransactionID: modal.dataset.transactionId || null,
       RequirementID: modal.dataset.requirementId || null,
       ActivityType: document.getElementById('fu-type').value,
@@ -2831,14 +2887,14 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Site Visits tab ───────────────────────────────────────────────────────────
   function renderSiteVisitsTab() {
     const svs  = workspace.siteVisits || [];
-    const reqs = workspace.transactions || [];
+    const reqs = workspace.requirements || [];
     if (!svs.length) {
       document.getElementById('site-visits-list').innerHTML =
         '<div style="color:#64748b;font-size:13px;padding:20px 0">No site visits scheduled yet.</div>';
       return;
     }
     const html = svs.map(sv => {
-      const req = reqs.find(r => r.TransactionID === sv.RequirementID);
+      const req = reqs.find(r => r.RequirementID === sv.RequirementID);
       const reqLabel = req ? `${req.Category||''}${req.SubCategory?' · '+req.SubCategory:''}` : sv.RequirementID || '';
       const statusCls = sv.Status === 'Completed' ? 'background:#dcfce7;color:#166534'
                       : sv.Status === 'Scheduled' ? 'background:#dbeafe;color:#1e40af'
@@ -3621,11 +3677,11 @@ table td,table th{border-color:var(--v2-line)!important}
         LeadID: LEAD_ID,
         ActivityType: kind,
         ActivityDirection: 'OUTBOUND',
-        TransactionID: txns[0]?.TransactionID || null,
-        RequirementID: reqs[0]?.RequirementID || null,
+        TransactionID: null,
+        RequirementID: null,
         Summary: `${label} initiated`,
         Notes: `${label} initiated to ${phone}`,
-        DedupKey: `${kind}|${LEAD_ID}|${phone}|${txns[0]?.TransactionID || ''}|${reqs[0]?.RequirementID || ''}|${dedupeBucket}`
+        DedupKey: `${kind}|${LEAD_ID}|${phone}|||${dedupeBucket}`
       })
     }).then(r => r.json());
     if (!res.ok) throw new Error(res.error || `${label} activity log failed`);

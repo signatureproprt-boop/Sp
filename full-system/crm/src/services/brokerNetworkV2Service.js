@@ -1,3 +1,4 @@
+const { workKey, resolveClientWork, workLinks } = require('./clientWorkContext');
 'use strict';
 
 /**
@@ -101,7 +102,7 @@ class BrokerNetworkV2Service {
   }
 
   share(transactionId, { brokerIds = [], message = '', expiresInDays = 30, userId = 'system' } = {}) {
-    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    const transaction = resolveClientWork(this.repo, transactionId);
     if (!transaction) return { ok: false, error: 'Transaction not found' };
     const db = this.repo.read();
     const brokers = (db.BrokerNetworkContacts || []).filter((b) => brokerIds.includes(b.NetworkBrokerID) && b.Active !== false);
@@ -112,7 +113,7 @@ class BrokerNetworkV2Service {
       const token = this._token();
       const share = {
         ShareID: this.repo.createId('SHR'),
-        TransactionID: transactionId, LeadID: transaction.LeadID,
+        ...workLinks(transaction), LeadID: transaction.LeadID,
         NetworkBrokerID: b.NetworkBrokerID, BrokerName: b.Name, BrokerPhone: b.Phone,
         Token: token, Message: String(message || '').trim() || null,
         Status: 'Open', SharedBy: userId, SharedAt: this._now(), ExpiresAt: expiresAt,
@@ -131,7 +132,7 @@ class BrokerNetworkV2Service {
     if (!share) return { ok: false, error: 'Share not found', code: 'NOT_FOUND' };
     if (share.Status === 'Revoked') return { ok: false, error: 'Share revoked', code: 'REVOKED' };
     if (new Date(share.ExpiresAt) < new Date()) return { ok: false, error: 'Share expired', code: 'EXPIRED' };
-    const transaction = (db.Transactions || []).find((r) => r.TransactionID === share.TransactionID);
+    const transaction = resolveClientWork(this.repo, workKey(share));
     if (!transaction) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
     const idx = db.TransactionShares.findIndex((s) => s.ShareID === share.ShareID);
     if (idx >= 0) {
@@ -159,7 +160,7 @@ class BrokerNetworkV2Service {
     if (share.Status === 'Revoked' || new Date(share.ExpiresAt) < new Date()) {
       return { ok: false, error: 'Share no longer accepting responses', code: 'CLOSED' };
     }
-    const transaction = (db.Transactions || []).find((r) => r.TransactionID === share.TransactionID);
+    const transaction = resolveClientWork(this.repo, workKey(share));
     if (!transaction) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
     const title = String(payload.Title || payload.ProjectName || '').trim();
     if (!title) return { ok: false, error: 'Title / Project Name required' };
@@ -200,7 +201,7 @@ class BrokerNetworkV2Service {
     db.Shortlists = db.Shortlists || [];
     db.Shortlists.push({
       ShortlistID: this.repo.createId('SL'),
-      TransactionID: share.TransactionID, LeadID: share.LeadID,
+      RequirementID: share.RequirementID || null, TransactionID: share.TransactionID, LeadID: share.LeadID,
       PropertyID: propertyId, MatchID: null,
       Status: 'Active', Priority: 'Medium',
       Notes: payload.Notes ? `[Network] ${payload.Notes}` : `[Network] Submitted by ${share.BrokerName}`,
@@ -227,7 +228,7 @@ class BrokerNetworkV2Service {
   listSharesByTransaction(transactionId) {
     const db = this.repo.read();
     return (db.TransactionShares || [])
-      .filter((s) => s.TransactionID === transactionId)
+      .filter((s) => workKey(s) === transactionId)
       .sort((a, b) => new Date(b.SharedAt) - new Date(a.SharedAt));
   }
 
@@ -238,7 +239,7 @@ class BrokerNetworkV2Service {
     if (brokerId) shares = shares.filter((s) => s.NetworkBrokerID === brokerId);
     shares = shares.map((s) => {
       const lead = this.repo.readLead(s.LeadID);
-      const transaction = this.repo.find('Transactions', 'TransactionID', s.TransactionID);
+      const transaction = resolveClientWork(this.repo, workKey(s));
       const now = new Date();
       let status = s.Status;
       if (status === 'Open' && new Date(s.ExpiresAt) < now) status = 'Expired';
@@ -246,7 +247,7 @@ class BrokerNetworkV2Service {
         ...s,
         Status: status,
         LeadName: lead?.ClientName || null,
-        TransactionCode: req?.TransactionCode || s.TransactionID
+        TransactionCode: transaction?.RequirementCode || transaction?.TransactionCode || workKey(s)
       };
     });
     return { ok: true, data: shares.sort((a, b) => new Date(b.SharedAt) - new Date(a.SharedAt)), count: shares.length };
