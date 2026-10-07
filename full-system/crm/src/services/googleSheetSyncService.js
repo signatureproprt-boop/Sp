@@ -329,12 +329,14 @@ class GoogleSheetSyncService {
     // Merge lead data (never overwrite LeadID / CreatedAt on update)
     for (const [k, v] of Object.entries(leadData)) {
       if (['LeadID', 'CreatedAt'].includes(k)) continue;
+      // Repeated imports must preserve work already captured in CRM.
+      if (!created && lead[k] !== undefined && lead[k] !== null && lead[k] !== '') continue;
       lead[k] = v;
     }
     lead.UpdatedAt = new Date().toISOString();
     lead._source   = `GoogleSheet:${tab}`;
     // Sheet Status → canonical V2 ClientStatus if not set
-    if (leadData.ClientStatus && !['New', 'Contacted', 'Follow-up', 'Qualified', 'Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'].includes(leadData.ClientStatus)) {
+    if (created && leadData.ClientStatus && !['New', 'Contacted', 'Follow-up', 'Qualified', 'Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'].includes(leadData.ClientStatus)) {
       const map = {
         'Telecalling': 'New',
         'Call Not Received': 'New',

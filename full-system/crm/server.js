@@ -68,8 +68,6 @@ let shutdownForceExitTimer = null;
 let googleSheetSyncInterval = null;
 const { createReportRunner } = require('./src/services/crmSheetReportRunner');
 const crmSheetReportRunner = createReportRunner({ mongoStore });
-const { createExistingRequirementRunner } = require('./src/services/existingSheetRequirementRunner');
-const existingRequirementRunner = createExistingRequirementRunner({ mongoStore });
 let serverBinding = null;
 
 const MIME_TYPES = {
@@ -3132,8 +3130,7 @@ async function handleApi(req, res, url) {
 
     if (/^\/api\/sync\/existing-sheet-requirement\/?$/i.test(pathname) && ['GET', 'POST'].includes(req.method)) {
       if (!ensureAdminPermissionOrRespond(req, res, url, req.method === 'GET' ? 'ADMIN_READ' : 'ADMIN_UPDATE')) return;
-      if (req.method === 'GET') sendJson(res, { ok: true, data: existingRequirementRunner.status() });
-      else { const result = await existingRequirementRunner.run(); sendJson(res, result, result.ok ? 200 : 503); }
+      sendJson(res, { ok: false, state: 'DISABLED', message: 'Original Sheet is read-only. Use /api/sync/crm-report for CRM reporting.' }, 410);
       return;
     }
     // Separate, authenticated CRM-owned reporting workbook; legacy exports stay disabled.
@@ -5508,14 +5505,11 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
       }, 503);
       return;
     }
-    // Cloud Run can suspend background CPU after res.end(). Complete this
-    // narrow Sheet write while a client/requirement save request is active.
-    const sheetRequirementSync = res.__sigSyncRequirementCell && existingRequirementRunner.status().configured
-      ? await existingRequirementRunner.run() : null;
-    writeResponse(sheetRequirementSync && payload && typeof payload === 'object'
-      ? { ...payload, sheetRequirementSync } : payload, statusCode);
-    // Best-effort immediate refresh after a durably saved CRM mutation.
-    void crmSheetReportRunner.run();
+    // Keep CPU active until the CRM-owned report finishes, after durable save.
+    const crmReportSync = crmSheetReportRunner.status().configured
+      ? await crmSheetReportRunner.run() : null;
+    writeResponse(crmReportSync && payload && typeof payload === 'object'
+      ? { ...payload, crmReportSync } : payload, statusCode);
   });
 }
 
@@ -5536,7 +5530,6 @@ appServer = http.createServer(async (req, res) => {
   res.__sigRequireMongoDurability =
     url.pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
   res.__sigMongoWriteFailureBaseline = Number(mongoStore.stats?.().failures || 0);
-  res.__sigSyncRequirementCell = /^\/api\/v2\/(clients(?:\/|$)|requirements(?:\/|$)|quick-capture\/?$)/.test(url.pathname);
 
   if (!enforceApiRateLimit(req, res, url)) return;
   if (url.pathname.startsWith('/api/') && Number(req.headers['content-length'] || 0) > MAX_JSON_BODY_BYTES) {
@@ -5867,7 +5860,7 @@ async function startServer() {
 
   const syncGoogleSheet = async () => {
     try {
-      if (!mongoStore.isInitialized() || process.env.CRM_REPORT_SHEET_ID) return;
+      if (!mongoStore.isInitialized()) return;
       const lock = await mongoStore.withDistributedLock('google-sheet-sync', async () => {
         try {
           const { GoogleSheetSyncService } = require('./src/services/googleSheetSyncService');
@@ -5915,8 +5908,6 @@ async function startServer() {
       }
       void crmSheetReportRunner.run();
       registerRecurringBackgroundTimer(setInterval(() => { void crmSheetReportRunner.run(); }, 60 * 1000));
-      void existingRequirementRunner.run();
-      registerRecurringBackgroundTimer(setInterval(() => { void existingRequirementRunner.run(); }, 60 * 1000));
       syncGoogleSheet();
       googleSheetSyncInterval = registerRecurringBackgroundTimer(setInterval(syncGoogleSheet, 5 * 60 * 1000));
     }

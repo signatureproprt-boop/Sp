@@ -125,3 +125,11 @@ test('public Sheet sync reports rejected rows while importing valid rows', async
   assert.equal(summary.created, 1);
   assert.equal(repository.snapshot().Leads[0].ClientName, 'Valid');
 });
+test('repeated source imports preserve CRM name, status, notes and follow-up while refreshing preliminary source need', async () => {
+ const repository=makeRepository({Leads:[{LeadID:'L1',PrimaryMobile:'+91 98765 43210',ClientName:'Call confirmed',ClientStatus:'Lost',Notes:'CRM note',NextFollowUp:'2026-10-10'}]});
+ const svc=new GoogleSheetSyncService(repository,{syncToken:'test'});
+ await svc.syncRows('Sale',[{'Lead ID':'OLD','Phone':'9876543210','Name':'Old name','Status':'New','Remarks':'Old note','Next Follow-up Date':'2026-10-01','Budget':'50 L'}]);
+ const db=repository.snapshot();assert.equal(db.Leads.length,1);const lead=db.Leads[0];
+ assert.equal(lead.ClientName,'Call confirmed');assert.equal(lead.ClientStatus,'Lost');assert.equal(lead.Notes,'CRM note');assert.equal(lead.NextFollowUp,'2026-10-10');assert.equal(lead.SheetBasicRequirements[0].BudgetMax,5000000);
+ assert.equal(db.Transactions.length,0);assert.equal(db.Requirements.length,0);
+});
