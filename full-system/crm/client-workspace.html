@@ -1366,6 +1366,7 @@ table td,table th{border-color:var(--v2-line)!important}
 
     const tags = (lead.Tags||[]).map(t => `<span class="tag" style="background:#e0e7ff;color:#3730a3">${esc(t)}</span>`).join(' ');
     document.getElementById('client-tags').innerHTML = tags;
+    if ((workspace.transactions || []).some(t => t.IdentityMappingReview)) document.getElementById('client-tags').innerHTML += '<span class="tag" style="background:#fef3c7;color:#92400e">Work owner needs review — previously shared client ID</span>';
 
     renderKpiStrip();
     renderNeedsFirst();
