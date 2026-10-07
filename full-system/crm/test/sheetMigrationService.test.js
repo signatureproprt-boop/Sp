@@ -36,3 +36,21 @@ test('multiple source tabs count one updated client',()=>{
  const sale=row();sale.tab='Sale';const result=planMigration(db,input(row(),sale));
  assert.equal(result.report.updated,1);assert.equal(result.report.changes.length,2);
 });
+test('reviewed repeated numbers retain every row on one client and are idempotent',()=>{
+ const src={...input(row('9876543210'),{...row('9876543210',{'Lead ID':'COMM-2',Budget:'2L'}),sourceRow:3}),reviewedRows:true};
+ const {next,report}=planMigration({Leads:[]},src);
+ assert.equal(report.created,1);assert.equal(report.issues.length,0);assert.equal(next.Leads.length,1);
+ assert.deepEqual(next.Leads[0].Tags,['Duplicate Number']);
+ assert.equal(next.Leads[0].SheetBasicRequirements.length,2);
+ assert.deepEqual(next.Leads[0].ImportedSheetDetails.map(x=>x.Columns.Budget),['1L','2L']);
+ assert.equal(planMigration(next,src).report.changes.length,0);
+});
+test('reviewed invalid number is retained without a fabricated callable number or Lost status',()=>{
+ const src={...input(row('-8511877241')),reviewedRows:true};const {next,report}=planMigration({Leads:[]},src);
+ assert.equal(report.created,1);const lead=next.Leads[0];assert.equal(lead.PhoneValidity,'INVALID');assert.equal(lead.InvalidPhoneRaw,'-8511877241');assert.notEqual(lead.PrimaryMobile,'9000000000');assert.equal(lead.ClientStatus,'New');assert.deepEqual(lead.Tags,['Invalid Number']);
+ assert.equal(planMigration(next,src).report.changes.length,0);
+});
+test('reviewed mode still blocks ambiguous CRM mapping and invalid-row ID collisions',()=>{
+ const db={Leads:[{LeadID:'COMM-1',PrimaryMobile:'9876543210'},{LeadID:'COMM-1',PrimaryMobile:'8765432109'}]};
+ const result=planMigration(db,{...input(row(),row('-8511877241')),reviewedRows:true});assert.deepEqual(result.next.Leads,db.Leads);assert.equal(result.report.issues.length,2);
+});

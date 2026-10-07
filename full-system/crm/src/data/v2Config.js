@@ -61,7 +61,9 @@ const TagConfig = {
     { value: 'Corporate', label: 'Corporate', color: '#0f766e' },
     { value: 'VIP',       label: 'VIP',       color: '#ca8a04' },
     { value: 'Hot',       label: 'Hot 🔥',   color: '#ef4444' },
-    { value: 'Referral',  label: 'Referral',  color: '#6366f1' }
+    { value: 'Referral',  label: 'Referral',  color: '#6366f1' },
+    { value: 'Duplicate Number', label: 'Duplicate Number', color: '#b45309' },
+    { value: 'Invalid Number', label: 'Invalid Number', color: '#dc2626' }
   ]
 };
 

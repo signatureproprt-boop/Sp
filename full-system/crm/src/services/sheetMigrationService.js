@@ -36,6 +36,7 @@ function planMigration(db, input, actor = {}) {
   const originalIds = new Map();
   for (const lead of next.Leads) originalIds.set(String(lead.LeadID), (originalIds.get(String(lead.LeadID)) || 0) + 1);
   const now = new Date().toISOString();
+  const reviewedRows = input.reviewedRows === true;
   for (const item of input.records) {
     const tab = item?.tab, row = item?.row;
     const ref = { tab, row: item?.sourceRow, legacyId: String(row?.['Lead ID'] || '') };
@@ -43,22 +44,34 @@ function planMigration(db, input, actor = {}) {
     if (!['Comm','Sale','Rent'].includes(tab) || !row || typeof row !== 'object' || Array.isArray(row)) { issue('Invalid source row'); continue; }
     if (Object.values(row).some(v => typeof v === 'object' || String(v ?? '').length > 10000)) { issue('Invalid source values'); continue; }
     const key = phone(row.Phone);
-    if (!key) { issue('Invalid phone; source row was skipped'); continue; }
+    const invalidPhone = !key;
+    if (invalidPhone && (!reviewedRows || !ref.legacyId || !String(row.Phone || '').trim() || String(row.Phone).includes('#'))) { issue('Invalid phone; source row was skipped'); continue; }
     const sourceKey = `${tab}:${key}`;
-    if (sourceVariants.get(sourceKey).size > 1) { issue('Conflicting repeated source rows; all versions were skipped'); continue; }
-    if (seen.has(sourceKey)) {
+    const duplicate = !invalidPhone && sourceVariants.get(sourceKey).size > 1;
+    if (duplicate && !reviewedRows) { issue('Conflicting repeated source rows; all versions were skipped'); continue; }
+    if (!reviewedRows && seen.has(sourceKey)) {
       if (seen.get(sourceKey) !== digest(row)) issue('Conflicting repeated source row');
       continue;
     }
     seen.set(sourceKey, digest(row));
-    const matches = next.Leads.filter(l => phone(l.PrimaryMobile || l.Phone) === key);
+    let matches = invalidPhone ? next.Leads.filter(l => l.InvalidPhoneRaw === String(row.Phone) && l.LegacyID === ref.legacyId) : next.Leads.filter(l => phone(l.PrimaryMobile || l.Phone) === key);
     const legacyMatches = next.Leads.filter(l => ref.legacyId && (l.LeadID === ref.legacyId || l.LegacyID === ref.legacyId));
+    if (invalidPhone && !matches.length && legacyMatches.length === 1) {
+      const candidate = legacyMatches[0];
+      const sameName = String(candidate.ClientName || '').trim().toLowerCase() === String(row.Name || '').trim().toLowerCase();
+      const sameRaw = String(candidate.PrimaryMobile || candidate.Phone || '') === String(row.Phone);
+      const stripped = String(row.Phone).replace(/\D/g, '');
+      const sameImportedDigits = String(candidate.CreatedBy || '').includes('GoogleSheet') && String(candidate.PrimaryMobile || candidate.Phone || '').replace(/\D/g,'') === stripped;
+      if (sameName && (sameRaw || sameImportedDigits)) matches = [candidate];
+    }
     if (matches.length > 1 || (matches[0] && originalIds.get(String(matches[0].LeadID)) > 1)) { issue('CRM identity conflict; no records were merged'); continue; }
     if (legacyMatches.some(l => !matches.includes(l))) { issue('Source ID belongs to a different or unresolved CRM client'); continue; }
     const staged = { Leads: [], Transactions: [], Requirements: [], _V2Counters: { Lead: 0, Transaction: 0, Requirement: 0 } };
-    const parsed = service._syncOneRowInDb(staged, tab, row);
+    // Parse basic details without treating a malformed number as a callable identity.
+    const parsed = service._syncOneRowInDb(staged, tab, invalidPhone ? { ...row, Phone: '9000000000' } : row);
     if (!parsed.ok) { issue(parsed.error); continue; }
     const source = staged.Leads[0];
+    if (invalidPhone) source.PrimaryMobile = '';
     let lead = matches[0], created = false;
     if (lead && !access.canAccessLeadRecord(lead, actor)) { issue('Client is outside the administrator scope'); continue; }
     if (!lead) {
@@ -72,6 +85,16 @@ function planMigration(db, input, actor = {}) {
       next.Leads.push(lead); created = true;
     }
     const fields = [];
+    const addTag = tag => { const tags = Array.isArray(lead.Tags) ? lead.Tags : []; if (!tags.includes(tag)) { lead.Tags = [...tags, tag]; fields.push('Tags'); } };
+    if (duplicate) addTag('Duplicate Number');
+    if (invalidPhone) {
+      addTag('Invalid Number');
+      if (lead.PhoneValidity !== 'INVALID' || lead.InvalidPhoneRaw !== String(row.Phone)) {
+        lead.PhoneValidity = 'INVALID'; lead.InvalidPhoneRaw = String(row.Phone);
+        lead.PhoneValidationReason = 'Invalid number supplied in original Sheet';
+        fields.push('PhoneValidity','InvalidPhoneRaw','PhoneValidationReason');
+      }
+    }
     // CRM statuses, assignments, notes, follow-ups and transactions are authoritative.
     for (const field of ['ClientName','PrimaryMobile','Email','City','LeadSource','ClientType']) {
       if (empty(lead[field]) && !empty(source[field])) { lead[field] = source[field]; fields.push(field); }
@@ -79,7 +102,11 @@ function planMigration(db, input, actor = {}) {
     const need = source.SheetBasicRequirements[0];
     const needs = Array.isArray(lead.SheetBasicRequirements) ? lead.SheetBasicRequirements : [];
     const sourceNeeds = needs.filter(n => n.SourceTab === tab);
-    if (sourceNeeds.length > 1) { issue('Multiple basic needs in the same tab; basic details were skipped'); }
+    const rowNeed = needs.find(n => n.SourceTab === tab && n.SourceRow === item.sourceRow);
+    if (reviewedRows && duplicate) {
+      if (!rowNeed) { lead.SheetBasicRequirements = [...needs, { ...need, SourceRow: item.sourceRow, SourceLegacyID: ref.legacyId, DuplicateNumber: true }]; fields.push('SheetBasicRequirements'); }
+    }
+    else if (sourceNeeds.length > 1) { issue('Multiple basic needs in the same tab; basic details were skipped'); }
     else if (!sourceNeeds.length) { lead.SheetBasicRequirements = [...needs, need]; fields.push('SheetBasicRequirements'); }
     else {
       for (const [field,value] of Object.entries(need)) {
@@ -91,8 +118,8 @@ function planMigration(db, input, actor = {}) {
     if (!tabs.includes(tab)) { lead.SheetSourceTabs = [...tabs,tab]; fields.push('SheetSourceTabs'); }
     // Retain all original columns as source details, without applying Sheet work state to CRM.
     const imported = Array.isArray(lead.ImportedSheetDetails) ? lead.ImportedSheetDetails : [];
-    if (!imported.some(detail => detail.SpreadsheetID === SOURCE_ID && detail.SourceTab === tab)) {
-      lead.ImportedSheetDetails = [...imported, { SpreadsheetID: SOURCE_ID, SourceTab: tab, SourceRow: item.sourceRow, Columns: copy(row), ImportedAt: now }];
+    if (!imported.some(detail => detail.SpreadsheetID === SOURCE_ID && detail.SourceTab === tab && (!reviewedRows || detail.SourceRow === item.sourceRow))) {
+      lead.ImportedSheetDetails = [...imported, { SpreadsheetID: SOURCE_ID, SourceTab: tab, SourceRow: item.sourceRow, Columns: copy(row), ImportedAt: now, ...(duplicate ? {DuplicateNumber:true} : {}), ...(invalidPhone ? {InvalidNumber:true} : {}) }];
       fields.push('ImportedSheetDetails');
     }
     if (fields.length || created) { lead.UpdatedAt = now; changes.push({ ...ref, leadId: lead.LeadID, action: created ? 'CREATED' : 'FILLED_MISSING', fields }); }
