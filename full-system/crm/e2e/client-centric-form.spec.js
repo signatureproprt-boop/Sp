@@ -31,9 +31,16 @@ test('client form keeps identity and edits a dynamic requirement without a trans
   await page.goto('/client-workspace.html?id=L1');
   await expect(page.locator('#edit-name')).toHaveValue('Sample Client');
   await expect(page.locator('#edit-mobile')).toHaveValue('9876543210');
+  await page.locator('#edit-purpose').selectOption('Rent');
+  await page.locator('#edit-property-type').fill('Commercial');
+  await expect(page.locator('#edit-bhk')).toBeHidden();
+  await expect(page.locator('#edit-budget-max-label')).toHaveText('Monthly Rent Max (₹)');
   await page.locator('#edit-location').fill('Vesu');
   await page.getByTestId('save-client-edit').click();
   await expect(page.locator('#edit-location')).toHaveValue('Vesu');
+  expect(lead.RequirementType).toBe('Rent');
+  expect(lead.PropertyType).toBe('Commercial');
+  expect(lead.BHK).toBeNull();
   await page.getByTestId('edit-add-requirement').click();
   await page.getByTestId('need-txn-type').selectOption('Purchase');
   await page.getByTestId('need-category').selectOption('Residential');
