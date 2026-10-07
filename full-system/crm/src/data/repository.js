@@ -240,7 +240,7 @@ class JsonRepository {
     const txnById = new Map(transactions.map((row) => [row.TransactionID, row]));
     const reqToTxn = new Map();
     for (const req of requirements) {
-      if (!req?.RequirementID) continue;
+      if (!req?.RequirementID || req.ClientOwned === true) continue;
       const transactionId = req.TransactionID || ('TXN-MIG-' + String(req.RequirementID).replace(/^REQ-?/i, ''));
       // Stable migration ID makes normalizeDbShape idempotent: repeated reads
       // must never create another transaction for the same legacy requirement.

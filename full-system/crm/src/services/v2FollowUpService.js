@@ -26,12 +26,21 @@ class V2FollowUpService {
     const lead = (db.Leads || []).find(l => l.LeadID === payload.LeadID);
     if (!lead) return { ok: false, error: 'Lead not found', code: 'LEAD_NOT_FOUND' };
 
+    if (payload.RequirementID) {
+      const need = (db.Requirements || []).find(r => r.RequirementID === payload.RequirementID);
+      if (!need || need.LeadID !== payload.LeadID) return { ok: false, error: 'Requirement does not belong to this client', code: 'RELATIONSHIP_VIOLATION' };
+    }
+
     if (payload.TransactionID) {
       const txn = (db.Transactions || []).find(t => t.TransactionID === payload.TransactionID);
       if (!txn) return { ok: false, error: 'Transaction not found', code: 'NOT_FOUND' };
       if (txn.LeadID !== payload.LeadID) return { ok: false, error: 'Transaction does not belong to this Lead', code: 'RELATIONSHIP_VIOLATION' };
     }
 
+    if (payload.ClientRequestID) {
+      const existing = (db.FollowUps || []).find(f => f.LeadID === payload.LeadID && f.ClientRequestID === payload.ClientRequestID);
+      if (existing) return { ok: true, data: this._normalizeFollowUpShape(existing), reused: true };
+    }
     const dueAt = this._resolveDueAt(payload);
     if (!dueAt) return { ok: false, error: 'DueAt is required', code: 'VALIDATION_ERROR' };
     if (!Number.isFinite(new Date(dueAt).getTime())) return { ok: false, error: 'DueAt must be a valid datetime', code: 'VALIDATION_ERROR' };
@@ -39,8 +48,10 @@ class V2FollowUpService {
     const now = new Date().toISOString();
     const activityType = this._resolveActivityType(payload.ActivityType || payload.activityType || payload.Type || payload.type);
     const followUp = {
+      ClientRequestID: payload.ClientRequestID || null,
       FollowUpID: this.repo.createId('FU'),
       LeadID: payload.LeadID,
+      RequirementID: payload.RequirementID || null,
       TransactionID: payload.TransactionID || null,
       ActivityID: payload.ActivityID || null,
       DueAt: dueAt,
@@ -94,6 +105,10 @@ class V2FollowUpService {
       }
     }
 
+    if (updates.RequirementID) {
+      const need = (db.Requirements || []).find(r => r.RequirementID === updates.RequirementID);
+      if (!need || need.LeadID !== fu.LeadID) return { ok: false, error: 'Requirement does not belong to this client' };
+    }
     const dueAt = this._resolveDueAt(updates);
     if (dueAt) updates.DueAt = dueAt;
     delete updates.DueDate;
@@ -166,6 +181,7 @@ class V2FollowUpService {
     const db = this.repo.read();
     let fus = db.FollowUps || [];
     if (filters.LeadID) fus = fus.filter(f => f.LeadID === filters.LeadID);
+    if (filters.RequirementID) fus = fus.filter(f => f.RequirementID === filters.RequirementID);
     if (filters.TransactionID) fus = fus.filter(f => f.TransactionID === filters.TransactionID);
     if (filters.AssignedUser || filters.AssignedTo) {
       const assigned = filters.AssignedUser || filters.AssignedTo;
@@ -360,6 +376,7 @@ class V2FollowUpService {
     const normalized = {
       id: row.FollowUpID,
       leadId: row.LeadID || null,
+      requirementId: row.RequirementID || null,
       transactionId: row.TransactionID || null,
       activityId: row.ActivityID || null,
       dueAt: dueAtIso,
@@ -380,6 +397,7 @@ class V2FollowUpService {
       ...normalized,
       FollowUpID: normalized.id,
       LeadID: normalized.leadId,
+      RequirementID: normalized.requirementId,
       TransactionID: normalized.transactionId,
       ActivityID: normalized.activityId,
       DueAt: normalized.dueAt,

@@ -65,8 +65,8 @@ function buildProjection(db, snapshotAt) {
   const reqByTxn = new Map();
   for (const [key, req] of requirements) {
     const txn = validTx.get(id(req.TransactionID));
-    if (!txn || id(txn.LeadID) !== id(req.LeadID)) { issue('Requirements', key, 'Client/transaction link missing or conflicting; excluded'); continue; }
-    reqByTxn.set(id(req.TransactionID), [...(reqByTxn.get(id(req.TransactionID)) || []), req]);
+    if (!leads.has(id(req.LeadID)) || (req.TransactionID && (!txn || id(txn.LeadID) !== id(req.LeadID)))) { issue('Requirements', key, 'Client/transaction link missing or conflicting; excluded'); continue; }
+    if (req.TransactionID) reqByTxn.set(id(req.TransactionID), [...(reqByTxn.get(id(req.TransactionID)) || []), req]);
     out.Requirements.push([key, req.LeadID, req.TransactionID, req.RequirementStatus || req.Status, req.PipelineStage,
       field(req, 'BudgetMin'), field(req, 'BudgetMax'), field(req, 'Location1'), field(req, 'BHK'), req.PropertyType || req.SubCategory,
       { Fields: req.Fields || {}, Notes: req.Notes || req.SpecialNotes || '', Preferences: req.Preferences || '' }, req.UpdatedAt]);
@@ -74,7 +74,7 @@ function buildProjection(db, snapshotAt) {
   function addWork(key, leadKey, txnKey, kind, row, req = {}) {
     const lead = leads.get(leadKey);
     const value = k => field(row, k) !== '' ? field(row, k) : field(req, k);
-    const status = row.TransactionStatus || row.Status || row.ConfirmationStatus || 'UNCONFIRMED';
+    const status = row.RequirementStatus || row.TransactionStatus || row.Status || row.ConfirmationStatus || 'UNCONFIRMED';
     const stage = row.PipelineStage || '';
     const type = row.TransactionType || row.Type || req.TransactionType || '';
     const category = row.Category || req.Category || '';
@@ -96,6 +96,9 @@ function buildProjection(db, snapshotAt) {
     const imported = str(txn._source).startsWith('GoogleSheet:') || txn.CreatedBy === 'GoogleSheetSync';
     addWork(`TXN:${key}`, id(txn.LeadID), key, imported ? 'Imported transaction' : 'Transaction', txn, reqs.length === 1 ? reqs[0] : {});
     if (reqs.length > 1) issue('Transactions', key, 'Multiple requirements; see Requirements tab for individual details');
+  }
+  for (const [key, req] of requirements) {
+    if (leads.has(id(req.LeadID)) && !req.TransactionID) addWork(`REQ:${key}`, id(req.LeadID), '', 'Client requirement', req);
   }
   for (const [leadKey, lead] of leads) {
     const basics = Array.isArray(lead.SheetBasicRequirements) ? lead.SheetBasicRequirements : [];

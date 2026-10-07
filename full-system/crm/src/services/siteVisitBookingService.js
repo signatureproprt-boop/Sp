@@ -1,3 +1,4 @@
+const { workKey, resolveClientWork, workLinks } = require('./clientWorkContext');
 'use strict';
 
 /**
@@ -72,6 +73,7 @@ class SiteVisitBookingService {
     return {
       VisitBookingID: bookingId,
       LeadID: first.LeadID,
+      RequirementID: first.RequirementID || null,
       TransactionID: first.TransactionID,
       ClientName: first.ClientName || null,
       ClientPhone: first.ClientPhone || null,
@@ -89,7 +91,7 @@ class SiteVisitBookingService {
   }
 
   create(payload = {}, actor = {}) {
-    const transactionId = payload.transactionId || payload.TransactionID;
+    const transactionId = payload.requirementId || payload.RequirementID || payload.transactionId || payload.TransactionID;
     const propertyIds = Array.isArray(payload.propertyIds) ? payload.propertyIds : (Array.isArray(payload.PropertyIDs) ? payload.PropertyIDs : []);
     const visitDate = payload.visitDate || payload.VisitDate;
     const visitTime = payload.visitTime || payload.VisitTime;
@@ -101,7 +103,7 @@ class SiteVisitBookingService {
     const slotError = this._validateVisitSlot(visitDate, visitTime);
     if (slotError) return { ok: false, error: slotError };
 
-    const transaction = this.repo.find('Transactions', 'TransactionID', transactionId);
+    const transaction = resolveClientWork(this.repo, transactionId);
     if (!transaction) return { ok: false, error: 'Transaction not found' };
     const lead = this.repo.readLead(transaction.LeadID);
     if (!lead) return { ok: false, error: 'Lead not found' };
@@ -122,7 +124,7 @@ class SiteVisitBookingService {
     // already be actively shortlisted for this transaction.
     const activeShortlisted = new Set(
       db.Shortlists
-        .filter((row) => row.TransactionID === transactionId && row.Status === 'Active')
+        .filter((row) => workKey(row) === transactionId && row.Status === 'Active')
         .map((row) => row.PropertyID)
     );
     const notShortlisted = propertyIds.filter((pid) => !activeShortlisted.has(pid));
@@ -137,7 +139,7 @@ class SiteVisitBookingService {
     const requestedStatus = this._validStatus(payload.status || payload.Status || 'Scheduled');
     const duplicate = db.SiteVisits.find((row) =>
       row &&
-      row.TransactionID === transactionId &&
+      workKey(row) === transactionId &&
       propertyIds.includes(row.PropertyID) &&
       row.VisitDate === visitDate &&
       row.VisitTime === visitTime &&
@@ -162,7 +164,7 @@ class SiteVisitBookingService {
         VisitBookingID: bookingId,
         VisitOrder: idx + 1,
         LeadID: lead.LeadID,
-        TransactionID: transactionId,
+        ...workLinks(transaction),
         PropertyID: item.id,
         MatchID: null,
         ShortlistID: null,
@@ -214,9 +216,11 @@ class SiteVisitBookingService {
       .sort((a, b) => `${b.VisitDate} ${b.VisitTime}`.localeCompare(`${a.VisitDate} ${a.VisitTime}`));
   }
 
+  listByRequirement(requirementId) { return this.listByTransaction(requirementId); }
+
   listByTransaction(transactionId) {
     const db = this.repo.read();
-    const rows = (db.SiteVisits || []).filter((r) => r.TransactionID === transactionId && r.VisitBookingID);
+    const rows = (db.SiteVisits || []).filter((r) => workKey(r) === transactionId && r.VisitBookingID);
     return this._groupBookings(rows);
   }
 
@@ -271,7 +275,7 @@ class SiteVisitBookingService {
     const duplicate = db.SiteVisits.find((row) =>
       row &&
       row.VisitBookingID !== bookingId &&
-      row.TransactionID === rows[0].TransactionID &&
+      workKey(row) === workKey(rows[0]) &&
       propertyIdSet.has(row.PropertyID) &&
       row.VisitDate === nextDate &&
       row.VisitTime === nextTime &&

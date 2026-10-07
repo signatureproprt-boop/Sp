@@ -56,7 +56,7 @@ const RESERVED_PAYLOAD_KEYS = new Set([
   'PipelineStage', 'pipelineStage', 'FormVersion', 'formVersion', 'FormKey', 'formKey',
   'Fields', 'fields', 'DynamicAttributes', 'dynamicAttributes', 'SpecialNotes', 'specialNotes',
   'Notes', 'notes', 'Preferences', 'preferences', 'AddPreferences', 'addPreferences',
-  'LegacyID', 'FieldPriorities', 'fieldPriorities', 'CategorySpecificData', 'categorySpecificData'
+  'ClientOwned', 'ClientRequestID', 'LegacyID', 'FieldPriorities', 'fieldPriorities', 'CategorySpecificData', 'categorySpecificData'
 ]);
 
 const FIELD_PRIORITY_VALUES = ['MUST_HAVE', 'PREFERRED', 'FLEXIBLE'];
@@ -164,14 +164,14 @@ function mergeFieldsMap(existing, patch) {
 
   if (patch.Fields && typeof patch.Fields === 'object') {
     for (const [k, v] of Object.entries(patch.Fields)) {
-      const entry = makeFieldEntry(v);
+      const entry = v === null || v === '' ? { state: FIELD_STATES.UNKNOWN, value: null } : makeFieldEntry(v);
       if (entry) merged[k] = entry;
     }
   }
 
   eachPayloadField(patch, (key, value) => {
     if (patch.Fields && patch.Fields[key] !== undefined) return;
-    const entry = makeFieldEntry(value);
+    const entry = value === null || value === '' ? { state: FIELD_STATES.UNKNOWN, value: null } : makeFieldEntry(value);
     if (entry) merged[key] = entry;
   });
 
@@ -256,12 +256,18 @@ class V2RequirementService {
    * against their configured options/constraints — but their absence is never
    * an error.
    */
-  createRequirement(transactionId, payload, actor = {}) {
+  createClientRequirement(leadId, payload = {}, actor = {}) {
+    return this.createRequirement(null, { ...payload, LeadID: leadId }, actor, { clientOnly: true });
+  }
+
+  createRequirement(transactionId, payload = {}, actor = {}, options = {}) {
     // ── Parent chain validation (read DB once for checks) ─────────────────
 
     const dbCheck = this.repository.read();
 
-    const transaction = (dbCheck.Transactions || []).find((t) => t.TransactionID === transactionId);
+    const transaction = options.clientOnly
+      ? { LeadID: payload.LeadID }
+      : (dbCheck.Transactions || []).find((t) => t.TransactionID === transactionId);
     if (!transaction) {
       return { ok: false, error: `Transaction not found: ${transactionId}` };
     }
@@ -275,6 +281,13 @@ class V2RequirementService {
     const lead = (dbCheck.Leads || []).find((l) => l.LeadID === leadId);
     if (!lead) return { ok: false, error: `Lead not found: ${leadId}` };
 
+    if (options.clientOnly && (!payload.TransactionType || !payload.Category)) {
+      return { ok: false, error: 'Purpose and category are required' };
+    }
+    if (payload.ClientRequestID) {
+      const previous = (dbCheck.Requirements || []).find(r => r.LeadID === leadId && r.ClientRequestID === payload.ClientRequestID);
+      if (previous) return { ok: true, data: previous, reused: true };
+    }
     const leadPrefill = this._deriveLeadRequirementPrefill(lead, transaction);
     const mergedPayload = this._mergeWithPrefill(leadPrefill, payload || {});
 
@@ -346,6 +359,8 @@ class V2RequirementService {
 
     const requirement = {
       RequirementID:      reqId,
+      ClientOwned:        options.clientOnly === true,
+      ClientRequestID:    payload.ClientRequestID || null,
       RequirementCode:    reqId,               // backward compat
       LeadID:             leadId,
       TransactionID:      transactionId,
@@ -498,7 +513,8 @@ class V2RequirementService {
     // ── Numeric extraction (provided values) ──────────────────────────────
 
     const nextCategory = payload.Category || payload.category || existing.Category;
-    const nextSubCategory = payload.SubCategory || payload.subCategory || payload.PropertyType || payload.propertyType || existing.SubCategory;
+    const nextSubCategory = payload.SubCategory !== undefined ? payload.SubCategory : (payload.subCategory ?? payload.PropertyType ?? payload.propertyType ?? existing.SubCategory);
+    const nextType = payload.TransactionType || payload.transactionType || existing.TransactionType;
 
     const budgetMin = payload.BudgetMin !== undefined ? this._num(payload.BudgetMin)
                     : payload.budgetMin !== undefined ? this._num(payload.budgetMin)
@@ -524,7 +540,7 @@ class V2RequirementService {
     // ── Value validation (only for provided values) ───────────────────────
 
     const formConfig = this.getFormConfig(
-      existing.TransactionType,
+      nextType,
       nextCategory,
       nextSubCategory
     );
@@ -588,6 +604,7 @@ class V2RequirementService {
 
       // Update flat top-level fields for backward compat
       Category: nextCategory,
+      TransactionType: nextType,
       SubCategory: nextSubCategory,
       PropertyPreference: payload.PropertyPreference || payload.propertyPreference || payload.PropertyType || payload.propertyType || existing.PropertyPreference,
       PropertyType: payload.PropertyType || payload.propertyType || nextSubCategory || existing.PropertyType,
@@ -623,6 +640,11 @@ class V2RequirementService {
       UpdatedAt:  now,
       Version:    (existing.Version || 1) + 1
     };
+
+    // Explicit blanks clear captured values; omitted fields stay intact.
+    eachPayloadField(payload, (key, value) => {
+      if (TRACKED_FIELDS.includes(key) && (value === null || value === '')) updated[key] = null;
+    });
 
     if (status === 'Paused') {
       const holdReason = payload.HoldReason ?? payload.holdReason ?? existing.HoldReason ?? null;

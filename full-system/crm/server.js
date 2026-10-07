@@ -1723,8 +1723,8 @@ async function handleApi(req, res, url) {
       const svc = new ShortlistServiceV2(runtime.repository);
 
       if (slV2List && req.method === 'GET') {
-        const transaction = runtime.repository.find('Transactions', 'TransactionID', slV2List[1]);
-        const reqAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        const transaction = require('./src/services/clientWorkContext').resolveClientWork(runtime.repository, slV2List[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, transaction, {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
@@ -1743,8 +1743,8 @@ async function handleApi(req, res, url) {
 
       if (slV2Add && req.method === 'POST') {
         const body = bodyForV2 || {};
-        const transaction = runtime.repository.find('Transactions', 'TransactionID', slV2Add[1]);
-        const reqAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        const transaction = require('./src/services/clientWorkContext').resolveClientWork(runtime.repository, slV2Add[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, transaction, {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
@@ -1761,8 +1761,8 @@ async function handleApi(req, res, url) {
 
       if (slV2Manual && req.method === 'POST') {
         const body = bodyForV2 || {};
-        const transaction = runtime.repository.find('Transactions', 'TransactionID', slV2Manual[1]);
-        const reqAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        const transaction = require('./src/services/clientWorkContext').resolveClientWork(runtime.repository, slV2Manual[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, transaction, {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
@@ -1772,8 +1772,8 @@ async function handleApi(req, res, url) {
       }
 
       if (slV2Remove && req.method === 'DELETE') {
-        const transaction = runtime.repository.find('Transactions', 'TransactionID', slV2Remove[1]);
-        const reqAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        const transaction = require('./src/services/clientWorkContext').resolveClientWork(runtime.repository, slV2Remove[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, transaction, {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
@@ -1795,8 +1795,8 @@ async function handleApi(req, res, url) {
 
       if (slV2Notes && req.method === 'PATCH') {
         const body = bodyForV2 || {};
-        const transaction = runtime.repository.find('Transactions', 'TransactionID', slV2Notes[1]);
-        const reqAccess = accessSvc.authorizeTransaction(actor, transaction, {
+        const transaction = require('./src/services/clientWorkContext').resolveClientWork(runtime.repository, slV2Notes[1]);
+        const reqAccess = accessSvc.authorizeRequirement(actor, transaction, {
           permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE']
         });
         if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
