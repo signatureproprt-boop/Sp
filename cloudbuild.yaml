@@ -46,7 +46,7 @@ steps:
       - --max-instances=10
       - --concurrency=80
       - --timeout=120
-      - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties,CRM_REPORT_SHEET_ID=1ICS50baVcDnFJt6UMTcvNzBAMDbs6tX19T9TA-4b3uk
+      - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties,CRM_REPORT_SHEET_ID=1ICS50baVcDnFJt6UMTcvNzBAMDbs6tX19T9TA-4b3uk,CRM_EXISTING_REQUIREMENT_SHEET_ID=1nkjzrMRDCMoWFnzxxovvxu-fzILv6Li-VfBY4VLr-QI
       - --allow-unauthenticated
 
   # Pinned traffic must be promoted explicitly after a successful deployment.

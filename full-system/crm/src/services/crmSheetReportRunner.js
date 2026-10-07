@@ -1,6 +1,6 @@
 'use strict';
 
-function createReportRunner({ mongoStore, env = process.env, serviceFactory, now = () => Date.now() }) {
+function createReportRunner({ mongoStore, env = process.env, serviceFactory, lockName = 'crm-sheet-report', now = () => Date.now() }) {
   let running = null;
   let last = { state: 'NOT_RUN' };
   const configured = () => Boolean(String(env.CRM_REPORT_SHEET_ID || '').trim());
@@ -10,7 +10,7 @@ function createReportRunner({ mongoStore, env = process.env, serviceFactory, now
     running = (async () => {
       if (!mongoStore.isInitialized()) return { ok: false, state: 'MONGO_UNAVAILABLE' };
       try {
-        const lock = await mongoStore.withDistributedLock('crm-sheet-report', async () => {
+        const lock = await mongoStore.withDistributedLock(lockName, async () => {
           const began = now();
           // Read persisted authoritative data AFTER acquiring the cross-instance
           // lock, not a potentially stale instance-local repository cache.
