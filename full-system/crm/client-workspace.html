@@ -1346,14 +1346,15 @@ table td,table th{border-color:var(--v2-line)!important}
         `<div class="score-ring ${cls}" title="Client Score: ${score}/100">${score}</div>`;
     }
 
-    const displayPhone = lead.PrimaryMobile||lead.Phone;
+    const invalidNumber = lead.PhoneValidity === 'INVALID';
+    const displayPhone = invalidNumber ? lead.InvalidPhoneRaw : lead.PrimaryMobile||lead.Phone;
     document.getElementById('meta-phone').innerHTML  = `📱 ${esc(phoneLabel(displayPhone))}`;
     document.getElementById('meta-email').innerHTML  = `✉️ ${esc(lead.Email||'—')}`;
     document.getElementById('meta-source').innerHTML = `🏷️ ${esc(lead.Source||lead.LeadSource||'—')}`;
     document.getElementById('meta-agent').innerHTML  = `👤 ${esc(lead.AssignedAgentID||'—')}`;
 
-    const phone = safePhone(lead.PrimaryMobile||lead.Phone);
-    const waPhone = safePhone(lead.WhatsApp || lead.PrimaryMobile || lead.Phone);
+    const phone = invalidNumber ? '' : safePhone(lead.PrimaryMobile||lead.Phone);
+    const waPhone = invalidNumber ? '' : safePhone(lead.WhatsApp || lead.PrimaryMobile || lead.Phone);
     const callBtn = document.getElementById('btn-call');
     const waBtn = document.getElementById('btn-whatsapp');
     callBtn.dataset.phone = phone;
@@ -2420,7 +2421,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const rowsBySource = new Map();
     const sourceKey = (item, index) => {
       const tab = item.SourceTab || item.Tab || item.sourceTab || String(item._source || '').split(':').pop();
-      return String(tab || item.TransactionID || `sheet-item-${index}`);
+      return item.SourceRow != null ? `${tab}:row:${item.SourceRow}` : String(tab || item.TransactionID || `sheet-item-${index}`);
     };
     sheetTransactions.forEach((item, index) => rowsBySource.set(sourceKey(item, index), item));
     // The lead's latest sync snapshot takes precedence over legacy imported rows.
@@ -2438,13 +2439,19 @@ table td,table th{border-color:var(--v2-line)!important}
       const budget = editNeedBudget(item);
       const size = ['BHK', 'AreaMin', 'AreaMax', 'PropertyType']
         .map(key => editNeedText(getRequirementValue(item, key))).filter(Boolean).slice(0, 2).join(' · ');
-      const label = item.SourceTab || item.Tab || item.sourceTab || `Sheet item ${index + 1}`;
+      const label = (item.SourceTab || item.Tab || item.sourceTab || `Sheet item ${index + 1}`) + (item.SourceRow ? ` · Row ${item.SourceRow}` : '') + (item.DuplicateNumber ? ' · Duplicate Number' : '');
       const details = [location, budget !== 'Not shared' ? budget : '', size].filter(Boolean).join(' · ');
       return `<div class="sheet-basic-item">
         <strong>${esc(type)} · ${esc(category)}</strong>
         <span>${esc(label)} · Confirm this with the client${details ? `<br>${esc(details)}` : ''}</span>
       </div>`;
     }).join('');
+    const originalRows = asArray(workspace?.lead?.ImportedSheetDetails);
+    if (originalRows.length) root.innerHTML += '<details class="sheet-basic-item"><summary>Original Sheet details</summary>' + originalRows.map(item => {
+      const label = `${item.SourceTab || 'Sheet'} · Row ${item.SourceRow || '—'}${item.DuplicateNumber ? ' · Duplicate Number' : ''}${item.InvalidNumber ? ' · Invalid Number' : ''}`;
+      const details = Object.entries(item.Columns || {}).filter(([,v]) => v != null && v !== '').map(([k,v]) => `<div><strong>${esc(k)}</strong>: ${esc(String(v))}</div>`).join('');
+      return `<section><h4>${esc(label)}</h4>${details}</section>`;
+    }).join('') + '</details>';
   }
 
   function renderClientFormFollowups() {
