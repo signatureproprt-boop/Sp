@@ -32,8 +32,6 @@ class V2QuickCaptureService {
 
     if (!name) return { ok: false, error: 'client.name is required' };
     if (!primaryMobile) return { ok: false, error: 'client.primaryMobile is required' };
-    if (!transactionType) return { ok: false, error: 'transaction.transactionType is required' };
-    if (!category) return { ok: false, error: 'requirement.category is required' };
 
     const duplicatePayload = {
       ClientName: name,
@@ -73,6 +71,10 @@ class V2QuickCaptureService {
         if (!access.ok) {
           return { ok: false, statusCode: 404, error: 'Client not found' };
         }
+        // Capture opens the existing identity. Criteria are edited explicitly
+        // in its workspace, so a duplicate submission cannot erase them.
+        return { ok: true, client: { leadId: lead.LeadID, name: lead.ClientName,
+          created: false, reused: true }, transaction: null, nextQuestions: [] };
       } else {
         // Do not pass client-controlled tenant or audit fields into the service.
         const leadResult = this.leadSvc.createLead({

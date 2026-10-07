@@ -25,6 +25,28 @@ function fixture(t) {
 }
 const need = { TransactionType: 'Purchase', Category: 'Residential', SubCategory: 'Flat', BudgetMax: 8000000, Location1: 'Vesu', BHKMin: 2, RequirementStatus: 'Active', ClientRequestID: 'save-1' };
 
+test('name and mobile capture creates only a lead and duplicate capture preserves saved details', async t => {
+  const {repo, router} = fixture(t);
+  const payload = {client: {name: 'New Person', primaryMobile: '9876543212'}};
+  const first = router.quickCaptureSvc.capture(payload, actor);
+  assert.equal(first.ok, true, first.error);
+  const id = first.client.leadId;
+  assert.equal(first.client.created, true);
+  router.leadSvc.updateLead(id, {BudgetMax: 8000000, Location1: 'Vesu', BHK: '3', RequirementType: 'Purchase'}, actor);
+  const again = router.quickCaptureSvc.capture({...payload, client: {...payload.client, name: 'Different spelling'}, transaction: {transactionType: 'Rent'}, requirement: {category: 'Commercial'}}, actor);
+  assert.equal(again.ok, true, again.error);
+  assert.equal(again.client.leadId, id);
+  assert.equal(again.client.reused, true);
+  assert.equal(repo.readLead(id).ClientName, 'New Person');
+  assert.equal(repo.readLead(id).BudgetMax, 8000000);
+  assert.equal(repo.readLead(id).Location1, 'Vesu');
+  assert.equal(repo.readLead(id).BHK, '3');
+  assert.equal(repo.readLead(id).RequirementType, 'Purchase');
+  assert.equal(repo.read().Leads.length, 3);
+  assert.equal(repo.read().Transactions.length, 0);
+  assert.equal(repo.read().Requirements.length, 0);
+});
+
 test('basic client edits, calls and quick capture never create a transaction', async t => {
   const {repo, router, request} = fixture(t);
   const changed = await request('PATCH', '/api/v2/clients/L1', { BudgetMax: 6000000, Location1: 'Pal', BHK: '3' });

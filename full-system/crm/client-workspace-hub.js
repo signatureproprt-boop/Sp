@@ -128,19 +128,28 @@ function renderPager(){
  el.innerHTML='<button class="btn" style="background:#fff;border:1px solid var(--border);color:var(--brown)" '+(p.hasPrev?'':'disabled')+' onclick="changePage(-1)">← Previous</button><span style="font-size:12px;color:var(--muted)">Page '+p.page+' of '+p.totalPages+' · '+p.total+' clients</span><button class="btn" style="background:#fff;border:1px solid var(--border);color:var(--brown)" '+(p.hasNext?'':'disabled')+' onclick="changePage(1)">Next →</button>'
 }
 function changePage(delta){const next=queryState.page+delta;if(next<1||next>queryState.totalPages)return;queryState.page=next;load()}
-function openNewClient(){document.getElementById('new-client-modal').classList.add('show');document.getElementById('nc-name').focus()}
+function openNewClient(){document.getElementById('new-client-modal').classList.add('show');updateCaptureFields();document.getElementById('nc-name').focus()}
 function closeNewClient(){document.getElementById('new-client-modal').classList.remove('show')}
+function updateCaptureFields(){
+ const category=document.getElementById('nc-cat').value;
+ document.getElementById('nc-bhk-wrap').hidden=category!=='Residential';
+ const renting=/Rent|Lease/.test(document.getElementById('nc-txn').value);
+ document.getElementById('nc-budget-label').textContent=renting?'Monthly Rent (₹)':'Budget / Expected Price (₹)';
+}
+let creatingClient=false;
 async function createClient(){
+ if(creatingClient)return;
  const err=document.getElementById('nc-error');err.textContent='';
  const name=document.getElementById('nc-name').value.trim(), mobile=document.getElementById('nc-mobile').value.trim();
  const txn=document.getElementById('nc-txn').value, cat=document.getElementById('nc-cat').value;
- if(!name||!mobile||!txn||!cat){err.textContent='Name, Mobile, Transaction and Category are required.';return}
+ if(!name||!mobile){err.textContent='Name and Mobile are required.';return}
  const bhk=(document.getElementById('nc-bhk')?.value||'').trim();
  const requirement={category:cat,locations:[],
    BudgetMax:document.getElementById('nc-budget').value?Number(document.getElementById('nc-budget').value):undefined};
- if(bhk) requirement.BHK=bhk;
+ if(bhk&&cat==='Residential') requirement.BHK=bhk;
  const loc=document.getElementById('nc-location').value.trim();if(loc){requirement.Location1=loc;requirement.locations=[loc]}
  try{
+  creatingClient=true;
   const res=await fetch('/api/v2/quick-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    client:{
      name,primaryMobile:mobile,
@@ -153,6 +162,7 @@ async function createClient(){
   if(!j.ok){err.textContent=j.requiresConfirmation?'Possible duplicate found. Existing client should be opened instead.':(j.error||'Unable to create client.');return}
   closeNewClient();window.location.href='/client-workspace?id='+encodeURIComponent(j.client?.leadId||j.leadId||'');
  }catch(e){err.textContent='Network error: '+e.message}
+ finally{creatingClient=false}
 }
 window.__signatureClientsBooted = true;
 try {

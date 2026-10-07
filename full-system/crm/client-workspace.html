@@ -665,12 +665,12 @@ table td,table th{border-color:var(--v2-line)!important}
           <textarea id="edit-lost-note" rows="2" placeholder="Additional context"></textarea>
         </div>
         <div class="client-form-heading">🏠 Basic property details</div>
-        <div class="form-group"><label for="edit-purpose">Purpose</label><select id="edit-purpose"><option value="">Not confirmed</option><option>Purchase</option><option>Sale</option><option>Rent</option><option>Rent Out</option><option>Lease</option></select></div>
-        <div class="form-group"><label for="edit-property-type">Property type</label><input id="edit-property-type" type="text" /></div>
-        <div class="form-group"><label for="edit-budget-min">Budget Min (₹)</label><input id="edit-budget-min" type="number" min="0" /></div>
-        <div class="form-group"><label for="edit-budget-max">Budget / Rent Max (₹)</label><input id="edit-budget-max" type="number" min="0" /></div>
+        <div class="form-group"><label for="edit-purpose">Purpose</label><select id="edit-purpose" onchange="updateBasicPropertyFields()"><option value="">Not confirmed</option><option>Purchase</option><option>Sale</option><option>Rent</option><option>Rent Out</option><option>Lease</option><option>Lease Out</option></select></div>
+        <div class="form-group"><label for="edit-property-type">Property type</label><input id="edit-property-type" type="text" list="basic-property-types" oninput="updateBasicPropertyFields()" /><datalist id="basic-property-types"><option value="Residential"><option value="Commercial"><option value="Land"><option value="Industrial"><option value="Agriculture"></datalist></div>
+        <div class="form-group"><label for="edit-budget-min" id="edit-budget-min-label">Budget Min (₹)</label><input id="edit-budget-min" type="number" min="0" /></div>
+        <div class="form-group"><label for="edit-budget-max" id="edit-budget-max-label">Budget / Rent Max (₹)</label><input id="edit-budget-max" type="number" min="0" /></div>
         <div class="form-group"><label for="edit-location">Preferred location</label><input id="edit-location" type="text" /></div>
-        <div class="form-group"><label for="edit-bhk">BHK / Size</label><input id="edit-bhk" type="text" /></div>
+        <div class="form-group" id="edit-bhk-wrap"><label for="edit-bhk">BHK</label><input id="edit-bhk" type="text" /></div>
         <div class="client-form-heading">📝 Client notes</div>
         <div class="form-group full"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
       </div>
@@ -2528,6 +2528,7 @@ table td,table th{border-color:var(--v2-line)!important}
       if (input.tagName === 'SELECT' && value && !Array.from(input.options).some(o => o.value === value)) input.add(new Option(value, value));
       input.value = value ?? '';
     });
+    updateBasicPropertyFields();
     const callLink = document.getElementById('client-form-call');
     const whatsappLink = document.getElementById('client-form-whatsapp');
     const phoneForCall = safePhone(lead.PrimaryMobile || lead.Phone);
@@ -2563,6 +2564,16 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   let savingClientDetails = false;
+  function updateBasicPropertyFields() {
+    const type = document.getElementById('edit-property-type').value.trim();
+    const nonResidential = /^(Commercial|Office|Shop|Showroom|Land|Plot|Industrial|Warehouse|Agriculture)$/i.test(type);
+    document.getElementById('edit-bhk-wrap').hidden = nonResidential;
+    document.getElementById('edit-bhk-wrap').style.display = nonResidential ? 'none' : '';
+    const renting = /Rent|Lease/.test(document.getElementById('edit-purpose').value);
+    document.getElementById('edit-budget-min-label').textContent = renting ? 'Monthly Rent Min (₹)' : 'Budget Min (₹)';
+    document.getElementById('edit-budget-max-label').textContent = renting
+      ? 'Monthly Rent Max (₹)' : 'Budget / Expected Price Max (₹)';
+  }
   async function saveEdit() {
     if (savingClientDetails) return;
     const payload = {
@@ -2582,7 +2593,7 @@ table td,table th{border-color:var(--v2-line)!important}
       BudgetMin: numOrNull(document.getElementById('edit-budget-min').value),
       BudgetMax: numOrNull(document.getElementById('edit-budget-max').value),
       Location1: document.getElementById('edit-location').value.trim() || null,
-      BHK: document.getElementById('edit-bhk').value.trim() || null,
+      BHK: document.getElementById('edit-bhk-wrap').hidden ? null : (document.getElementById('edit-bhk').value.trim() || null),
       Notes:          document.getElementById('edit-notes').value.trim()
     };
     if (payload.ClientStatus === 'Lost' && !payload.LostReason) {

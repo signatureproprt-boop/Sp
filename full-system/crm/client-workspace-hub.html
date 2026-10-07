@@ -111,21 +111,22 @@ table td,table th{border-color:var(--v2-line)!important}
 <div id="new-client-modal" class="modal" onclick="if(event.target===this)closeNewClient()">
   <div class="modal-box">
     <h2 style="margin:0;color:var(--brown)">＋ New Client</h2>
-    <p style="margin:5px 0 16px;color:var(--muted);font-size:13px">Quick lead capture only. Complete the transaction details during the client call inside the workspace.</p>
+    <p style="margin:5px 0 16px;color:var(--muted);font-size:13px">Save name and mobile now. Confirm property details during the call in this client's workspace.</p>
     <div class="form-grid">
       <div class="fg"><label>Client Name *</label><input id="nc-name" placeholder="Full name"></div>
       <div class="fg"><label>Mobile *</label><input id="nc-mobile" type="tel" placeholder="+91 98765 43210"></div>
       <div class="fg"><label>Lead Source</label><select id="nc-source"><option value="">— Select —</option><option>Walk-in</option><option>Referral</option><option>WhatsApp</option><option>99Acres</option><option>MagicBricks</option><option>Housing.com</option><option>Instagram</option><option>Facebook</option><option>Builder</option><option>Broker</option><option>Manual</option><option>Other</option></select></div>
-      <div class="fg"><label>Transaction *</label><select id="nc-txn"><option value="">— Select —</option><option>Purchase</option><option>Sale</option><option>Rent</option><option>Rent Out</option><option>Lease</option><option>Lease Out</option></select></div>
-      <div class="fg"><label>Category *</label><select id="nc-cat"><option value="">— Select —</option><option>Residential</option><option>Commercial</option><option>Land</option><option>Industrial</option><option>Agriculture</option></select></div>
-      <div class="fg"><label>BHK / Basic Type</label><input id="nc-bhk" placeholder="e.g. 3 BHK / Office / Shop"></div>
-      <div class="fg"><label>Budget / Expected Price</label><input id="nc-budget" type="number" placeholder="e.g. 8000000"></div>
+      <div class="fg"><label>Purpose (optional)</label><select id="nc-txn" onchange="updateCaptureFields()"><option value="">Not confirmed</option><option>Purchase</option><option>Sale</option><option>Rent</option><option>Rent Out</option><option>Lease</option><option>Lease Out</option></select></div>
+      <div class="fg"><label>Category (optional)</label><select id="nc-cat" onchange="updateCaptureFields()"><option value="">Not confirmed</option><option>Residential</option><option>Commercial</option><option>Land</option><option>Industrial</option><option>Agriculture</option></select></div>
+      <div class="fg" id="nc-bhk-wrap" hidden><label>BHK</label><input id="nc-bhk" placeholder="e.g. 3 BHK"></div>
+      <div class="fg"><label id="nc-budget-label">Budget / Expected Price (₹)</label><input id="nc-budget" type="number" min="0" placeholder="e.g. 8000000"></div>
       <div class="fg full"><label>Location</label><input id="nc-location" placeholder="Vesu, Adajan, City Light…"></div>
       <div id="nc-error" class="fg full" style="color:#dc2626;font-size:12px"></div>
     </div>
     <div class="modal-actions"><button class="btn" style="background:#fff;border:1px solid var(--border)" onclick="closeNewClient()">Cancel</button><button class="btn gold" onclick="createClient()">Create Lead & Open Workspace</button></div>
   </div>
 </div>
+<style>.fg[hidden]{display:none}</style>
 <script src="/client-workspace-hub.js" defer></script>
 </body>
 </html>
