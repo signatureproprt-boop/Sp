@@ -1257,10 +1257,10 @@ table td,table th{border-color:var(--v2-line)!important}
     return `<div class="${groupClass}"><label>${esc(lbl)}${tierBadge}</label>${input}${priority}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
   }
 
-  function rerenderDynamicForm(mode) {
+  function rerenderDynamicForm(mode, savedValues = null) {
     const state = dynamicFormState[mode];
     if (!state?.config) return;
-    const values = collectDynamicValues(mode);
+    const values = savedValues || collectDynamicValues(mode);
     const visibleStates = evaluateFieldVisibility(state.config, state.rules, values);
     const fields = asArray(state.config.fields).filter(f => {
       if (!f) return false;
@@ -1987,7 +1987,7 @@ table td,table th{border-color:var(--v2-line)!important}
       // Edit uses this transaction's values, rather than another need's lead prefill.
       dynamicFormState.need.values = values;
       if (dynamicFormState.need.config) {
-        rerenderDynamicForm('need');
+        rerenderDynamicForm('need', values);
       } else {
         ['BudgetMax', 'Location1'].forEach(key => {
           const input = document.getElementById('need-fld-' + key);
