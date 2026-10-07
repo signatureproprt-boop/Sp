@@ -68,6 +68,8 @@ let shutdownForceExitTimer = null;
 let googleSheetSyncInterval = null;
 const { createReportRunner } = require('./src/services/crmSheetReportRunner');
 const crmSheetReportRunner = createReportRunner({ mongoStore });
+const { createExistingRequirementRunner } = require('./src/services/existingSheetRequirementRunner');
+const existingRequirementRunner = createExistingRequirementRunner({ mongoStore });
 let serverBinding = null;
 
 const MIME_TYPES = {
@@ -3128,6 +3130,12 @@ async function handleApi(req, res, url) {
       return;
     }
 
+    if (/^\/api\/sync\/existing-sheet-requirement\/?$/i.test(pathname) && ['GET', 'POST'].includes(req.method)) {
+      if (!ensureAdminPermissionOrRespond(req, res, url, req.method === 'GET' ? 'ADMIN_READ' : 'ADMIN_UPDATE')) return;
+      if (req.method === 'GET') sendJson(res, { ok: true, data: existingRequirementRunner.status() });
+      else { const result = await existingRequirementRunner.run(); sendJson(res, result, result.ok ? 200 : 503); }
+      return;
+    }
     // Separate, authenticated CRM-owned reporting workbook; legacy exports stay disabled.
     if (/^\/api\/sync\/crm-report\/?$/i.test(pathname) && ['GET', 'POST'].includes(req.method)) {
       if (!ensureAdminPermissionOrRespond(req, res, url, req.method === 'GET' ? 'ADMIN_READ' : 'ADMIN_UPDATE')) return;
@@ -5503,6 +5511,7 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
     writeResponse(payload, statusCode);
     // Best-effort immediate refresh after a durably saved CRM mutation.
     void crmSheetReportRunner.run();
+    void existingRequirementRunner.run();
   });
 }
 
@@ -5901,6 +5910,8 @@ async function startServer() {
       }
       void crmSheetReportRunner.run();
       registerRecurringBackgroundTimer(setInterval(() => { void crmSheetReportRunner.run(); }, 60 * 1000));
+      void existingRequirementRunner.run();
+      registerRecurringBackgroundTimer(setInterval(() => { void existingRequirementRunner.run(); }, 60 * 1000));
       syncGoogleSheet();
       googleSheetSyncInterval = registerRecurringBackgroundTimer(setInterval(syncGoogleSheet, 5 * 60 * 1000));
     }
