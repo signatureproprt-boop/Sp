@@ -54,3 +54,14 @@ test('reviewed mode still blocks ambiguous CRM mapping and invalid-row ID collis
  const db={Leads:[{LeadID:'COMM-1',PrimaryMobile:'9876543210'},{LeadID:'COMM-1',PrimaryMobile:'8765432109'}]};
  const result=planMigration(db,{...input(row(),row('-8511877241')),reviewedRows:true});assert.deepEqual(result.next.Leads,db.Leads);assert.equal(result.report.issues.length,2);
 });
+test('confirmed distinct source identity is repaired without guessing work ownership',()=>{
+ const db={Leads:[{LeadID:'COMM-1',LegacyID:'COMM-1',ClientName:'Other',PrimaryMobile:'8765432109'},{LeadID:'COMM-1',LegacyID:'RENT-1',ClientName:'Client',PrimaryMobile:'#ERROR!',SheetBasicRequirements:[{SourceTab:'Comm'},{SourceTab:'Rent'}]}],Transactions:[{TransactionID:'T1',LeadID:'COMM-1'}]};
+ const src={...input({...row('9876543210',{'Lead ID':'RENT-1'}),tab:'Rent'}),reviewedRows:true,identityRepairs:[{oldLeadId:'COMM-1',legacyId:'RENT-1',sourceTab:'Rent',sourceRow:2}]};
+ const result=planMigration(db,src);assert.equal(result.next.Leads[1].LeadID,'RENT-1');assert.equal(result.next.Leads[1].PrimaryMobile,'9876543210');assert.equal(result.next.Leads[0].LeadID,'COMM-1');assert.equal(result.next.Transactions[0].LeadID,'COMM-1');assert.ok(result.next.Transactions[0].IdentityMappingReview);assert.equal(result.report.issues.length,0);assert.equal(planMigration(result.next,src).report.changes.length,0);
+ assert.notEqual(planMigration(db,src).report.token,planMigration({...db,Transactions:[]},src).report.token);
+ assert.throws(()=>planMigration(db,src,{role:'AGENT'}),/administrator/);
+});
+test('negative source numbers match original imported country-prefixed phone without guessing a correction',()=>{
+ const db={Leads:[{LeadID:'COMM-1',LegacyID:'COMM-1',ClientName:'Client',PrimaryMobile:'+91 85118 77241',CreatedBy:'GoogleSheetSync'}]};
+ const result=planMigration(db,{...input(row('-8511877241')),reviewedRows:true});assert.equal(result.report.issues.length,0);assert.equal(result.next.Leads.length,1);assert.equal(result.next.Leads[0].PhoneValidity,'INVALID');assert.equal(result.next.Leads[0].PrimaryMobile,'+91 85118 77241');assert.equal(result.next.Leads[0].InvalidPhoneRaw,'-8511877241');
+});
