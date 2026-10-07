@@ -93,3 +93,20 @@ test('runner acquires shared lock before reading durable snapshot and coalesces 
   const runner = createReportRunner({ mongoStore, env: { CRM_REPORT_SHEET_ID: 'report' }, serviceFactory: () => ({ sync: async () => { events.push('write'); return { ok: true, complete: true }; } }) });
   await Promise.all([runner.run(), runner.run()]); assert.equal(reads, 1); assert.deepEqual(events, ['lock', 'read', 'write']);
 });
+test('client edits and multiple requirements share one cell; related work follows same identity', () => {
+  const db = fixture(); db.Leads[0].BudgetMax = 7000000;
+  db.Requirements = []; db.Transactions = [];
+  db.Shortlists = [{ShortlistID:'S1',LeadID:'L1',PropertyID:'P1'}];
+  db.SiteVisits = [{VisitID:'V1',LeadID:'L1',Status:'Scheduled'}];
+  let p = buildProjection(db);
+  assert.equal(p.Clients.length,1); assert.match(p.Clients[0][10],/7000000/);
+  const work = JSON.parse(p.Clients[0][11]); assert.equal(work.Shortlists[0].PropertyID,'P1'); assert.equal(work.SiteVisits[0].VisitID,'V1');
+  db.Requirements = [{RequirementID:'R2',LeadID:'L1',BudgetMax:8000000},{RequirementID:'R1',LeadID:'L1',TransactionType:'Rent',BudgetMax:50000}];
+  p=buildProjection(db); assert.equal(p.Clients.length,1); assert.match(p.Clients[0][10],/R1:.*50000\nR2:.*8000000/);
+});
+test('legacy reporting Clients headers upgrade once; future syncs keep fixed schema', async () => {
+  const fake=fakeSheets(); fake.values.Clients[0]=HEADERS.Clients.slice(0,10);
+  const svc=new CrmSheetReportService({sheets:fake.api,spreadsheetId:'report'});
+  await svc.sync(fixture(),'v1'); assert.deepEqual(fake.values.Clients[0],HEADERS.Clients);
+  await svc.sync(fixture(),'v2'); assert.equal(fake.values.Clients.length,2);
+});

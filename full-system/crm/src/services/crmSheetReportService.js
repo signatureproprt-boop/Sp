@@ -3,7 +3,7 @@
 // This workbook is a CRM projection, never an import source. All values are
 // explicitly typed so phones and user notes cannot become spreadsheet formulas.
 const SOURCE_SHEET_ID = '1nkjzrMRDCMoWFnzxxovvxu-fzILv6Li-VfBY4VLr-QI';
-const CLIENT_HEADERS = ['Client ID', 'Name', 'Phone', 'Email', 'Client Status', 'Assigned To', 'Next Follow-up', 'Source', 'Notes', 'Updated At'];
+const CLIENT_HEADERS = ['Client ID', 'Name', 'Phone', 'Email', 'Client Status', 'Assigned To', 'Next Follow-up', 'Source', 'Notes', 'Updated At', 'Requirement', 'Work Summary'];
 const WORK_HEADERS = ['Record ID', 'Client ID', 'Name', 'Phone', 'Transaction ID', 'Record Type', 'Transaction Type', 'Category', 'Status', 'Stage', 'Budget Min', 'Budget Max', 'Location', 'BHK', 'Property Type', 'Assigned To', 'Next Follow-up', 'Lost Reason', 'Notes', 'Updated At'];
 const HEADERS = {
   Overview: ['Metric', 'Value'], Clients: CLIENT_HEADERS, Work: WORK_HEADERS,
@@ -54,9 +54,6 @@ function buildProjection(db, snapshotAt) {
     issue('Leads', key, 'Phone shared by multiple Client IDs; identity review required');
     leads.delete(key);
   }
-  for (const [key, lead] of leads) out.Clients.push([key, lead.ClientName || lead.Name, lead.PrimaryMobile || lead.Phone, lead.Email,
-    lead.ClientStatus || lead.LeadStatus, lead.AssignedAgentID, lead.NextFollowUp, lead.LeadSource || lead.Source || lead._source,
-    lead.Notes, lead.UpdatedAt]);
   const validTx = new Map();
   for (const [key, txn] of transactions) {
     if (!leads.has(id(txn.LeadID))) { issue('Transactions', key, 'Client missing or ambiguous; excluded'); continue; }
@@ -114,8 +111,12 @@ function buildProjection(db, snapshotAt) {
            str(txn.Category).toLowerCase() === str(basic.Category).toLowerCase())));
       if (represented) continue;
       const clientStatus = str(lead.ClientStatus || lead.LeadStatus).toLowerCase();
+      const currentBasic = { ...basic };
+      for (const k of ['TransactionType', 'Category', 'BudgetMin', 'BudgetMax', 'Location1', 'BHK', 'PropertyType', 'SubCategory', 'Notes']) {
+        if (field(lead, k) !== '') currentBasic[k] = field(lead, k);
+      }
       addWork(`BASIC:${leadKey}:${tab}`, leadKey, '', 'Unconfirmed Sheet need',
-        ['lost', 'closed', 'won'].includes(clientStatus) ? { ...basic, Status: lead.ClientStatus || lead.LeadStatus } : basic);
+        ['lost', 'closed', 'won'].includes(clientStatus) ? { ...currentBasic, Status: lead.ClientStatus || lead.LeadStatus } : currentBasic);
     }
     if (!out.Work.some(row => row[1] === leadKey)) {
       const clientStatus = str(lead.ClientStatus || lead.LeadStatus).toLowerCase();
@@ -130,6 +131,25 @@ function buildProjection(db, snapshotAt) {
     out.FollowUps.push([key, follow.LeadID, follow.TransactionID, follow.RequirementID, follow.Status || follow.FollowUpStatus,
       follow.DueAt || follow.FollowUpDate || follow.ScheduledAt || follow.NextFollowUpDate, follow.AssignedUser || follow.AssignedTo || follow.AssignedAgentID,
       follow.Notes || follow.Note, follow.UpdatedAt]);
+  }
+  // One client row and fixed summary columns, independent of number of needs.
+  const needKeys = ['TransactionType', 'Category', 'PropertyType', 'SubCategory', 'BudgetMin', 'BudgetMax', 'Location1', 'Location2', 'Location3', 'BHK', 'BHKMin', 'BHKMax', 'AreaMin', 'AreaMax', 'Furnishing', 'BusinessUse', 'PossessionTimeline', 'Preferences', 'SpecialNotes', 'Notes'];
+  const describe = row => needKeys.map(k => {
+    const v = field(row, k); return v === '' || v == null ? '' : `${k}: ${str(v)}`;
+  }).filter(Boolean).join(' | ');
+  for (const [key, lead] of leads) {
+    const confirmed = out.Requirements.filter(r => id(r[1]) === key)
+      .map(r => requirements.get(id(r[0]))).sort((a,b) => id(a.RequirementID).localeCompare(id(b.RequirementID)));
+    const current = describe(lead);
+    const needs = confirmed.length ? confirmed.map(r => `${r.RequirementID}: ${describe(r)}`)
+      : current ? [current] : (lead.SheetBasicRequirements || []).map(r => `Unconfirmed: ${describe(r)}`);
+    const work = {};
+    for (const collection of ['Transactions', 'FollowUps', 'Shortlists', 'SiteVisits', 'Activities']) {
+      work[collection] = (db[collection] || []).filter(r => id(r.LeadID || r.ClientID) === key);
+    }
+    out.Clients.push([key, lead.ClientName || lead.Name, lead.PrimaryMobile || lead.Phone, lead.Email,
+      lead.ClientStatus || lead.LeadStatus, lead.AssignedAgentID, lead.NextFollowUp, lead.LeadSource || lead.Source || lead._source,
+      lead.Notes, lead.UpdatedAt, needs.filter(Boolean).join('\n'), work]);
   }
   // Deduplicate issue keys without suppressing distinct reasons.
   out['Sync Issues'] = [...new Map(out['Sync Issues'].map(row => [row[0], row])).values()];
@@ -190,7 +210,7 @@ class CrmSheetReportService {
       fields: 'spreadsheetId,sheets.properties' }, options)).data;
     const byName = new Map((metadata.sheets || []).map(s => [s.properties.title, s.properties]));
     for (const tab of TABS) if (!byName.has(tab)) throw new Error(`Missing report tab: ${tab}`);
-    const ranges = TABS.map(tab => `'${tab}'!A1:${String.fromCharCode(64 + HEADERS[tab].length)}${byName.get(tab).gridProperties.rowCount}`);
+    const ranges = TABS.map(tab => `'${tab}'!A1:${String.fromCharCode(64 + Math.min(HEADERS[tab].length, byName.get(tab).gridProperties.columnCount || HEADERS[tab].length))}${byName.get(tab).gridProperties.rowCount}`);
     if (TABS.reduce((n, tab) => n + byName.get(tab).gridProperties.rowCount * HEADERS[tab].length, 0) > 500000) {
       throw new Error('Report exceeds safe scan size; no data written');
     }
@@ -199,9 +219,12 @@ class CrmSheetReportService {
     const requests = [];
     for (const [i, tab] of TABS.entries()) {
       const values = existing[i]?.values || [];
-      if (values.length && JSON.stringify(values[0]) !== JSON.stringify(HEADERS[tab])) throw new Error(`Unexpected headers in ${tab}; no data written`);
+      const legacyClientHeaders = tab === 'Clients' && JSON.stringify(values[0]) === JSON.stringify(CLIENT_HEADERS.slice(0, 10));
+      if (values.length && !legacyClientHeaders && JSON.stringify(values[0]) !== JSON.stringify(HEADERS[tab])) throw new Error(`Unexpected headers in ${tab}; no data written`);
       const rows = reconcileRows(HEADERS[tab], projection[tab], values);
       const props = byName.get(tab);
+      if ((props.gridProperties.columnCount || HEADERS[tab].length) < HEADERS[tab].length) requests.push({ updateSheetProperties: {
+        properties: { sheetId: props.sheetId, gridProperties: { columnCount: HEADERS[tab].length } }, fields: 'gridProperties.columnCount' } });
       if (rows.length > props.gridProperties.rowCount) requests.push({ updateSheetProperties: {
         properties: { sheetId: props.sheetId, gridProperties: { rowCount: rows.length + 100 } }, fields: 'gridProperties.rowCount' } });
       requests.push({ updateCells: { range: { sheetId: props.sheetId, startRowIndex: 0, endRowIndex: rows.length,
