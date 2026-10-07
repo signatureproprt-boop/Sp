@@ -2605,7 +2605,9 @@ table td,table th{border-color:var(--v2-line)!important}
       const res = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
       }).then(r => r.json());
-      if (res.ok) { await loadWorkspace(); openEditModal(); }
+      if (res.ok) { await loadWorkspace(); openEditModal();
+        if (res.sheetRequirementSync && !res.sheetRequirementSync.ok) document.getElementById('edit-error').textContent = 'Client saved. Sheet requirement update is pending; please check Sheet sync status.';
+      }
       else document.getElementById('edit-error').textContent = res.error||'Failed to save';
     } catch(e) { document.getElementById('edit-error').textContent = e.message; }
     finally { savingClientDetails = false; }
