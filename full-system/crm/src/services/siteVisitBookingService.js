@@ -69,7 +69,9 @@ class SiteVisitBookingService {
     let bookingStatus = 'Scheduled';
     if (statuses.every((s) => s === 'Completed')) bookingStatus = 'Completed';
     else if (statuses.every((s) => s === 'Cancelled')) bookingStatus = 'Cancelled';
+    else if (statuses.every((s) => s === 'NoShow')) bookingStatus = 'NoShow';
     else if (statuses.some((s) => s === 'Confirmed')) bookingStatus = 'Confirmed';
+    else if (statuses.some((s) => s === 'Rescheduled')) bookingStatus = 'Rescheduled';
     return {
       VisitBookingID: bookingId,
       LeadID: first.LeadID,
@@ -92,7 +94,7 @@ class SiteVisitBookingService {
 
   create(payload = {}, actor = {}) {
     const transactionId = payload.requirementId || payload.RequirementID || payload.transactionId || payload.TransactionID;
-    const propertyIds = Array.isArray(payload.propertyIds) ? payload.propertyIds : (Array.isArray(payload.PropertyIDs) ? payload.PropertyIDs : []);
+    const propertyIds = [...new Set(Array.isArray(payload.propertyIds) ? payload.propertyIds : (Array.isArray(payload.PropertyIDs) ? payload.PropertyIDs : []))];
     const visitDate = payload.visitDate || payload.VisitDate;
     const visitTime = payload.visitTime || payload.VisitTime;
 

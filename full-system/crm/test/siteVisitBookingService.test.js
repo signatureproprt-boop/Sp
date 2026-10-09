@@ -29,6 +29,27 @@ function makeRepo({ shortlisted = true } = {}) {
   };
 }
 
+test('repeated property IDs create only one visit row and one booking property', () => {
+  const repo = makeRepo();
+  const svc = new SiteVisitBookingService(repo);
+  const result = svc.create({ transactionId: 'TXN-1', propertyIds: ['PROP-1', 'PROP-1'], visitDate: '2026-11-01', visitTime: '11:00' });
+  assert.equal(result.ok, true);
+  assert.equal(repo.read().SiteVisits.length, 1);
+  assert.equal(result.data.PropertyCount, 1);
+});
+
+test('booking view preserves NoShow and Rescheduled statuses after update and reload', () => {
+  const svc = new SiteVisitBookingService(makeRepo());
+  const created = svc.create({ transactionId: 'TXN-1', propertyIds: ['PROP-1'], visitDate: '2026-11-01', visitTime: '11:00' });
+  for (const status of ['NoShow', 'Rescheduled']) {
+    const changed = svc.update(created.data.VisitBookingID, {status});
+    assert.equal(changed.ok, true);
+    assert.equal(changed.data.Status, status);
+    assert.equal(svc.get(created.data.VisitBookingID).data.Status, status);
+    assert.equal(svc.listByLead('LEAD-1')[0].Status, status);
+  }
+});
+
 test('site visit rejects property that is not actively shortlisted', () => {
   const svc = new SiteVisitBookingService(makeRepo({ shortlisted: false }));
   const result = svc.create({
