@@ -8,7 +8,7 @@ const { V2Router } = require('./src/api/v2Router');
 const { SESSION_COOKIE_NAME, getSessionMaxAgeSeconds } = require('./src/services/authService');
 const mongoStore = require('./src/data/mongoStore');
 const { PinLoginGuard } = require('./src/services/pinLoginGuard');
-const { confirmMongoPersistence } = require('./src/services/durableResponse');
+const { confirmMongoPersistence, waitForPostSaveReport } = require('./src/services/durableResponse');
 
 const LOCAL_DEV_PORT = 3000;
 const PUBLIC_HOST = '0.0.0.0';
@@ -5505,9 +5505,9 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
       }, 503);
       return;
     }
-    // Keep CPU active until the CRM-owned report finishes, after durable save.
+    // Confirm the CRM save first; optional reporting has a bounded response wait.
     const crmReportSync = crmSheetReportRunner.status().configured
-      ? await crmSheetReportRunner.run() : null;
+      ? await waitForPostSaveReport(() => crmSheetReportRunner.run()) : null;
     writeResponse(crmReportSync && payload && typeof payload === 'object'
       ? { ...payload, crmReportSync } : payload, statusCode);
   });

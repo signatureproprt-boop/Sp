@@ -13,4 +13,20 @@ async function confirmMongoPersistence({ enabled, initialized, failureBaseline =
   }
 }
 
-module.exports = { confirmMongoPersistence };
+// Optional external reporting must not hold a durably saved CRM change open.
+// The runner continues its existing work and retry schedule after this deadline.
+async function waitForPostSaveReport(run, timeoutMs = 2000) {
+  let timer;
+  const pending = { ok: false, state: 'PENDING', message: 'CRM saved; report update is pending.' };
+  const completed = Promise.resolve().then(run).catch(() => ({
+    ok: false, state: 'ERROR', message: 'CRM saved; report update failed.'
+  }));
+  try {
+    return await Promise.race([
+      completed,
+      new Promise(resolve => { timer = setTimeout(() => resolve(pending), timeoutMs); })
+    ]);
+  } finally { clearTimeout(timer); }
+}
+
+module.exports = { confirmMongoPersistence, waitForPostSaveReport };
