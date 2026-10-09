@@ -141,6 +141,7 @@ let _writeQueue = Promise.resolve();
 let _lastWriteError = null;
 let _writeStats = { successes: 0, failures: 0, conflicts: 0, lastWriteAt: null };
 let _lastLocalWriteAt = 0;
+let _lastSnapshotReadAt = 0;
 let _pollTimer = null;
 let _pollFailureCount = 0;
 let _reconnectPromise = null;
@@ -220,6 +221,7 @@ async function initMongoOnce(fallbackJsonPath) {
     const snap = await _db.collection(SNAP_COLL).findOne({ _id: SNAP_ID });
     if (snap && snap.payload) {
       _cache = snap.payload;
+      _lastSnapshotReadAt = new Date(snap.updatedAt || 0).getTime() || 0;
       _initialized = true;
       console.log('[mongo] initialization complete');
       startPolling();
@@ -288,13 +290,16 @@ async function pollOnce() {
   const activeDb = _db;
   try {
     const snap = await activeDb.collection(SNAP_COLL).findOne(
-      { _id: SNAP_ID },
+      { _id: SNAP_ID, updatedAt: { $gt: new Date(_lastSnapshotReadAt) } },
       { projection: { payload: 1, updatedAt: 1 }, maxTimeMS: POLL_QUERY_MAX_TIME_MS }
     );
     _pollFailureCount = 0;
     if (snap && snap.payload && snap.updatedAt) {
       const snapTime = new Date(snap.updatedAt).getTime();
-      if (snapTime > _lastLocalWriteAt) _cache = snap.payload;
+      if (Number.isFinite(snapTime)) {
+        if (snapTime > _lastLocalWriteAt) _cache = snap.payload;
+        _lastSnapshotReadAt = Math.max(_lastSnapshotReadAt, snapTime);
+      }
     }
   } catch (e) {
     _pollFailureCount += 1;

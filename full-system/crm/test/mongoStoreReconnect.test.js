@@ -8,6 +8,34 @@ const storeModulePath = require.resolve('../src/data/mongoStore');
 const originalMongoModule = require.cache[mongoModulePath];
 const originalEnv = { ...process.env };
 
+test('unchanged snapshots do not transfer payload again; changed snapshots refresh once', async () => {
+  let snapshot = { payload: { Leads: [{ LeadID: 'first' }] }, updatedAt: new Date(1000) };
+  let payloadTransfers = 0;
+  class Client {
+    async connect() {}
+    async close() {}
+    db() {
+      return { collection: () => ({ findOne: async (filter) => {
+        if (filter.updatedAt && snapshot.updatedAt <= filter.updatedAt.$gt) return null;
+        payloadTransfers += 1;
+        return snapshot;
+      } }) };
+    }
+  }
+  const store = loadStore({ MongoClient: Client });
+  try {
+    await store.initMongo();
+    await store.__pollOnceForTests();
+    await store.__pollOnceForTests();
+    assert.equal(payloadTransfers, 1);
+    snapshot = { payload: { Leads: [{ LeadID: 'changed' }] }, updatedAt: new Date(2000) };
+    await store.__pollOnceForTests();
+    assert.equal(store.read().Leads[0].LeadID, 'changed');
+    await store.__pollOnceForTests();
+    assert.equal(payloadTransfers, 2);
+  } finally { await cleanupStore(store); }
+});
+
 function makeFakeMongo() {
   const clients = [];
   let pollFailuresRemaining = 0;
