@@ -52,8 +52,21 @@ steps:
       - --remove-env-vars=CRM_EXISTING_REQUIREMENT_SHEET_ID
       - --allow-unauthenticated
 
-  # Recovery builds stay on the stable tag until browser login and CRM data
-  # are verified. Production traffic is promoted explicitly after validation.
+  # Pinned traffic must be promoted explicitly after a successful deployment.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        expected_image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID"
+        deployment="$(gcloud run services describe ${_SERVICE} --region=${_REGION} --format='csv[no-heading](spec.template.spec.containers[0].image,status.latestCreatedRevisionName)')"
+        IFS=, read -r actual_image deployed_revision <<< "$deployment"
+        if [ "$actual_image" != "$expected_image" ]; then
+          echo "Service template changed after deployment; traffic promotion stopped."
+          exit 1
+        fi
+        test -n "$deployed_revision"
+        gcloud run services update-traffic ${_SERVICE} --region=${_REGION} --to-revisions="$deployed_revision=100"
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID
