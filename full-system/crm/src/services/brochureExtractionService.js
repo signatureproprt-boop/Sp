@@ -1,6 +1,6 @@
 'use strict';
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_BYTES = 15 * 1024 * 1024;
 
@@ -65,7 +65,7 @@ async function extractBrochure(fileBase64) {
           { inline_data: { mime_type: 'application/pdf', data: buffer.toString('base64') } }
         ]
       }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0 }
+      generationConfig: { responseMimeType: 'application/json' }
     })
   });
 

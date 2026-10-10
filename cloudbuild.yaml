@@ -48,7 +48,7 @@ steps:
       - --timeout=120
       - --no-traffic
       - --tag=snapshot-recovery
-      - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties,CRM_REPORT_SHEET_ID=1ICS50baVcDnFJt6UMTcvNzBAMDbs6tX19T9TA-4b3uk
+      - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties,GEMINI_MODEL=gemini-3.8-flash,GEMINI_AGENT_MODEL=gemini-3.8-flash,CRM_REPORT_SHEET_ID=1ICS50baVcDnFJt6UMTcvNzBAMDbs6tX19T9TA-4b3uk
       - --remove-env-vars=CRM_EXISTING_REQUIREMENT_SHEET_ID
       - --allow-unauthenticated
 

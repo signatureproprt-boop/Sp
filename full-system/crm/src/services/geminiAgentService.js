@@ -1,7 +1,7 @@
 'use strict';
 
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-const DEFAULT_MODEL = process.env.GEMINI_AGENT_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const DEFAULT_MODEL = process.env.GEMINI_AGENT_MODEL || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const MAX_MESSAGE_LENGTH = 4000;
 const MAX_HISTORY_ITEMS = 12;
 const MAX_CONTEXT_ROWS = 25;
@@ -70,7 +70,7 @@ async function askGeminiAgent({ repository, message, history = [], model = DEFAU
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents, generationConfig: { responseMimeType: 'application/json', temperature: 0.2 } })
+    body: JSON.stringify({ contents, generationConfig: { responseMimeType: 'application/json' } })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.error?.message || `Gemini request failed (${response.status})`);
