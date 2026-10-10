@@ -424,7 +424,7 @@ class AuthService {
     return this.publicRoutePatterns.some((pattern) => pattern.test(normalized));
   }
 
-  issueSession(identity = {}) {
+  issueSession(identity = {}, options = {}) {
     const userId = String(identity.userId || identity.userID || '').trim();
     if (!userId) {
       throw new Error('userId is required to issue a session');
@@ -442,7 +442,7 @@ class AuthService {
           ? user.Permissions
           : [];
 
-    const sessionId = crypto.randomBytes(24).toString('hex');
+    const sessionId = (options.dedicatedStore ? 'ds_' : '') + crypto.randomBytes(24).toString('hex');
     const session = {
       sessionId,
       principalType: identity.principalType || '',
@@ -455,18 +455,55 @@ class AuthService {
       expiresAt: new Date(Date.now() + getSessionMaxAgeSeconds(this.repository) * 1000).toISOString()
     };
 
-    if (this.repository && typeof this.repository.upsertSession === 'function') {
+    if (!options.dedicatedStore && this.repository && typeof this.repository.upsertSession === 'function') {
       this.repository.upsertSession(session);
     }
     this.sessions.set(sessionId, session);
     return sessionId;
   }
 
+  async issueDurableSession(identity, store) {
+    if (!store) return this.issueSession(identity);
+    const token = this.issueSession(identity, { dedicatedStore: true });
+    try {
+      await store.save(this.sessions.get(token));
+      return token;
+    } catch (error) {
+      this.sessions.delete(token);
+      throw error;
+    }
+  }
+
+  async prepareRequest(request, store) {
+    const token = sessionTokenFromHeaders(request.headers || {});
+    if (!token.startsWith('ds_')) return;
+    // Read on every request: another instance can revoke this session, and
+    // no in-memory hit may override an absent or expired durable record.
+    this.sessions.delete(token);
+    if (!store || !/^ds_[a-f0-9]{48}$/.test(token)) return;
+    const session = await store.load(token);
+    if (session) {
+      const user = this.repository?.getUser?.(session.userId);
+      if (!user || String(user.Status || '').trim().toUpperCase() !== 'ACTIVE') {
+        await store.remove(token);
+        return;
+      }
+      this.sessions.set(token, session);
+    }
+  }
+
+  async revokeDurableSession(token, store) {
+    if (!String(token || '').startsWith('ds_')) return this.revokeSession(token);
+    if (!store) throw new Error('Session storage unavailable');
+    await store.remove(token);
+    return this.sessions.delete(token);
+  }
+
   revokeSession(sessionId) {
     const sessionKey = String(sessionId || '').trim();
     if (!sessionKey) return false;
     const removed = this.sessions.delete(sessionKey);
-    const persistedRemoved = this.repository && typeof this.repository.deleteSession === 'function'
+    const persistedRemoved = !sessionKey.startsWith('ds_') && this.repository && typeof this.repository.deleteSession === 'function'
       ? this.repository.deleteSession(sessionKey)
       : false;
     return removed || persistedRemoved;
@@ -493,36 +530,16 @@ class AuthService {
       };
     }
 
-    const authHeader = headers.authorization || headers.Authorization || '';
-    const cookieHeader = headers.cookie || headers.Cookie || '';
-    const rawCookieToken = String(cookieHeader)
-      .split(';')
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .map((entry) => {
-        const idx = entry.indexOf('=');
-        return idx === -1 ? [entry, ''] : [entry.slice(0, idx), entry.slice(idx + 1)];
-      })
-      .find(([name]) => name === SESSION_COOKIE_NAME)?.[1] || '';
-    let cookieToken = rawCookieToken;
-    try {
-      cookieToken = decodeURIComponent(rawCookieToken);
-    } catch (_) {
-      cookieToken = rawCookieToken;
-    }
-    const tokenFromHeader = String(authHeader).startsWith('Bearer ')
-      ? String(authHeader).replace(/^Bearer\s+/i, '').trim()
-      : headers['x-session-token'] || headers['x-sessiontoken'] || '';
     // Never accept session credentials from the URL. Query strings can be
     // persisted in browser history, proxy logs, analytics, and referrers.
-    const token = cookieToken || tokenFromHeader || '';
+    const token = sessionTokenFromHeaders(headers);
 
     if (!token) {
       return { authenticated: false, statusCode: 401, error: 'Unauthorized', public: false };
     }
 
     let session = this.sessions.get(token);
-    if (!session && this.repository && typeof this.repository.getSession === 'function') {
+    if (!session && !token.startsWith('ds_') && this.repository && typeof this.repository.getSession === 'function') {
       session = this.repository.getSession(token);
       if (session?.sessionId) {
         this.sessions.set(session.sessionId, session);
@@ -661,6 +678,17 @@ class AuthService {
 
     return { ok: false, statusCode: 403, error: 'Forbidden' };
   }
+}
+
+function sessionTokenFromHeaders(headers = {}) {
+  const cookie = String(headers.cookie || headers.Cookie || '').split(';')
+    .map(part => part.trim()).find(part => part.startsWith(`${SESSION_COOKIE_NAME}=`));
+  const raw = cookie ? cookie.slice(SESSION_COOKIE_NAME.length + 1) : '';
+  let token = raw;
+  try { token = decodeURIComponent(raw); } catch (_) {}
+  const auth = String(headers.authorization || headers.Authorization || '');
+  return token || (auth.startsWith('Bearer ') ? auth.replace(/^Bearer\s+/i, '').trim()
+    : headers['x-session-token'] || headers['x-sessiontoken'] || '');
 }
 
 function getSessionMaxAgeSeconds(repository) {

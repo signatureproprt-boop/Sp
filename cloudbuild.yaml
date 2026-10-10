@@ -46,25 +46,14 @@ steps:
       - --max-instances=10
       - --concurrency=80
       - --timeout=120
+      - --no-traffic
+      - --tag=snapshot-recovery
       - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties,CRM_REPORT_SHEET_ID=1ICS50baVcDnFJt6UMTcvNzBAMDbs6tX19T9TA-4b3uk
       - --remove-env-vars=CRM_EXISTING_REQUIREMENT_SHEET_ID
       - --allow-unauthenticated
 
-  # Pinned traffic must be promoted explicitly after a successful deployment.
-  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: bash
-    args:
-      - -ceu
-      - |
-        expected_image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID"
-        deployment="$$(gcloud run services describe ${_SERVICE} --region=${_REGION} --format='csv[no-heading](spec.template.spec.containers[0].image,status.latestCreatedRevisionName)')"
-        IFS=, read -r actual_image deployed_revision <<< "$$deployment"
-        if [ "$$actual_image" != "$$expected_image" ]; then
-          echo "Service template changed after deployment; traffic promotion stopped."
-          exit 1
-        fi
-        test -n "$$deployed_revision"
-        gcloud run services update-traffic ${_SERVICE} --region=${_REGION} --to-revisions="$$deployed_revision=100"
+  # Recovery builds stay on the stable tag until browser login and CRM data
+  # are verified. Production traffic is promoted explicitly after validation.
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID
