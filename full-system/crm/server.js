@@ -7,6 +7,8 @@ const { SignatureRealtyRuntime } = require('./src/runtime/app');
 const { V2Router } = require('./src/api/v2Router');
 const { SESSION_COOKIE_NAME, getSessionMaxAgeSeconds } = require('./src/services/authService');
 const mongoStore = require('./src/data/mongoStore');
+const { MongoSessionStore } = require('./src/data/mongoSessionStore');
+const mongoSessionStore = new MongoSessionStore();
 const { PinLoginGuard } = require('./src/services/pinLoginGuard');
 const { confirmMongoPersistence, waitForPostSaveReport } = require('./src/services/durableResponse');
 
@@ -3197,7 +3199,7 @@ async function handleApi(req, res, url) {
         sendJson(res, { ok: false, error: 'Unauthorized' }, 401);
         return;
       }
-      const token = runtime.auth.issueSession({
+      const token = await issueLoginSession(res, {
         userId: user.UserID,
         companyId: user.CompanyID || user.CompanyId || '',
         brokerageId: user.BrokerageID || user.BrokerageId || '',
@@ -3285,7 +3287,7 @@ async function handleApi(req, res, url) {
         sendJson(res, { ok: false, error: 'No admin user available' }, 500);
         return;
       }
-      const token = runtime.auth.issueSession({
+      const token = await issueLoginSession(res, {
         userId: admin.UserID,
         role: admin.Role || 'ADMIN',
         companyId: admin.CompanyID || admin.CompanyId || 'COMP-DEFAULT',
@@ -3467,7 +3469,7 @@ async function handleApi(req, res, url) {
         return;
       }
 
-      const localSessionId = runtime.auth.issueSession({
+      const localSessionId = await issueLoginSession(res, {
         userId: user.UserID,
         role: user.Role,
         companyId,
@@ -3522,7 +3524,10 @@ async function handleApi(req, res, url) {
         pathname
       });
       if (context.authenticated && !context.public && context.sessionId) {
-        runtime.auth.revokeSession(context.sessionId);
+        await runtime.auth.revokeDurableSession(context.sessionId, mongoStore.isEnabled() ? mongoSessionStore : null);
+        if (context.sessionId.startsWith('ds_')) res.__sigRequireMongoDurability = false;
+      } else {
+        res.__sigRequireMongoDurability = false;
       }
       sendJson(res, { ok: true }, 200, {
         'Set-Cookie': sessionCookieValue(req, '', { clear: true })
@@ -5513,6 +5518,15 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
   });
 }
 
+async function issueLoginSession(res, identity) {
+  const store = mongoStore.isEnabled() ? mongoSessionStore : null;
+  const token = await runtime.auth.issueDurableSession(identity, store);
+  // Only this acknowledged dedicated save bypasses snapshot durability.
+  // CRM business mutations keep their existing persistence checks.
+  if (store) res.__sigRequireMongoDurability = false;
+  return token;
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -5534,6 +5548,13 @@ appServer = http.createServer(async (req, res) => {
   if (!enforceApiRateLimit(req, res, url)) return;
   if (url.pathname.startsWith('/api/') && Number(req.headers['content-length'] || 0) > MAX_JSON_BODY_BYTES) {
     sendJson(res, { ok: false, error: 'PAYLOAD_TOO_LARGE' }, 413);
+    return;
+  }
+
+  try {
+    await runtime.auth.prepareRequest({ headers: req.headers || {} }, mongoStore.isEnabled() ? mongoSessionStore : null);
+  } catch (_) {
+    sendJson(res, { ok: false, error: 'SESSION_STORAGE_UNAVAILABLE', message: 'Session storage is temporarily unavailable. Please try again.' }, 503);
     return;
   }
 

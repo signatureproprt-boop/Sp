@@ -165,6 +165,7 @@ function isInitialized() {
 function createMongoClient(mongoUrl) {
   _clientCreations += 1;
   const mongoOptions = {
+    compressors: ['zlib'],
     serverSelectionTimeoutMS: MONGO_SERVER_SELECTION_TIMEOUT_MS,
     socketTimeoutMS: MONGO_SOCKET_TIMEOUT_MS,
     connectTimeoutMS: MONGO_CONNECT_TIMEOUT_MS,

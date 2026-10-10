@@ -185,10 +185,14 @@
       if (!code && !sessionId) return;
       var flow = readAuthFlowArtifacts();
       setStatus('Completing Google sign-in…');
-      var response = await fetch('/api/auth/session-exchange', {
+      var controller = new AbortController();
+      var timer = setTimeout(function () { controller.abort(); }, 30000);
+      var response;
+      try { response = await fetch('/api/auth/session-exchange', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify({
           code: code,
           session_id: sessionId,
@@ -196,7 +200,10 @@
           redirect_uri: GOOGLE_REDIRECT_URI,
           browser_flow_id: flow.browserFlowId || ''
         })
-      });
+      }); } catch (error) {
+        if (error.name === 'AbortError') throw new Error('Sign-in timed out. Please start a new sign-in attempt.');
+        throw error;
+      } finally { clearTimeout(timer); }
       var payload = await response.json().catch(function () { return null; });
       if (!response.ok || !payload || !payload.ok) {
         throw new Error((payload && payload.error) || 'Google sign-in is temporarily unavailable. Please try again.');
