@@ -1462,6 +1462,27 @@ table td,table th{border-color:var(--v2-line)!important}
   function removeConfigRow(i) { configRows.splice(i, 1); renderConfigRowsUI(); }
 
   // ── Auto-fill from Brochure (AI) ─────────────────────────────────────
+  async function requestBrochureExtraction(filename, fileBase64) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 110000);
+    try {
+      const response = await fetch('/api/v2/builder-projects/extract-brochure', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, fileBase64 }), signal: controller.signal
+      });
+      const text = await response.text();
+      let result;
+      try { result = JSON.parse(text); } catch (_) {
+        throw new Error('AI service could not respond (HTTP ' + response.status + '). Please retry.');
+      }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
+      return result;
+    } catch (error) {
+      if (error.name === 'AbortError') throw new Error('AI extraction timed out. Please retry with a smaller PDF.');
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+
   async function onBrochureAutoFill(file) {
     if (!file) return;
     if (file.size > MEDIA_LIMITS.brochure) {
@@ -1473,10 +1494,7 @@ table td,table th{border-color:var(--v2-line)!important}
     statusEl.textContent = '⏳ AI brochure padh raha hai… (30-60 sec lag sakte hain)';
     try {
       const fileBase64 = await fileToBase64Full(file);
-      const res = await fetch('/api/v2/builder-projects/extract-brochure', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, fileBase64 })
-      }).then(r => r.json());
+      const res = await requestBrochureExtraction(file.name, fileBase64);
       if (!res.ok) throw new Error(res.error || 'Extraction failed');
       applyAutoFill(res.data);
       statusEl.textContent = '✅ Fields auto-filled — check & edit before saving';
@@ -1967,10 +1985,7 @@ table td,table th{border-color:var(--v2-line)!important}
       renderBulkBrochureRows();
       try {
         const fileBase64 = await fileToBase64Full(bulkBrochureFiles[i].file);
-        const res = await fetch('/api/v2/builder-projects/extract-brochure', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: bulkBrochureFiles[i].file.name, fileBase64 })
-        }).then(r => r.json());
+        const res = await requestBrochureExtraction(bulkBrochureFiles[i].file.name, fileBase64);
         if (!res.ok) throw new Error(res.error || 'Extraction failed');
         bulkBrochureFiles[i].status = 'done';
         bulkBrochureFiles[i].data = res.data;

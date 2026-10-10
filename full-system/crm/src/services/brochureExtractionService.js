@@ -56,6 +56,7 @@ async function extractBrochure(fileBase64) {
   if (buffer.length > MAX_BYTES) throw new Error('PDF too large (max 15 MB)');
 
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+    signal: AbortSignal.timeout(90000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -67,6 +68,11 @@ async function extractBrochure(fileBase64) {
       }],
       generationConfig: { responseMimeType: 'application/json' }
     })
+  }).catch((error) => {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      throw new Error('AI extraction timed out. Please retry with a smaller PDF.');
+    }
+    throw error;
   });
 
   const payload = await response.json().catch(() => ({}));

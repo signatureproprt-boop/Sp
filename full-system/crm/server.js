@@ -2526,6 +2526,8 @@ async function handleApi(req, res, url) {
         if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         const body = bodyForV2 || {};
         if (!body.fileBase64) { sendJson(res, { ok: false, error: 'fileBase64 required' }, 400); return; }
+        // Extraction only previews fields; the later project save confirms durability.
+        res.__sigRequireMongoDurability = false;
         const { extractBrochure } = require('./src/services/brochureExtractionService');
         extractBrochure(body.fileBase64)
           .then((data) => sendJson(res, { ok: true, data }))
