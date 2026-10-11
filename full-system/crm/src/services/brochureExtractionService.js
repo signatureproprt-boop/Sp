@@ -7,7 +7,8 @@ const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
 const CACHE_VERSION = 'brochure-v4';
-const MAX_BYTES = 15 * 1024 * 1024;
+// Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
+const MAX_BYTES = 50 * 1024 * 1024;
 
 const EXTRACTION_PROMPT = `You are extracting structured data from a real-estate builder project brochure PDF for a Surat, Gujarat brokerage.
 Read the document carefully and return STRICT JSON ONLY (no markdown fences, no explanation, no extra text) with exactly this shape:
@@ -66,7 +67,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     throw new Error('Bad base64 payload');
   }
   if (!buffer.length) throw new Error('Empty file');
-  if (buffer.length > MAX_BYTES) throw new Error('PDF too large (max 15 MB)');
+  if (buffer.length > MAX_BYTES) throw new Error('PDF too large (max 50 MB)');
 
   let documentParts = [{ inline_data: { mime_type: 'application/pdf', data: buffer.toString('base64') } }];
   if (Array.isArray(pageImages) && pageImages.length) {
@@ -125,7 +126,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
 async function extractBrochure(fileBase64, pageImages, scope = '') {
   const encoded = String(fileBase64 || '').replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(encoded, 'base64');
-  if (!buffer.length || buffer.length > MAX_BYTES) throw new Error('Invalid PDF size (max 15 MB)');
+  if (!buffer.length || buffer.length > MAX_BYTES) throw new Error('Invalid PDF size (max 50 MB)');
   const key = crypto.createHash('sha256').update(CACHE_VERSION + GEMINI_MODEL + scope).update(buffer).digest('hex');
   if (extractionCache.has(key)) return structuredClone(extractionCache.get(key));
   if (pendingExtractions.has(key)) return structuredClone(await pendingExtractions.get(key));
@@ -147,4 +148,5 @@ async function extractBrochure(fileBase64, pageImages, scope = '') {
 }
 
 module.exports = { extractBrochure };
+
 
