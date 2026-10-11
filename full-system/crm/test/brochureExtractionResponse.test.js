@@ -17,7 +17,7 @@ test('PDF preview returns fields without waiting for a stuck snapshot save', asy
   try {
     mongoStore.isEnabled = () => true; mongoStore.isInitialized = () => true;
     __test.setRuntimeForTest({ repository: { flush() { flushes++; return new Promise(() => {}); } } });
-    vm.runInNewContext(source.slice(start, end), { res, body: { fileBase64: 'cGRm' },
+    vm.runInNewContext(source.slice(start, end), { res, actor: { userId: 'test-user' }, body: { fileBase64: 'cGRm' },
       sendJson: __test.sendJson, require: () => ({ extractBrochure: async () => ({ ProjectName: 'Milestone Utsav' }) }) });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(res.status, 200);
@@ -30,7 +30,7 @@ test('individual and bulk PDF extraction report upstream text errors without a J
   const html = fs.readFileSync(require.resolve('../builder-projects.html'), 'utf8');
   const start = html.indexOf('  async function requestBrochureExtraction(');
   const end = html.indexOf('  async function onBrochureAutoFill(', start);
-  const context = { AbortController, setTimeout, clearTimeout,
+  const context = { AbortController, setTimeout, clearTimeout, atob, crypto: require('node:crypto').webcrypto, editingId: 'test', brochureCache: async () => null,
     fetch: async () => ({ ok: false, status: 502, text: async () => 'upstream request timeout' }) };
   vm.createContext(context); vm.runInContext(html.slice(start, end), context);
   await assert.rejects(context.requestBrochureExtraction('brochure.pdf', 'cGRm'), /HTTP 502/);
