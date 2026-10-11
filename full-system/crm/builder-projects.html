@@ -1670,8 +1670,11 @@ table td,table th{border-color:var(--v2-line)!important}
       PriceMin: document.getElementById('f-price-min').value || null,
       PriceMax: document.getElementById('f-price-max').value || null,
       PossessionDate: document.getElementById('f-possession').value || null,
-      Amenities: document.getElementById('f-amenities').value.split(/\n|,/).map(s => s.trim()).filter(Boolean),
+      Amenities: document.getElementById('f-amenities').value.split('\n').map(s => s.trim()).filter(Boolean),
       Highlights: document.getElementById('f-highlights').value.split('\n').map(s => s.trim()).filter(Boolean),
+      // Both legacy lists are displayed in this single editor; its reviewed value
+      // must replace them, otherwise removed old specifications reappear on reopen.
+      Specifications: [],
       Overview: document.getElementById('f-overview').value.trim() || null,
       Notes: document.getElementById('f-notes').value.trim() || null
     };
