@@ -145,7 +145,7 @@ test('display groups identical tower configurations without changing saved rows'
   assert.equal(groups[2].Type, 'Penthouse');
   assert.equal(groups[3].Type, 'Terrace Flat');
   assert.equal(JSON.stringify(rows), before);
-  assert.equal((html.match(/groupedConfigDetails\(p.ConfigDetails\)/g) || []).length, 2);
+  assert.equal((html.match(/groupedConfigDetails\(p.ConfigDetails\)/g) || []).length, 3);
 });
 
 test('brochure catalogue groups edit rows and keeps layout evidence and missing-area reasons', () => {
