@@ -82,7 +82,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
   }
 
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    signal: AbortSignal.timeout(90000),
+    signal: AbortSignal.timeout(240000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -101,12 +101,17 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     })
   }).catch((error) => {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-      throw new Error('AI extraction timed out. Please retry with a smaller PDF.');
+      throw new Error('AI service did not finish within 4 minutes. Project data was not changed. The uploaded brochure is retained; retry later.');
     }
     throw error;
   });
 
-  const payload = await response.json().catch(() => ({}));
+  const payload = await response.json().catch((error) => {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      throw new Error('AI service did not finish within 4 minutes. Project data was not changed. The uploaded brochure is retained; retry later.');
+    }
+    throw new Error('AI service returned an unreadable response');
+  });
   if (!response.ok) {
     throw new Error(payload?.error?.message || `Gemini request failed (${response.status})`);
   }

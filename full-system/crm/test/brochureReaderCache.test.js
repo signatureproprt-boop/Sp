@@ -11,7 +11,10 @@ test('same PDF shares one extraction; failed attempts are retryable and scopes s
   const data = { ProjectName: 'Test', Amenities: ['Gym'], Highlights: [], ConfigDetails: [] };
   const context = { module: { exports: {} }, require, process: { env: { GEMINI_API_KEY: 'test' } },
     Buffer, AbortSignal, structuredClone,
-    fetch: async () => { calls++; await new Promise(resolve => setImmediate(resolve));
+    fetch: async (_url, options) => { calls++;
+      const request = JSON.parse(options.body);
+      assert.equal(request.contents[0].parts[1].inline_data.mime_type, 'application/pdf');
+      await new Promise(resolve => setImmediate(resolve));
       return { ok: !fail, status: 500, json: async () => fail ? { error: { message: 'temporary failure' } } :
         { candidates: [{ content: { parts: [{ text: JSON.stringify(data) }] } }] } }; } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
@@ -43,4 +46,21 @@ test('brochure form compiles and BHK-only extracted configurations survive save 
   assert.equal(context.configRows[0].ServantRoom, true);
   assert.ok(html.includes('Read uploaded brochure'));
   assert.ok(html.includes('existing values retained'));
+});
+
+test('response body timeout reports service delay and remains retryable', async () => {
+  let fail = true;
+  let timeoutMs;
+  const context = { module: { exports: {} }, require, process: { env: { GEMINI_API_KEY: 'test' } },
+    Buffer, structuredClone, AbortSignal: { timeout: ms => { timeoutMs = ms; return {}; } },
+    fetch: async () => ({ ok: true, json: async () => {
+      if (fail) throw Object.assign(new Error('body timeout'), { name: 'TimeoutError' });
+      return { candidates: [{ content: { parts: [{ text: '{"ProjectName":"Test"}' }] } }] };
+    } }) };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
+  const pdf = Buffer.from('%PDF timeout').toString('base64');
+  await assert.rejects(context.module.exports.extractBrochure(pdf), /AI service did not finish within 4 minutes/);
+  assert.equal(timeoutMs, 240000);
+  fail = false;
+  assert.equal((await context.module.exports.extractBrochure(pdf)).ProjectName, 'Test');
 });

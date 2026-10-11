@@ -1529,14 +1529,15 @@ table td,table th{border-color:var(--v2-line)!important}
 
     // Render heavy/vector PDFs into readable pages so malformed annotations and
     // oversized source images do not hold up the AI. Keep the original for saving.
-    let pageImages = null;
-    try { pageImages = await prepareBrochurePages(fileBase64); } catch (_) { /* PDF fallback */ }
+    // Gemini reads PDF pages with native vision; send the original once instead of
+    // rendering and uploading every page as a separate large JPEG.
+
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 110000);
+    const timer = setTimeout(() => controller.abort(), 270000);
     try {
       const response = await fetch('/api/v2/builder-projects/extract-brochure', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, fileBase64, pageImages }), signal: controller.signal
+        body: JSON.stringify({ filename, fileBase64 }), signal: controller.signal
       });
       const text = await response.text();
       let result;
@@ -1547,7 +1548,7 @@ table td,table th{border-color:var(--v2-line)!important}
       await brochureCache('put', cacheKey, result);
       return result;
     } catch (error) {
-      if (error.name === 'AbortError') throw new Error('AI extraction timed out. Please retry with a smaller PDF.');
+      if (error.name === 'AbortError') throw new Error('AI service did not respond in time. Project data was not changed. The uploaded brochure is retained; retry later.');
       throw error;
     } finally { clearTimeout(timer); }
   }
@@ -1581,7 +1582,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const readProjectId = editingId;
     if (!stored) pendingBrochureFile = file;
     const statusEl = document.getElementById('autofill-status');
-    statusEl.textContent = '⏳ AI brochure padh raha hai… (30-60 sec lag sakte hain)';
+    statusEl.textContent = '⏳ Uploaded brochure padh raha hai… 4 minute tak lag sakte hain. Dobara click na karein.';
     try {
       const fileBase64 = await fileToBase64Full(file);
       const res = await requestBrochureExtraction(file.name, fileBase64);
