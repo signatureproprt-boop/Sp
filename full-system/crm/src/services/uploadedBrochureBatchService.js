@@ -33,9 +33,9 @@ function buildPayload(project, data, appendConfigs = false) {
     if (data[key] != null && data[key] !== '') payload[key] = data[key];
   }
   if (payload.BuilderName) payload.BuilderID = null; // Resolve the printed developer, not a stale imported builder ID.
-  // Preserve richer reviewed point lists when an AI pass misses an item.
-  payload.Amenities = unique([...(project.Amenities || []), ...(data.Amenities || [])]);
-  payload.Highlights = unique([...(project.Highlights || []), ...(project.Specifications || []), ...(data.Highlights || [])]).filter(x => !/^(YoutubeVideo|Broucher|Brochure)$/i.test(x));
+  // Replace legacy/imported claims with audited source points; append only when processing another PDF in the same job.
+  payload.Amenities = unique([...(appendConfigs ? project.Amenities || [] : []), ...(data.Amenities || [])]);
+  payload.Highlights = unique([...(appendConfigs ? project.Highlights || [] : []), ...(data.Highlights || [])]).filter(x => !/^(YoutubeVideo|Broucher|Brochure)$/i.test(x));
   payload.Specifications = [];
   const evidence = unique(data.SourceEvidence);
   const warnings = unique(data.ReadingWarnings);
