@@ -2522,14 +2522,15 @@ async function handleApi(req, res, url) {
         return;
       }
 
-      if (/^\/api\/v2\/builder-projects\/uploaded-brochure-batch(?:\/[a-f0-9-]+\/step)?\/?$/i.test(pathname)) {
+      if (/^\/api\/v2\/builder-projects\/uploaded-brochure-batch(?:\/[a-f0-9-]+\/(?:step|retry))?\/?$/i.test(pathname)) {
         if (!['GET', 'POST'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, req.method === 'GET' ? 'BUILDER_PROJECTS_READ' : 'BUILDER_PROJECTS_UPDATE')) return;
         const { UploadedBrochureBatchService } = require('./src/services/uploadedBrochureBatchService');
         const batch = new UploadedBrochureBatchService(runtime.repository, { visible: row => tenantCheck(row, actor).ok });
         const step = pathname.match(/uploaded-brochure-batch\/([a-f0-9-]+)\/step\/?$/i);
+        const retry = pathname.match(/uploaded-brochure-batch\/([a-f0-9-]+)\/retry\/?$/i);
         if (req.method === 'GET') { sendJson(res, batch.latest(actor.userId)); return; }
-        const operation = step ? batch.step(step[1], actor.userId) : Promise.resolve(batch.start(actor.userId));
+        const operation = step ? batch.step(step[1], actor.userId) : Promise.resolve(retry ? batch.retry(retry[1], actor.userId) : batch.start(actor.userId));
         operation.then(out => sendJson(res, out, out.ok ? 200 : out.statusCode || 400))
           .catch(error => sendJson(res, { ok: false, error: error.message }, 500));
         return;

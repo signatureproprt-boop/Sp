@@ -84,6 +84,14 @@ class UploadedBrochureBatchService {
       Projects: new Set(items.map(x => x.ProjectID)).size };
   }
   latest(actorId) { return { ok: true, data: this.view(this.jobs().filter(j => j.ActorID === actorId).at(-1)) }; }
+  retry(jobId, actorId) {
+    const job = this.jobs().find(j => j.JobID === jobId && j.ActorID === actorId);
+    if (!job) return { ok: false, statusCode: 404, error: 'Batch not found' };
+    if (running.has(jobId) || job.Items.some(i => i.Status === 'reading')) return { ok: false, statusCode: 409, error: 'Pause and wait for the current PDF before retrying failed PDFs' };
+    for (const item of job.Items) if (item.Status === 'failed') { item.Status = 'pending'; item.Error = null; }
+    job.Status = job.Items.some(i => i.Status === 'pending') ? 'ready' : 'complete'; this.save(job);
+    return { ok: true, data: this.view(job) };
+  }
   start(actorId) {
     const previous = this.jobs().filter(j => j.ActorID === actorId).at(-1);
     if (previous && previous.Items.some(i => ['pending','reading'].includes(i.Status))) return { ok: true, data: this.view(previous) };
@@ -121,7 +129,7 @@ class UploadedBrochureBatchService {
           if (!item.Draft) {
             const file = await this.media.getProjectBrochureFile(item.ProjectID, media.MediaID, item.FileKey);
             if (!file.ok) throw new Error(file.error || 'Stored PDF unavailable');
-            if (!file.buffer || file.buffer.length > 15 * 1024 * 1024) throw new Error('PDF exceeds AI reader limit (15 MB)');
+            if (!file.buffer || file.buffer.length > 50 * 1024 * 1024) throw new Error('PDF exceeds AI reader limit (50 MB; source ' + Math.round((file.buffer?.length || 0) / 1024 / 1024) + ' MB)');
             item.Digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
             item.Draft = await this.extract(file.buffer.toString('base64'), null, actorId + ':' + item.ProjectID);
             this.save(job); // A failed save can be retried without paying for another AI read.

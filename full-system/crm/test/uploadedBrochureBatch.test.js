@@ -47,7 +47,8 @@ test('draft survives save failure so retry does not repeat paid extraction',asyn
   const x=setup([project]); const j=x.svc.start('user').data; const original=x.svc.projects.update;
   x.svc.projects.update=()=>({ok:false,error:'Save failed'});
   await x.svc.step(j.JobID,'user'); assert.equal(x.calls(),1);
-  const job=x.svc.jobs()[0]; job.Items[0].Status='pending'; x.svc.save(job); x.svc.projects.update=original;
+  assert.equal(x.svc.retry(j.JobID,'other').statusCode,404);
+  assert.equal(x.svc.retry(j.JobID,'user').data.Failed,0); x.svc.projects.update=original;
   await x.svc.step(j.JobID,'user'); assert.equal(x.calls(),1);
 });
 test('identity mismatch is blocked; areas require printed page and label evidence; landline retained in notes',()=>{
