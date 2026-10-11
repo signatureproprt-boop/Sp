@@ -175,3 +175,21 @@ test('brochure catalogue groups edit rows and keeps layout evidence and missing-
   assert.match(service, /For every numeric area provide a SourceEvidence/);
   assert.doesNotMatch(service, /separate configuration for EVERY tower/);
 });
+
+test('property detail shows separate areas, honest empty states and escaped content', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../builder-projects.html'), 'utf8');
+  const context = { esc: value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;'),
+    isStoredPhoto: () => false, preferredPhotoUrl: () => '', isStoredBrochure: () => true, preferredBrochureUrl: () => '/brochure', fmtPrice: String };
+  vm.createContext(context);
+  const start = html.indexOf('  function groupedConfigDetails(rows)');
+  vm.runInContext(html.slice(start, html.indexOf('  function renderCard(p)', start)), context);
+  const rendered = context.renderProjectDetail({ ProjectID: 'test', ProjectName: '<script>bad</script>', BuilderName: 'Builder',
+    ConfigDetails: [{ Tower: 'A', Type: 'Penthouse', BHK: 4, CarpetAreaSqft: 1500, SuperBuiltUpAreaSqft: 2500, TerraceAreaSqft: 300, ParkingAllotted: 0, ServantRoom: false }],
+    Amenities: ['Gym'], Highlights: ['YoutubeVideo','Actual specification'] });
+  for (const text of ['1500 sqft','2500 sqft','300 sqft','Private terrace','Parking: 0','Servant room: No','Price on request','Photos not available','Not available','Actual specification']) assert.ok(rendered.includes(text), text);
+  assert.ok(rendered.includes('&lt;script&gt;'));
+  assert.ok(!rendered.includes('<script>bad'));
+  assert.ok(!rendered.includes('YoutubeVideo'));
+  assert.ok(html.includes('aria-labelledby="pd-title"'));
+  assert.ok(html.includes('@media(max-width:700px)'));
+});
