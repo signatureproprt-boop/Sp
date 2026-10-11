@@ -2037,7 +2037,7 @@ table td,table th{border-color:var(--v2-line)!important}
       }
       renderUploadedBrochureBatch();
       while (uploadedBatch.Pending > 0 && !uploadedBatchPaused) {
-        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 330000);
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 930000);
         try {
           const response = await fetch('/api/v2/builder-projects/uploaded-brochure-batch/' + encodeURIComponent(uploadedBatch.JobID) + '/step', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal
