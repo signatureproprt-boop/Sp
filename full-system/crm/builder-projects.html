@@ -1497,7 +1497,10 @@ table td,table th{border-color:var(--v2-line)!important}
       const res = await requestBrochureExtraction(file.name, fileBase64);
       if (!res.ok) throw new Error(res.error || 'Extraction failed');
       applyAutoFill(res.data);
-      statusEl.textContent = '✅ Fields auto-filled — check & edit before saving';
+      const missing = [['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
+        .filter(([key]) => res.data[key] == null).map(([, label]) => label);
+      statusEl.textContent = '✅ Brochure fields filled — review before saving.' +
+        (missing.length ? ' Not stated in PDF: ' + missing.join(', ') + '.' : '');
     } catch (e) {
       statusEl.textContent = '';
       toast('Auto-fill failed: ' + e.message, true);

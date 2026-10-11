@@ -17,13 +17,18 @@ Read the document carefully and return STRICT JSON ONLY (no markdown fences, no 
   "Category": one of "Residential", "Commercial", "Industrial", "Land", or null,
   "ProjectStatus": one of "New Launch", "Under Construction", "Ready to Move", "Completed", or null,
   "TotalUnits": number or null,
+  "ProjectArea": string with stated land area and unit or null,
+  "TotalTowers": number or null,
+  "TotalFloors": number of floors per tower or null,
+  "FloorHeightFt": number or null,
+  "Overview": concise factual summary of brochure details or null,
   "PriceMin": number or null,
   "PriceMax": number or null,
   "PossessionDate": string in YYYY-MM-DD format or null,
   "Amenities": array of strings,
   "ConfigDetails": array of objects like {"Type": "Penthouse", "BHK": 4, "CarpetAreaSqft": 2100, "BuiltUpAreaSqft": 2600, "TerraceAreaSqft": 400, "ParkingAllotted": 2, "ServantRoom": true}, one entry per distinct flat, penthouse, or terrace flat configuration/size in the brochure. Use null for every unknown value
 }
-Prices must be plain numbers in INR (no commas, no "Cr"/"L" suffix; convert e.g. 1.2 Cr to 12000000). Area values are in sqft; convert only when the brochure states units clearly. ParkingAllotted means spaces allotted to that unit, not total project parking. Extract a sales phone only if explicitly printed as a sales contact. If a field is genuinely not present, use null (or an empty array for list fields). Do not invent or guess data that is not in the document.`;
+Inspect EVERY page, including site plans, floor plans, legends and location maps. Count distinctly labelled buildings/towers (e.g. A and B = 2). A typical plan labelled LVL. 1-14 supports TotalFloors 14. Only derive TotalUnits when all towers, residential floor counts and units per floor are explicit and uniform; otherwise use null. Never infer current construction status from an undated "coming soon" marketing phrase. Overview must contain only supported facts, not invented marketing copy. Read C.A. as carpet area; do NOT treat S.A. (saleable/super area), EQ./equivalent area or unspecified EXTRA area as built-up or terrace. Include configurations separately when their explicitly labelled areas differ. Extract every explicitly listed amenity, but never count nearby landmarks as amenities. Prices must be plain numbers in INR (no commas, no "Cr"/"L" suffix; convert e.g. 1.2 Cr to 12000000). Area values are in sqft; convert only when the brochure states units clearly. ParkingAllotted means spaces allotted to that unit, not total project parking. Extract a sales phone only if explicitly printed as a sales contact. If a field is genuinely not present, use null (or an empty array for list fields). Do not invent or guess data that is not in the document.`;
 
 function parseModelJson(text) {
   const cleaned = String(text || '')

@@ -49,6 +49,11 @@ test('Gemini PDF extraction uses low reasoning and reads only final JSON fields'
       assert.equal(body.generationConfig.responseMimeType, 'application/json');
       assert.equal(body.contents[0].parts[1].inline_data.mime_type, 'application/pdf');
       assert.ok(options.signal);
+      const prompt = body.contents[0].parts[0].text;
+      for (const field of ['ProjectArea', 'TotalTowers', 'TotalFloors', 'FloorHeightFt', 'Overview']) {
+        assert.ok(prompt.includes('"' + field + '"'), field + ' must be requested');
+      }
+      assert.match(prompt, /do NOT treat S\.A\./);
       return { ok: true, json: async () => ({ candidates: [{ content: { parts: [
         { thought: true, text: 'Internal reasoning' },
         { text: '{"ProjectName":"Milestone Utsav","TotalUnits":48}' }
