@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const { BuilderProjectService } = require('./builderProjectService');
 const { ProjectMediaCanaryMigrationService } = require('./projectMediaCanaryMigrationService');
 const { extractBrochure } = require('./brochureExtractionService');
+const { preparePdfForAi } = require('./brochurePdfPreparationService');
 const mongoStore = require('../data/mongoStore');
 const running = new Set();
 const stored = m => m && m.verified === true && String(m.downloadStatus || '').toLowerCase() === 'downloaded' && (m.DriveFileID || m.DriveFileId || m.StoragePath);
@@ -64,6 +65,7 @@ class UploadedBrochureBatchService {
     this.projects = deps.projects || new BuilderProjectService(repo);
     this.media = deps.media || new ProjectMediaCanaryMigrationService(repo);
     this.extract = deps.extract || extractBrochure;
+    this.prepare = deps.prepare || preparePdfForAi;
     this.visible = deps.visible || (() => true);
     this.lock = deps.lock || (mongoStore.isEnabled() ? (name, fn) => mongoStore.withDistributedLock(name, fn, { leaseMs: 600000 }) : async (_name, fn) => ({ acquired: true, result: await fn() }));
   }
@@ -129,9 +131,11 @@ class UploadedBrochureBatchService {
           if (!item.Draft) {
             const file = await this.media.getProjectBrochureFile(item.ProjectID, media.MediaID, item.FileKey);
             if (!file.ok) throw new Error(file.error || 'Stored PDF unavailable');
-            if (!file.buffer || file.buffer.length > 50 * 1024 * 1024) throw new Error('PDF exceeds AI reader limit (50 MB; source ' + Math.round((file.buffer?.length || 0) / 1024 / 1024) + ' MB)');
+            const prepared = await this.prepare(file.buffer);
+            item.SourceBytes = file.buffer.length; item.AiBytes = prepared.buffer.length; item.OptimizedCopy = prepared.optimized;
             item.Digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
-            item.Draft = await this.extract(file.buffer.toString('base64'), null, actorId + ':' + item.ProjectID);
+            item.Draft = await this.extract(prepared.buffer.toString('base64'), null, actorId + ':' + item.ProjectID);
+            if (prepared.optimized) item.Draft.ReadingWarnings = unique([...(item.Draft.ReadingWarnings || []), 'AI read a full-page 300 DPI optimized copy; original uploaded brochure retained']);
             // Persist the draft only on failure. Successful fields and queue state
             // share one snapshot write, rather than three serial full snapshots.
           }
