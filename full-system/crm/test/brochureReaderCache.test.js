@@ -64,3 +64,60 @@ test('response body timeout reports service delay and remains retryable', async 
   fail = false;
   assert.equal((await context.module.exports.extractBrochure(pdf)).ProjectName, 'Test');
 });
+
+
+test('regular, penthouse and terrace configurations retain separate private areas through form rendering', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../builder-projects.html'), 'utf8');
+  const fields = {};
+  const context = { document: { getElementById: id => fields[id] || (fields[id] = { value: '', innerHTML: '' }) }, configRows: [], esc: String };
+  vm.createContext(context);
+  let start = html.indexOf('  function applyAutoFill(d)');
+  vm.runInContext(html.slice(start, html.indexOf('  function closeProjectModal', start)), context);
+  start = html.indexOf('  function renderConfigRowsUI()');
+  vm.runInContext(html.slice(start, html.indexOf('  // ── Auto-fill', start)), context);
+  context.applyAutoFill({ ConfigDetails: [
+    { Tower: 'A', FlatType: '1', Type: 'Apartment', BHK: 3, CarpetAreaSqft: 900, SuperBuiltUpAreaSqft: 1500, TerraceAreaSqft: null },
+    { Tower: 'A', FlatType: '1', Type: 'Penthouse', BHK: 4, CarpetAreaSqft: 1800, SuperBuiltUpAreaSqft: 3000, TerraceAreaSqft: 600, ParkingAllotted: 0, ServantRoom: false },
+    { Tower: 'A', FlatType: '1', Type: 'Terrace Flat', BHK: 3, CarpetAreaSqft: 900, SuperBuiltUpAreaSqft: 1500, TerraceAreaSqft: 250 }
+  ] });
+  assert.equal(context.configRows.length, 3);
+  assert.equal(context.configRows[1].Type, 'Penthouse');
+  assert.equal(context.configRows[1].CarpetAreaSqft, 1800);
+  assert.equal(context.configRows[1].SuperBuiltUpAreaSqft, 3000);
+  assert.equal(context.configRows[1].TerraceAreaSqft, 600);
+  assert.equal(context.configRows[1].ParkingAllotted, 0);
+  assert.equal(context.configRows[1].ServantRoom, false);
+  assert.equal(context.configRows[0].TerraceAreaSqft, '');
+  assert.match(fields['config-rows'].innerHTML, /config-terrace-1/);
+  assert.match(fields['config-rows'].innerHTML, /Private terrace area sqft/);
+  assert.match(fields['config-rows'].innerHTML, /value="600"/);
+});
+
+test('project persistence keeps private terrace separate and preserves each unit type', () => {
+  const context = { module: { exports: {} }, require: id => {
+    if (id === 'csv-parse/sync') return { parse() {} };
+    if (id === 'read-excel-file/node') return () => {};
+    if (id.startsWith('./')) return {};
+    return require(id);
+  }, process, Buffer };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/builderProjectService.js'), 'utf8'), context);
+  const service = new context.module.exports.BuilderProjectService({});
+  const rows = ['Apartment', 'Penthouse', 'Terrace Flat'].map((Type, i) => ({
+    Tower: 'A', FlatType: '1', Type, BHK: 3, CarpetAreaSqft: '900',
+    SuperBuiltUpAreaSqft: '1500', TerraceAreaSqft: i ? String(i * 250) : null,
+    ParkingAllotted: 0, ServantRoom: false
+  }));
+  const saved = service._normalizePayload({ ConfigDetails: rows });
+  const reloaded = service._normalizePayload(saved);
+  assert.equal(reloaded.ConfigDetails.length, 3);
+  assert.equal(reloaded.ConfigDetails[1].Type, 'Penthouse');
+  assert.equal(reloaded.ConfigDetails[1].TerraceAreaSqft, 250);
+  assert.equal(reloaded.ConfigDetails[2].TerraceAreaSqft, 500);
+  for (const row of reloaded.ConfigDetails) {
+    assert.equal(row.CarpetAreaSqft, 900);
+    assert.equal(row.SuperBuiltUpAreaSqft, 1500);
+    assert.equal(row.ParkingAllotted, 0);
+    assert.equal(row.ServantRoom, false);
+  }
+  assert.equal(reloaded.ConfigDetails[0].TerraceAreaSqft, null);
+});
