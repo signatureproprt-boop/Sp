@@ -121,3 +121,29 @@ test('project persistence keeps private terrace separate and preserves each unit
   }
   assert.equal(reloaded.ConfigDetails[0].TerraceAreaSqft, null);
 });
+
+test('display groups identical tower configurations without changing saved rows', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../builder-projects.html'), 'utf8');
+  const start = html.indexOf('  function groupedConfigDetails(rows)');
+  const context = {}; vm.createContext(context);
+  vm.runInContext(html.slice(start, html.indexOf('  function renderCard(p)', start)), context);
+  const base = { Type: 'Apartment', BHK: 3, CarpetAreaSqft: 1500, SuperBuiltUpAreaSqft: 2500, ParkingAllotted: 2, ServantRoom: false };
+  const rows = [
+    { ...base, Tower: 'A', FlatType: '1' }, { ...base, Tower: 'B', FlatType: '1' },
+    { ...base, Tower: 'C', FlatType: '2' }, { ...base, Tower: 'D', CarpetAreaSqft: 1600 },
+    { ...base, Tower: 'A', Type: 'Penthouse', TerraceAreaSqft: 500 },
+    { ...base, Tower: 'B', Type: 'Terrace Flat', TerraceAreaSqft: 300 },
+    { ...base, Tower: 'E', ParkingAllotted: null }
+  ];
+  const before = JSON.stringify(rows);
+  const groups = context.groupedConfigDetails(rows);
+  assert.equal(groups.length, 5);
+  assert.equal(groups[0].Tower, 'A/B/C');
+  assert.equal(groups[0].FlatType, '1/2');
+  assert.equal(groups[0].CarpetAreaSqft, 1500);
+  assert.equal(groups[0].SuperBuiltUpAreaSqft, 2500);
+  assert.equal(groups[2].Type, 'Penthouse');
+  assert.equal(groups[3].Type, 'Terrace Flat');
+  assert.equal(JSON.stringify(rows), before);
+  assert.equal((html.match(/groupedConfigDetails\(p.ConfigDetails\)/g) || []).length, 2);
+});
