@@ -15,6 +15,7 @@ function setup(rows, fail = false) {
     if (name.endsWith('projectMediaCanaryMigrationService')) return { ProjectMediaCanaryMigrationService: class {} };
     if (name.endsWith('brochureExtractionService')) return { extractBrochure() {} };
     if (name.endsWith('brochurePdfPreparationService')) return { preparePdfForAi:async buffer=>({buffer,optimized:false}) };
+    if (name.endsWith('brochureCompletenessService')) return { REVIEW_VERSION:'full-page-review-v1' };
     if (name.endsWith('mongoStore')) return { isEnabled: () => false };
     throw Error(name);
   } };
@@ -22,7 +23,7 @@ function setup(rows, fail = false) {
   const api = ctx.module.exports;
   const svc = new api.UploadedBrochureBatchService(repo,{ projects, visible:p=>p.CompanyID === 'mine',
     media: { getProjectBrochureFile: async (_id, mediaId, key) => { assert.ok(mediaId); assert.ok(key); return { ok:true,buffer:Buffer.from('%PDF test') }; } },
-    extract: async () => { calls++; if (fail) throw Error('AI unavailable'); return { ProjectName:'Coral Heights', BuilderName:'Swagat Developers', ConfigDetails:[], Amenities:['Gym'], Highlights:['Good tiles'], SourceEvidence:[], ReadingWarnings:['Carpet not printed'] }; } });
+    extract: async () => { calls++; if (fail) throw Error('AI unavailable'); return { CompletenessReview:{Version:'full-page-review-v1',Status:'automated_checks_passed',PageCount:2}, ProjectName:'Coral Heights', BuilderName:'Swagat Developers', ConfigDetails:[], Amenities:['Gym'], Highlights:['Good tiles'], SourceEvidence:[], ReadingWarnings:['Carpet not printed'] }; } });
   return { ...api, svc, repo, calls:()=>calls };
 }
 const pdf = id => ({ MediaID:id,DriveFileID:id,verified:true,downloadStatus:'downloaded',Filename:id+'.pdf' });
