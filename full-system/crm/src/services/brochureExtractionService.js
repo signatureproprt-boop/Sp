@@ -2,6 +2,11 @@
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const crypto = require('node:crypto');
+const extractionCache = new Map();
+const pendingExtractions = new Map();
+const CACHE_LIMIT = 64;
+const CACHE_VERSION = 'brochure-v2';
 const MAX_BYTES = 15 * 1024 * 1024;
 
 const EXTRACTION_PROMPT = `You are extracting structured data from a real-estate builder project brochure PDF for a Surat, Gujarat brokerage.
@@ -47,7 +52,7 @@ function parseModelJson(text) {
   }
 }
 
-async function extractBrochure(fileBase64, pageImages) {
+async function extractBrochureUncached(fileBase64, pageImages) {
   const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured on the server');
 
@@ -110,4 +115,28 @@ async function extractBrochure(fileBase64, pageImages) {
   return parseModelJson(text);
 }
 
+async function extractBrochure(fileBase64, pageImages, scope = '') {
+  const encoded = String(fileBase64 || '').replace(/^data:[^;]+;base64,/, '');
+  const buffer = Buffer.from(encoded, 'base64');
+  if (!buffer.length || buffer.length > MAX_BYTES) throw new Error('Invalid PDF size (max 15 MB)');
+  const key = crypto.createHash('sha256').update(CACHE_VERSION + GEMINI_MODEL + scope).update(buffer).digest('hex');
+  if (extractionCache.has(key)) return structuredClone(extractionCache.get(key));
+  if (pendingExtractions.has(key)) return structuredClone(await pendingExtractions.get(key));
+  const request = extractBrochureUncached(fileBase64, pageImages).then(data => {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid brochure extraction result');
+    for (const field of ['Amenities', 'Highlights', 'ConfigDetails']) {
+      if (!Array.isArray(data[field])) throw new Error('Invalid extraction field: ' + field);
+    }
+    if (!data.ProjectName && !data.BuilderName && !data.Amenities.length && !data.Highlights.length && !data.ConfigDetails.length) {
+      throw new Error('No usable brochure data extracted; result was not cached');
+    }
+    if (extractionCache.size >= CACHE_LIMIT) extractionCache.delete(extractionCache.keys().next().value);
+    extractionCache.set(key, structuredClone(data));
+    return data;
+  });
+  pendingExtractions.set(key, request);
+  try { return structuredClone(await request); } finally { pendingExtractions.delete(key); }
+}
+
 module.exports = { extractBrochure };
+
