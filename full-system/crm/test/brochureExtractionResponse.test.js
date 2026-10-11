@@ -6,6 +6,12 @@ const vm = require('node:vm');
 const { __test } = require('../server');
 const mongoStore = require('../src/data/mongoStore');
 
+function testExtraction() {
+ const ctx = {module:{exports:{}},Buffer,process,AbortSignal,structuredClone,fetch:(...args)=>global.fetch(...args),require:name=>name==='./brochureCompletenessService'?{...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1}:require(name)};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);return ctx.module.exports;
+}
+const emptyReview = {Complete:true,Pages:[{Page:1,Kind:'other',HasConfigurations:false}],ConfigChecks:[],Findings:[]};
+
 test('PDF preview returns fields without waiting for a stuck snapshot save', async () => {
   const source = fs.readFileSync(require.resolve('../server'), 'utf8');
   const start = source.indexOf("        // Extraction only previews fields;");
@@ -50,6 +56,7 @@ test('Gemini PDF extraction uses low reasoning and reads only final JSON fields'
       assert.equal(body.contents[0].parts[1].inline_data.mime_type, 'application/pdf');
       assert.ok(options.signal);
       const prompt = body.contents[0].parts[0].text;
+      if (prompt.startsWith('Independently audit')) return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify(emptyReview)}]}}]})};
       for (const field of ['ProjectArea', 'TotalTowers', 'TotalFloors', 'FloorHeightFt', 'Overview']) {
         assert.ok(prompt.includes('"' + field + '"'), field + ' must be requested');
       }
@@ -59,7 +66,7 @@ test('Gemini PDF extraction uses low reasoning and reads only final JSON fields'
         { text: '{"ProjectName":"Milestone Utsav","TotalUnits":48}' }
       ] } }] }) };
     };
-    const result = await require('../src/services/brochureExtractionService').extractBrochure(Buffer.from('%PDF sample').toString('base64'));
+    const result = await testExtraction().extractBrochure(Buffer.from('%PDF sample').toString('base64'));
     assert.equal(result.ProjectName, 'Milestone Utsav');
     assert.equal(result.TotalUnits, 48);
   } finally {
@@ -74,12 +81,13 @@ test('rendered PDF uses page text and JPEG instead of the heavy original', async
     process.env.GEMINI_API_KEY = 'test-key';
     global.fetch = async (_url, options) => {
       const parts = JSON.parse(options.body).contents[0].parts;
+      if(parts[0].text.startsWith('Independently audit')) return {ok:true,json:async()=>({candidates:[{content:{parts:[{text:JSON.stringify(emptyReview)}]}}]})};
       assert.match(parts[1].text, /Page 1 text: BLDG A.*1-14/);
       assert.equal(parts[2].inline_data.mime_type, 'image/jpeg');
       assert.equal(parts.some(p => p.inline_data?.mime_type === 'application/pdf'), false);
       return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{text:'{"TotalTowers":2,"TotalFloors":14}'}] } }] }) };
     };
-    const service = require('../src/services/brochureExtractionService');
+    const service = testExtraction();
     const result = await service.extractBrochure(Buffer.from('%PDF original').toString('base64'),
       [{data:Buffer.from([255,216,255,217]).toString('base64'),text:'BLDG A typical floor LVL 1-14'}]);
     assert.equal(result.TotalFloors,14);
