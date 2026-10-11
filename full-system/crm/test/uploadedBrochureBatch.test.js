@@ -8,7 +8,7 @@ function setup(rows, fail = false) {
   let db = { BuilderProjects: structuredClone(rows) }, calls = 0;
   const repo = { read: () => structuredClone(db), write: value => { db = structuredClone(value); }, list: key => structuredClone(db[key] || []) };
   const projects = { get: id => ({ ok: true, data: structuredClone(db.BuilderProjects.find(p => p.ProjectID === id)) }),
-    update: (id, payload) => { const p = db.BuilderProjects.find(p => p.ProjectID === id); Object.assign(p,payload); return { ok:true,data:p }; } };
+    update: (id, payload, mutateDb) => { const p = db.BuilderProjects.find(p => p.ProjectID === id); Object.assign(p,payload); if (mutateDb) mutateDb(db); return { ok:true,data:p }; } };
   const ctx = { module: { exports: {} }, Buffer, structuredClone, Set, Map, Date, require: name => {
     if (name === 'node:crypto') return require(name);
     if (name.endsWith('builderProjectService')) return { BuilderProjectService: class {} };
@@ -64,4 +64,16 @@ test('batch UI and server compile; update permission and tenant check protect al
   const server=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'); new vm.Script(server);
   assert.match(server,/UploadedBrochureBatchService/); assert.match(server,/visible: row => tenantCheck\(row, actor\)\.ok/);
   assert.match(html,/uploadedBatch\.Pending > 0/); assert.match(html,/Pause after current PDF/);
+});
+test('real project update commits fields and queue metadata in one snapshot and clears stale developer ID',()=>{
+  let db={BuilderProjects:[{...structuredClone(project),BuilderName:'Old builder',BuilderID:'old',Location1:'Vesu'}],Builders:[{BuilderID:'old',BuilderName:'Old builder'}]}, writes=0;
+  const repo={read:()=>structuredClone(db),list:key=>structuredClone(db[key]||[]),write:value=>{writes++;db=structuredClone(value)}};
+  const context={module:{exports:{}},require:name=>name==='node:crypto'?require(name):{},Buffer,URL};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../src/services/builderProjectService.js'),'utf8'),context);
+  const svc=new context.module.exports.BuilderProjectService(repo);
+  const result=svc.update('p1',{BuilderID:null,BuilderName:'Printed developer',ConfigDetails:[{Type:'Apartment',CarpetAreaSqft:995}]},snapshot=>{
+    snapshot.UploadedBrochureBatches=[{JobID:'job',Items:[{ItemID:'pdf',Status:'saved'}]}];
+  });
+  assert.equal(result.ok,true);assert.equal(writes,1);assert.equal(db.BuilderProjects[0].BuilderName,'Printed developer');
+  assert.equal(db.BuilderProjects[0].ConfigDetails[0].CarpetAreaSqft,995);assert.equal(db.UploadedBrochureBatches[0].Items[0].Status,'saved');
 });

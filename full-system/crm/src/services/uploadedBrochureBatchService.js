@@ -132,7 +132,8 @@ class UploadedBrochureBatchService {
             if (!file.buffer || file.buffer.length > 50 * 1024 * 1024) throw new Error('PDF exceeds AI reader limit (50 MB; source ' + Math.round((file.buffer?.length || 0) / 1024 / 1024) + ' MB)');
             item.Digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
             item.Draft = await this.extract(file.buffer.toString('base64'), null, actorId + ':' + item.ProjectID);
-            this.save(job); // A failed save can be retried without paying for another AI read.
+            // Persist the draft only on failure. Successful fields and queue state
+            // share one snapshot write, rather than three serial full snapshots.
           }
           const current = this.projects.get(item.ProjectID).data;
           if (!current || !this.visible(current)) throw new Error('Project unavailable');
@@ -140,14 +141,19 @@ class UploadedBrochureBatchService {
           const append = job.Items.some(i => i.ProjectID === item.ProjectID && i.Status === 'saved');
           const payload = buildPayload(current, item.Draft, append);
           item.Before = Object.fromEntries(Object.keys(payload).map(k => [k, current[k] == null ? null : current[k]]));
-          const result = this.projects.update(item.ProjectID, payload);
+          const result = this.projects.update(item.ProjectID, payload, db => {
+            item.Status = 'saved'; item.SavedAt = new Date().toISOString(); item.Error = null;
+            item.Warnings = unique(item.Draft.ReadingWarnings); delete item.Draft;
+            if (!job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';
+            job.UpdatedAt = new Date().toISOString();
+            db.UploadedBrochureBatches = db.UploadedBrochureBatches || [];
+            const index = db.UploadedBrochureBatches.findIndex(j => j.JobID === job.JobID);
+            if (index < 0) db.UploadedBrochureBatches.push(job); else db.UploadedBrochureBatches[index] = job;
+          });
           if (!result.ok) throw new Error(result.error || 'Project save failed');
-          item.Status = 'saved'; item.SavedAt = new Date().toISOString(); item.Error = null;
-          item.Warnings = unique(item.Draft.ReadingWarnings);
-          delete item.Draft;
         } catch (error) { item.Status = 'failed'; item.Error = String(error.message || error).slice(0,1000); }
         if (!job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';
-        this.save(job);
+        if (item.Status !== 'saved') this.save(job);
         return { ok: true, data: this.view(job) };
       });
       return locked.acquired ? locked.result : { ok: false, statusCode: 409, error: 'Another instance is reading this batch' };

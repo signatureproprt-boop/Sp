@@ -574,7 +574,7 @@ class BuilderProjectService {
     return { ok: true, data: row };
   }
 
-  update(id, payload) {
+  update(id, payload, mutateDb = null) {
     const db = this.repo.read();
     const row = this._all(db).find((p) => p.ProjectID === id);
     if (!row) return { ok: false, error: 'Project not found' };
@@ -589,6 +589,7 @@ class BuilderProjectService {
     const changed = Object.entries(clean).some(([key, value]) => JSON.stringify(row[key]) !== JSON.stringify(value));
     Object.assign(row, clean, { UpdatedAt: new Date().toISOString() });
     if (changed) row.FormReview = null;
+    if (typeof mutateDb === 'function') mutateDb(db);
     this.repo.write(db);
     return { ok: true, data: row };
   }
@@ -1293,3 +1294,4 @@ class BuilderProjectService {
 }
 
 module.exports = { BuilderProjectService };
+
