@@ -14,6 +14,7 @@ function setup(rows, fail = false) {
     if (name.endsWith('builderProjectService')) return { BuilderProjectService: class {} };
     if (name.endsWith('projectMediaCanaryMigrationService')) return { ProjectMediaCanaryMigrationService: class {} };
     if (name.endsWith('brochureExtractionService')) return { extractBrochure() {} };
+    if (name.endsWith('brochurePdfPreparationService')) return { preparePdfForAi:async buffer=>({buffer,optimized:false}) };
     if (name.endsWith('mongoStore')) return { isEnabled: () => false };
     throw Error(name);
   } };
