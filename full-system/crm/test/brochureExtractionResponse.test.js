@@ -67,3 +67,25 @@ test('Gemini PDF extraction uses low reasoning and reads only final JSON fields'
     if (oldKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey;
   }
 });
+
+test('rendered PDF uses page text and JPEG instead of the heavy original', async () => {
+  const oldFetch = global.fetch, oldKey = process.env.GEMINI_API_KEY;
+  try {
+    process.env.GEMINI_API_KEY = 'test-key';
+    global.fetch = async (_url, options) => {
+      const parts = JSON.parse(options.body).contents[0].parts;
+      assert.match(parts[1].text, /Page 1 text: BLDG A.*1-14/);
+      assert.equal(parts[2].inline_data.mime_type, 'image/jpeg');
+      assert.equal(parts.some(p => p.inline_data?.mime_type === 'application/pdf'), false);
+      return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{text:'{"TotalTowers":2,"TotalFloors":14}'}] } }] }) };
+    };
+    const service = require('../src/services/brochureExtractionService');
+    const result = await service.extractBrochure(Buffer.from('%PDF original').toString('base64'),
+      [{data:Buffer.from([255,216,255,217]).toString('base64'),text:'BLDG A typical floor LVL 1-14'}]);
+    assert.equal(result.TotalFloors,14);
+    await assert.rejects(service.extractBrochure('cGRm', [{data:'cGRm'}]), /Invalid rendered PDF pages/);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey;
+  }
+});

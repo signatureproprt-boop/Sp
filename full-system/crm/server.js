@@ -2529,7 +2529,7 @@ async function handleApi(req, res, url) {
         // Extraction only previews fields; the later project save confirms durability.
         res.__sigRequireMongoDurability = false;
         const { extractBrochure } = require('./src/services/brochureExtractionService');
-        extractBrochure(body.fileBase64)
+        extractBrochure(body.fileBase64, body.pageImages)
           .then((data) => sendJson(res, { ok: true, data }))
           .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
         return;

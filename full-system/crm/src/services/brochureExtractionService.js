@@ -46,7 +46,7 @@ function parseModelJson(text) {
   }
 }
 
-async function extractBrochure(fileBase64) {
+async function extractBrochure(fileBase64, pageImages) {
   const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) throw new Error('GEMINI_API_KEY is not configured on the server');
 
@@ -60,6 +60,21 @@ async function extractBrochure(fileBase64) {
   if (!buffer.length) throw new Error('Empty file');
   if (buffer.length > MAX_BYTES) throw new Error('PDF too large (max 15 MB)');
 
+  let documentParts = [{ inline_data: { mime_type: 'application/pdf', data: buffer.toString('base64') } }];
+  if (Array.isArray(pageImages) && pageImages.length) {
+    if (pageImages.length > 30) throw new Error('Too many rendered PDF pages');
+    let totalBytes = 0;
+    documentParts = pageImages.flatMap((page, index) => {
+      const bytes = Buffer.from(String(page.data || ''), 'base64');
+      totalBytes += bytes.length;
+      if (!bytes.length || bytes[0] !== 0xff || bytes[1] !== 0xd8 || totalBytes > MAX_BYTES) {
+        throw new Error('Invalid rendered PDF pages');
+      }
+      return [{ text: `Page ${index + 1} text: ${String(page.text || '').slice(0, 20000)}` },
+        { inline_data: { mime_type: 'image/jpeg', data: bytes.toString('base64') } }];
+    });
+  }
+
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     signal: AbortSignal.timeout(90000),
     method: 'POST',
@@ -68,7 +83,7 @@ async function extractBrochure(fileBase64) {
       contents: [{
         parts: [
           { text: EXTRACTION_PROMPT },
-          { inline_data: { mime_type: 'application/pdf', data: buffer.toString('base64') } }
+          ...documentParts
         ]
       }],
       generationConfig: {

@@ -1462,13 +1462,44 @@ table td,table th{border-color:var(--v2-line)!important}
   function removeConfigRow(i) { configRows.splice(i, 1); renderConfigRowsUI(); }
 
   // ── Auto-fill from Brochure (AI) ─────────────────────────────────────
+  async function prepareBrochurePages(fileBase64) {
+    const encoded = String(fileBase64).replace(/^data:[^;]+;base64,/, '');
+    const raw = atob(encoded);
+    if (!raw.startsWith('%PDF')) return null;
+    const pdfjs = await import('/assets/pdfjs/pdf.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/assets/pdfjs/pdf.worker.mjs';
+    const pdf = await pdfjs.getDocument({ data: Uint8Array.from(raw, c => c.charCodeAt(0)),
+      standardFontDataUrl: '/assets/pdfjs/standard_fonts/' }).promise;
+    try {
+      if (pdf.numPages > 30) return null;
+      const pages = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const original = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: 1800 / Math.max(original.width, original.height) });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const text = (await page.getTextContent()).items.map(item => item.str || '').join(' ').slice(0, 20000);
+        pages.push({ data: canvas.toDataURL('image/jpeg', 0.82).split(',')[1], text });
+        canvas.width = canvas.height = 0;
+        page.cleanup();
+      }
+      return pages;
+    } finally { await pdf.destroy(); }
+  }
+
   async function requestBrochureExtraction(filename, fileBase64) {
+    // Render heavy/vector PDFs into readable pages so malformed annotations and
+    // oversized source images do not hold up the AI. Keep the original for saving.
+    let pageImages = null;
+    try { pageImages = await prepareBrochurePages(fileBase64); } catch (_) { /* PDF fallback */ }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 110000);
     try {
       const response = await fetch('/api/v2/builder-projects/extract-brochure', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, fileBase64 }), signal: controller.signal
+        body: JSON.stringify({ filename, fileBase64, pageImages }), signal: controller.signal
       });
       const text = await response.text();
       let result;
