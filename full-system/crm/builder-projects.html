@@ -329,6 +329,17 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="chip" data-testid="toggle-group-view" onclick="toggleGroupView(this)" style="margin-left:auto">📁 Group by Builder</div>
   </div>
 
+  <div class="section-card" id="uploaded-brochure-batch-panel">
+    <div class="section-title">AI fill from uploaded brochures</div>
+    <p class="pd-muted">Existing projects only. Reads every permanently stored PDF, saves supported fields and logs missing or conflicting data. Keep this page open while processing; saved progress can be resumed.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
+      <button class="btn btn-primary" id="uploaded-batch-start" onclick="startUploadedBrochureBatch()">Start / Resume AI fill</button>
+      <button class="btn btn-ghost" id="uploaded-batch-pause" onclick="uploadedBatchPaused=true" disabled>Pause after current PDF</button>
+      <button class="btn btn-ghost" onclick="refreshUploadedBrochureBatch()">Refresh progress</button>
+    </div>
+    <div id="uploaded-batch-summary" role="status">No batch loaded.</div>
+    <details style="margin-top:12px"><summary>Project results</summary><div style="max-height:320px;overflow:auto"><table id="uploaded-batch-results"></table></div></details>
+  </div>
   <div id="grid" class="grid" data-testid="projects-grid"></div>
 
   <!-- Import history -->
@@ -1987,6 +1998,66 @@ table td,table th{border-color:var(--v2-line)!important}
     } catch (e) { alert('Assign failed: ' + e.message); }
   }
 
+
+  let uploadedBatch = null, uploadedBatchRunning = false, uploadedBatchPaused = false;
+  function renderUploadedBrochureBatch() {
+    const job = uploadedBatch;
+    const summary = document.getElementById('uploaded-batch-summary');
+    if (!job) { summary.textContent = 'No batch loaded.'; return; }
+    summary.textContent = job.Projects + ' projects · ' + job.Total + ' stored PDFs · Saved ' + job.Saved + ' · Failed / needs review ' + job.Failed + ' · Remaining ' + job.Pending + ' · Without stored PDF ' + job.WithoutStoredBrochure + (uploadedBatchRunning ? ' · Processing…' : job.Pending ? ' · Paused — resume to continue' : ' · Complete');
+    document.getElementById('uploaded-batch-results').innerHTML = '<thead><tr><th>Project</th><th>PDF</th><th>Status</th><th>Details</th></tr></thead><tbody>' +
+      job.Items.map(item => '<tr><td>' + esc(item.ProjectName) + '</td><td>' + esc(item.Filename) + '</td><td>' + esc(item.Status) + '</td><td>' + esc(item.Error || (item.Warnings || []).join('; ') || '') + '</td></tr>').join('') + '</tbody>';
+  }
+  async function refreshUploadedBrochureBatch() {
+    try {
+      const response = await fetch('/api/v2/builder-projects/uploaded-brochure-batch');
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Batch progress unavailable');
+      uploadedBatch = result.data; renderUploadedBrochureBatch();
+    } catch (error) { document.getElementById('uploaded-batch-summary').textContent = error.message; }
+  }
+  async function startUploadedBrochureBatch() {
+    if (uploadedBatchRunning) return;
+    uploadedBatchRunning = true; uploadedBatchPaused = false;
+    document.getElementById('uploaded-batch-start').disabled = true;
+    document.getElementById('uploaded-batch-pause').disabled = false;
+    try {
+      // Resume a durable queue; do not reread a completed queue on another click.
+      if (!uploadedBatch) {
+        const result = await fetch('/api/v2/builder-projects/uploaded-brochure-batch').then(r => r.json());
+        if (!result.ok) throw new Error(result.error || 'Batch lookup failed');
+        uploadedBatch = result.data;
+      }
+      if (!uploadedBatch) {
+        const result = await fetch('/api/v2/builder-projects/uploaded-brochure-batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json());
+        if (!result.ok) throw new Error(result.error || 'Could not create batch');
+        uploadedBatch = result.data;
+      }
+      renderUploadedBrochureBatch();
+      while (uploadedBatch.Pending > 0 && !uploadedBatchPaused) {
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 330000);
+        try {
+          const response = await fetch('/api/v2/builder-projects/uploaded-brochure-batch/' + encodeURIComponent(uploadedBatch.JobID) + '/step', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal
+          });
+          const text = await response.text(); let result;
+          try { result = JSON.parse(text); } catch (_) { throw new Error('Server response unavailable (HTTP ' + response.status + '). Saved progress retained.'); }
+          if (!response.ok || !result.ok) throw new Error(result.error || 'Batch stopped');
+          uploadedBatch = result.data; renderUploadedBrochureBatch();
+        } finally { clearTimeout(timer); }
+      }
+      await loadProjects();
+    } catch (error) {
+      uploadedBatchPaused = true;
+      document.getElementById('uploaded-batch-summary').textContent = 'Paused: ' + (error.name === 'AbortError' ? 'Server request timed out. Refresh progress before resuming.' : error.message);
+    } finally {
+      uploadedBatchRunning = false;
+      document.getElementById('uploaded-batch-start').disabled = false;
+      document.getElementById('uploaded-batch-pause').disabled = true;
+      if (!uploadedBatchPaused) renderUploadedBrochureBatch();
+    }
+  }
+
   // ── Bulk Brochure Extraction (AI) ─────────────────────────────────────
   let bulkBrochureFiles = [];
   const BULK_STATUS_LABEL = { pending: '⏳ Waiting', extracting: '🤖 Reading…', done: '✅ Extracted', failed: '❌ Failed' };
@@ -2369,4 +2440,5 @@ table td,table th{border-color:var(--v2-line)!important}
 </script>
 </body>
 </html>
+
 
