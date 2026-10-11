@@ -639,11 +639,13 @@ class ProjectMediaCanaryMigrationService {
     return { ok: true, buffer: out.buffer, contentType: contentType || out.contentType, size: Number(out.size || out.buffer?.length || 0) || undefined };
   }
 
-  async getProjectBrochureFile(projectId) {
+  async getProjectBrochureFile(projectId, mediaId = null, fileKey = null) {
     const db = this.repo.read();
     const project = this._findProject(db, projectId);
     if (!project) return { ok: false, statusCode: 404, error: 'Project not found' };
     const brochure = (project.Brochures || []).find((row) =>
+      (!mediaId || String(row.MediaID || '') === String(mediaId)) &&
+      (!fileKey || String(row.DriveFileID || row.DriveFileId || row.StoragePath) === String(fileKey)) &&
       (row.DriveFileID || row.DriveFileId || row.StoragePath) &&
       row.verified === true &&
       String(row.downloadStatus || '').toLowerCase() === 'downloaded'
@@ -671,3 +673,4 @@ module.exports = {
   ProjectMediaCanaryMigrationService,
   checksumOf
 };
+
