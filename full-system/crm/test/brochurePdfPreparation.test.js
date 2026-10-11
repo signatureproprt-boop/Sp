@@ -26,3 +26,13 @@ test('preparation failure is explicit and leaves no temporary files',async()=>{
     temp=path.dirname(args.at(-1));throw Object.assign(Error('deadline'),{killed:true});
   }}),/timed out/);await assert.rejects(fs.stat(temp),{code:'ENOENT'});
 });
+test('240 DPI fallback reads the same complete source if the 300 DPI copy remains too large',async()=>{
+  let calls=0;
+  const result=await preparePdfForAi(Buffer.from('%PDF-1.7\n'+'x'.repeat(2000)),{maxBytes:1000,run:async(_binary,args)=>{
+    calls++;assert.ok(args.includes('-dColorImageResolution='+(calls===1?300:240)));
+    assert.ok(!args.some(x=>/FirstPage|LastPage/.test(x)));
+    const output=args.find(x=>x.startsWith('-sOutputFile=')).slice('-sOutputFile='.length);
+    await fs.writeFile(output,Buffer.from('%PDF-1.7\n'+'x'.repeat(calls===1?1500:500)));
+  }});
+  assert.equal(calls,2);assert.equal(result.resolution,240);assert.ok(result.buffer.length<1000);
+});
