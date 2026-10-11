@@ -3,6 +3,16 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateReview, reviewPrompt, countPdfPages } = require('../src/services/brochureCompletenessService');
 const candidate = { ConfigDetails: [{ Type: 'Apartment', CarpetAreaSqft: 2420 }] };
+test('rejects the actual Livonia failure: terrace evidence exists but only regular flats were extracted', () => {
+  const { validatePrivateTerraces } = require('../src/services/brochureCompletenessService');
+  const data = {...candidate,SourceEvidence:['Page 22: Tower A Terrace Floor Plan, Private Terrace 1051.00 sq.ft. each']};
+  assert.throws(() => validatePrivateTerraces(data), /1051 sqft is missing/);
+  data.ConfigDetails = [{Type:'Terrace Flat',TerraceAreaSqft:1051}];
+  assert.doesNotThrow(() => validatePrivateTerraces(data));
+  data.SourceEvidence = ['Page 24: Private Terrace 1079.00 sq.ft. and 1361.00 sq.ft.'];
+  data.ConfigDetails = [{Type:'Terrace Flat',TerraceAreaSqft:1079}];
+  assert.throws(() => validatePrivateTerraces(data), /1361 sqft is missing/);
+});
 const good = () => ({ Complete: true, Pages: [{Page:1,Kind:'floor plan',HasConfigurations:true},{Page:2,Kind:'terrace plan',HasConfigurations:true}], ConfigChecks:[{Index:0,Supported:true}], Findings:[] });
 test('requires exactly every PDF page, not an asserted complete flag', () => {
   const review = good(); review.Pages.pop(); assert.throws(() => validateReview(review,candidate,2), /pages were not reviewed/);
