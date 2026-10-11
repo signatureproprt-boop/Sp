@@ -125,9 +125,10 @@ async function extractBrochure(fileBase64, pageImages, scope = '') {
   const request = extractBrochureUncached(fileBase64, pageImages).then(data => {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid brochure extraction result');
     for (const field of ['Amenities', 'Highlights', 'ConfigDetails']) {
+      if (data[field] == null) data[field] = [];
       if (!Array.isArray(data[field])) throw new Error('Invalid extraction field: ' + field);
     }
-    if (!data.ProjectName && !data.BuilderName && !data.Amenities.length && !data.Highlights.length && !data.ConfigDetails.length) {
+    if (!Object.values(data).some(value => Array.isArray(value) ? value.length > 0 : value != null && value !== '')) {
       throw new Error('No usable brochure data extracted; result was not cached');
     }
     if (extractionCache.size >= CACHE_LIMIT) extractionCache.delete(extractionCache.keys().next().value);
