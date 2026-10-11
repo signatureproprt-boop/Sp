@@ -92,3 +92,32 @@ test('regular, penthouse and terrace configurations retain separate private area
   assert.match(fields['config-rows'].innerHTML, /Private terrace area sqft/);
   assert.match(fields['config-rows'].innerHTML, /value="600"/);
 });
+
+test('project persistence keeps private terrace separate and preserves each unit type', () => {
+  const context = { module: { exports: {} }, require: id => {
+    if (id === 'csv-parse/sync') return { parse() {} };
+    if (id === 'read-excel-file/node') return () => {};
+    if (id.startsWith('./')) return {};
+    return require(id);
+  }, process, Buffer };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/builderProjectService.js'), 'utf8'), context);
+  const service = new context.module.exports.BuilderProjectService({});
+  const rows = ['Apartment', 'Penthouse', 'Terrace Flat'].map((Type, i) => ({
+    Tower: 'A', FlatType: '1', Type, BHK: 3, CarpetAreaSqft: '900',
+    SuperBuiltUpAreaSqft: '1500', TerraceAreaSqft: i ? String(i * 250) : null,
+    ParkingAllotted: 0, ServantRoom: false
+  }));
+  const saved = service._normalizePayload({ ConfigDetails: rows });
+  const reloaded = service._normalizePayload(saved);
+  assert.equal(reloaded.ConfigDetails.length, 3);
+  assert.equal(reloaded.ConfigDetails[1].Type, 'Penthouse');
+  assert.equal(reloaded.ConfigDetails[1].TerraceAreaSqft, 250);
+  assert.equal(reloaded.ConfigDetails[2].TerraceAreaSqft, 500);
+  for (const row of reloaded.ConfigDetails) {
+    assert.equal(row.CarpetAreaSqft, 900);
+    assert.equal(row.SuperBuiltUpAreaSqft, 1500);
+    assert.equal(row.ParkingAllotted, 0);
+    assert.equal(row.ServantRoom, false);
+  }
+  assert.equal(reloaded.ConfigDetails[0].TerraceAreaSqft, null);
+});
