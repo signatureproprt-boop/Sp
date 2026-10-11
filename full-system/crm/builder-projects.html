@@ -419,7 +419,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <div class="form-group"><label>Sales person mobile</label><input id="f-sales-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile number" /></div>
         <div class="form-group full">
           <label>Configurations & Sizes (sqft)</label>
-          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add each flat, penthouse or terrace flat separately. Add tower and flat number/type. Fill BHK, Carpet and Super Built-up sqft; add parking and servant room where known.</div>
+          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add each flat, penthouse or terrace flat separately. Add tower and flat number/type. Fill BHK, Carpet, Super Built-up and Private Terrace sqft separately; add parking and servant room where known.</div>
           <div id="config-rows" data-testid="config-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
           <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:5px 12px;font-size:12px">+ Add Config</button>
         </div>
@@ -1092,7 +1092,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const catColor = catColors[p.Category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      p.ConfigDetails.forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
+      p.ConfigDetails.forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       facts.push(p.Configurations.join(' / '));
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
@@ -1155,7 +1155,7 @@ table td,table th{border-color:var(--v2-line)!important}
     lines.push(`📍 ${p.Location1 || '—'}${p.Address ? ' — ' + p.Address : ''}`);
     lines.push(`Category: ${p.Category || 'Residential'} · Status: ${p.ProjectStatus || '—'}`);
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      p.ConfigDetails.forEach(c => lines.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? c.BHK + ' BHK' : '', c.CarpetAreaSqft != null ? 'Carpet ' + c.CarpetAreaSqft + ' sqft' : '', c.SuperBuiltUpAreaSqft != null ? 'Super Built-up ' + c.SuperBuiltUpAreaSqft + ' sqft' : ''].filter(Boolean).join(' · ')));
+      p.ConfigDetails.forEach(c => lines.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? c.BHK + ' BHK' : '', c.CarpetAreaSqft != null ? 'Carpet ' + c.CarpetAreaSqft + ' sqft' : '', c.SuperBuiltUpAreaSqft != null ? 'Super Built-up ' + c.SuperBuiltUpAreaSqft + ' sqft' : '', c.TerraceAreaSqft != null ? 'Private Terrace ' + c.TerraceAreaSqft + ' sqft' : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       lines.push(`Configs: ${p.Configurations.join(' / ')}`);
     }
@@ -1459,10 +1459,11 @@ table td,table th{border-color:var(--v2-line)!important}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" data-testid="config-row-${i}">
         <input type="text" value="${esc(row.Tower||'')}" placeholder="Tower A / B" aria-label="Tower" data-testid="config-tower-${i}" oninput="updateConfigRow(${i},'Tower',this.value)" style="width:110px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
         <input type="text" value="${esc(row.FlatType||'')}" placeholder="Flat no. / type" aria-label="Flat number / type" data-testid="config-flat-${i}" oninput="updateConfigRow(${i},'FlatType',this.value)" style="width:120px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
-        <input type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="e.g. 2 BHK" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" style="flex:1;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="Apartment / Penthouse / Terrace Flat" aria-label="Unit type" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" style="flex:1;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <input type="number" min="0" max="20" step="1" value="${row.BHK ?? ''}" placeholder="BHK" aria-label="Bedrooms / BHK" data-testid="config-bhk-${i}" oninput="updateConfigRow(${i},'BHK',this.value)" style="width:75px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <input type="number" min="0" value="${row.CarpetAreaSqft ?? ''}" placeholder="Carpet sqft" aria-label="Carpet area sqft" data-testid="config-carpet-${i}" oninput="updateConfigRow(${i},'CarpetAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <input type="number" min="0" value="${row.SuperBuiltUpAreaSqft ?? ''}" placeholder="Super built-up sqft" aria-label="Super built-up area sqft" data-testid="config-super-built-up-${i}" oninput="updateConfigRow(${i},'SuperBuiltUpAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.TerraceAreaSqft ?? ''}" placeholder="Private terrace sqft" aria-label="Private terrace area sqft" data-testid="config-terrace-${i}" oninput="updateConfigRow(${i},'TerraceAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <input type="number" min="0" step="1" value="${row.ParkingAllotted ?? ''}" placeholder="Parking" aria-label="Allotted parking spaces" data-testid="config-parking-${i}" oninput="updateConfigRow(${i},'ParkingAllotted',this.value)" style="width:95px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
         <select aria-label="Servant room" data-testid="config-servant-${i}" onchange="updateConfigRow(${i},'ServantRoom',this.value)" style="padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px"><option value="" ${row.ServantRoom == null ? 'selected' : ''}>Servant room?</option><option value="yes" ${row.ServantRoom === true || row.ServantRoom === 'yes' ? 'selected' : ''}>Yes</option><option value="no" ${row.ServantRoom === false || row.ServantRoom === 'no' ? 'selected' : ''}>No</option></select>
         ${row.AreaSqft !== '' && row.AreaSqft != null ? `<small title="Legacy area without confirmed type">Legacy ${esc(row.AreaSqft)} sqft</small>` : ''}
@@ -1504,7 +1505,7 @@ table td,table th{border-color:var(--v2-line)!important}
   async function brochureCache(action, key, value) {
     if (!window.indexedDB) return null;
     return new Promise(resolve => {
-      const open = indexedDB.open('signature-brochure-reader-v2', 1);
+      const open = indexedDB.open('signature-brochure-reader-v3', 1);
       open.onupgradeneeded = () => open.result.createObjectStore('results');
       open.onerror = () => resolve(null);
       open.onsuccess = () => {
@@ -1523,7 +1524,7 @@ table td,table th{border-color:var(--v2-line)!important}
   async function requestBrochureExtraction(filename, fileBase64) {
     const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
-    const cacheKey = 'reader-v2:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cacheKey = 'reader-v3:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     const cached = await brochureCache('get', cacheKey);
     if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
 
