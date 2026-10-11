@@ -45,7 +45,7 @@ steps:
       - --min-instances=0
       - --max-instances=10
       - --concurrency=80
-      - --timeout=300
+      - --timeout=900
       - --no-traffic
       - --tag=snapshot-recovery
       - --update-env-vars=STORAGE_MODE=mongo,MONGO_DB=signature_properties,GEMINI_MODEL=gemini-3.8-flash,GEMINI_AGENT_MODEL=gemini-3.8-flash,CRM_REPORT_SHEET_ID=1ICS50baVcDnFJt6UMTcvNzBAMDbs6tX19T9TA-4b3uk
@@ -70,3 +70,4 @@ steps:
 
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID
+
