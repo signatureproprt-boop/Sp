@@ -30,6 +30,7 @@ function buildPayload(project, data, appendConfigs = false) {
   for (const key of ['BuilderName','Location1','Address','RERANumber','Category','ProjectStatus','TotalUnits','ProjectArea','TotalTowers','TotalFloors','FloorHeightFt','SalesPersonName','PossessionDate','Overview']) {
     if (data[key] != null && data[key] !== '') payload[key] = data[key];
   }
+  if (payload.BuilderName) payload.BuilderID = null; // Resolve the printed developer, not a stale imported builder ID.
   // Preserve richer reviewed point lists when an AI pass misses an item.
   payload.Amenities = unique([...(project.Amenities || []), ...(data.Amenities || [])]);
   payload.Highlights = unique([...(project.Highlights || []), ...(project.Specifications || []), ...(data.Highlights || [])]).filter(x => !/^(YoutubeVideo|Broucher|Brochure)$/i.test(x));
