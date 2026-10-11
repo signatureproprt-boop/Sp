@@ -132,10 +132,10 @@ class UploadedBrochureBatchService {
             const file = await this.media.getProjectBrochureFile(item.ProjectID, media.MediaID, item.FileKey);
             if (!file.ok) throw new Error(file.error || 'Stored PDF unavailable');
             const prepared = await this.prepare(file.buffer);
-            item.SourceBytes = file.buffer.length; item.AiBytes = prepared.buffer.length; item.OptimizedCopy = prepared.optimized;
+            item.SourceBytes = file.buffer.length; item.AiBytes = prepared.buffer.length; item.OptimizedCopy = prepared.optimized; item.AiCopyDpi = prepared.resolution || null;
             item.Digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
             item.Draft = await this.extract(prepared.buffer.toString('base64'), null, actorId + ':' + item.ProjectID);
-            if (prepared.optimized) item.Draft.ReadingWarnings = unique([...(item.Draft.ReadingWarnings || []), 'AI read a full-page 300 DPI optimized copy; original uploaded brochure retained']);
+            if (prepared.optimized) item.Draft.ReadingWarnings = unique([...(item.Draft.ReadingWarnings || []), 'AI read a full-page ' + prepared.resolution + ' DPI optimized copy; original uploaded brochure retained']);
             // Persist the draft only on failure. Successful fields and queue state
             // share one snapshot write, rather than three serial full snapshots.
           }
