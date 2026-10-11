@@ -1,0 +1,28 @@
+'use strict';
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const {preparePdfForAi}=require('../src/services/brochurePdfPreparationService');
+test('small PDFs remain byte-identical; invalid inputs are rejected',async()=>{
+  const source=Buffer.from('%PDF-1.7\noriginal');
+  const result=await preparePdfForAi(source,{run:()=>{throw Error('must not run')}});
+  assert.equal(result.buffer,source);assert.equal(result.optimized,false);
+  await assert.rejects(preparePdfForAi(Buffer.from('not a PDF')),/not a PDF/);
+});
+test('large PDF uses all pages at 300 DPI and cleans temporary copies',async()=>{
+  const source=Buffer.from('%PDF-1.7\n'+'x'.repeat(2000));let temp;
+  const result=await preparePdfForAi(source,{maxBytes:1000,run:async(binary,args)=>{
+    assert.equal(binary,'gs');assert.ok(args.includes('-dSAFER'));assert.ok(args.includes('-dColorImageResolution=300'));
+    assert.ok(!args.some(x=>/FirstPage|LastPage/.test(x)));
+    const input=args.at(-1);temp=path.dirname(input);assert.deepEqual(await fs.readFile(input),source);
+    await fs.writeFile(args.find(x=>x.startsWith('-sOutputFile=')).split('=').slice(1).join('='),Buffer.from('%PDF-1.7\nsmaller complete copy'));
+  }});
+  assert.equal(result.optimized,true);assert.equal(result.sourceBytes,source.length);assert.equal(result.buffer.length<1000,true);
+  await assert.rejects(fs.stat(temp),{code:'ENOENT'});
+});
+test('preparation failure is explicit and leaves no temporary files',async()=>{
+  let temp;await assert.rejects(preparePdfForAi(Buffer.from('%PDF-1.7\n'+'x'.repeat(2000)),{maxBytes:1000,run:async(_binary,args)=>{
+    temp=path.dirname(args.at(-1));throw Object.assign(Error('deadline'),{killed:true});
+  }}),/timed out/);await assert.rejects(fs.stat(temp),{code:'ENOENT'});
+});
