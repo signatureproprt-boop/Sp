@@ -145,5 +145,33 @@ test('display groups identical tower configurations without changing saved rows'
   assert.equal(groups[2].Type, 'Penthouse');
   assert.equal(groups[3].Type, 'Terrace Flat');
   assert.equal(JSON.stringify(rows), before);
-  assert.equal((html.match(/groupedConfigDetails\(p.ConfigDetails\)/g) || []).length, 2);
+  assert.equal((html.match(/groupedConfigDetails\(p.ConfigDetails\)/g) || []).length, 3);
+});
+
+test('brochure catalogue groups edit rows and keeps layout evidence and missing-area reasons', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../builder-projects.html'), 'utf8');
+  const fields = {};
+  const context = { document: { getElementById: id => fields[id] || (fields[id] = { value: '' }) }, configRows: [], renderConfigRowsUI() {} };
+  vm.createContext(context);
+  let start = html.indexOf('  function groupedConfigDetails(rows)');
+  vm.runInContext(html.slice(start, html.indexOf('  function renderCard(p)', start)), context);
+  start = html.indexOf('  function applyAutoFill(d)');
+  vm.runInContext(html.slice(start, html.indexOf('  function closeProjectModal', start)), context);
+  context.applyAutoFill({ BuilderName: 'Swagat Developers', SourceEvidence: ['Page 5: Swagat Developers'], ReadingWarnings: ['Total carpet area not stated on page 12.'],
+    ConfigDetails: [
+      { Tower: 'A', FlatType: '101', Type: 'Apartment', BHK: 3 },
+      { Tower: 'B', FlatType: '105', Type: 'Apartment', BHK: 3 },
+      { Tower: 'C', FlatType: 'Layout upper', Type: 'Apartment', BHK: 3 },
+      { Tower: 'C', FlatType: 'Layout lower', Type: 'Apartment', BHK: 3 }
+    ] });
+  assert.equal(context.configRows.length, 3);
+  assert.equal(context.configRows[0].Tower, 'A/B');
+  assert.equal(context.configRows[0].CarpetAreaSqft, '');
+  assert.equal(fields['f-builder-name'].value, 'Swagat Developers');
+  assert.match(fields['f-notes'].value, /Page 5/);
+  assert.match(fields['f-notes'].value, /not stated/);
+  const service = fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8');
+  assert.match(service, /Do NOT expand site-plan flat numbers/);
+  assert.match(service, /For every numeric area provide a SourceEvidence/);
+  assert.doesNotMatch(service, /separate configuration for EVERY tower/);
 });
