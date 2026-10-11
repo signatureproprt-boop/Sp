@@ -41,4 +41,16 @@ function validateReview(review, data, pageCount) {
   if (checked.size !== configs.length) fail('not every configuration was checked');
   return { Version: REVIEW_VERSION, PageCount: pageCount, Pages: [...pages].sort((a,b) => a-b), Status: 'automated_checks_passed' };
 }
-module.exports = { countPdfPages, reviewPrompt, validateReview, REVIEW_VERSION };
+function validatePrivateTerraces(data) {
+  for (const evidence of data.SourceEvidence || []) {
+    const after = /private\s+terrace\s*(?:area)?\s*[:=-]?\s*([\s\S]*)/i.exec(String(evidence))?.[1];
+    if (!after) continue;
+    for (const match of after.matchAll(/\b(\d[\d,]*(?:\.\d+)?)\s*(?:sq\.?\s*(?:ft\.?|feet)|square\s*feet)/gi)) {
+      const area = Number(match[1].replace(/,/g,''));
+      if (area > 0 && !(data.ConfigDetails || []).some(c => Number(c.TerraceAreaSqft) === area && /terrace|penthouse|duplex/i.test(c.Type || ''))) {
+        throw new Error('Review required: printed private terrace ' + area + ' sqft is missing from a separate terrace/penthouse configuration; ' + evidence);
+      }
+    }
+  }
+}
+module.exports = { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces, REVIEW_VERSION };
