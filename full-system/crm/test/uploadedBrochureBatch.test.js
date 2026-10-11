@@ -15,6 +15,7 @@ function setup(rows, fail = false) {
     if (name.endsWith('projectMediaCanaryMigrationService')) return { ProjectMediaCanaryMigrationService: class {} };
     if (name.endsWith('brochureExtractionService')) return { extractBrochure() {} };
     if (name.endsWith('brochurePdfPreparationService')) return { preparePdfForAi:async buffer=>({buffer,optimized:false}) };
+    if (name.endsWith('brochureCompletenessService')) return { REVIEW_VERSION:'full-page-review-v1' };
     if (name.endsWith('mongoStore')) return { isEnabled: () => false };
     throw Error(name);
   } };
@@ -22,7 +23,7 @@ function setup(rows, fail = false) {
   const api = ctx.module.exports;
   const svc = new api.UploadedBrochureBatchService(repo,{ projects, visible:p=>p.CompanyID === 'mine',
     media: { getProjectBrochureFile: async (_id, mediaId, key) => { assert.ok(mediaId); assert.ok(key); return { ok:true,buffer:Buffer.from('%PDF test') }; } },
-    extract: async () => { calls++; if (fail) throw Error('AI unavailable'); return { ProjectName:'Coral Heights', BuilderName:'Swagat Developers', ConfigDetails:[], Amenities:['Gym'], Highlights:['Good tiles'], SourceEvidence:[], ReadingWarnings:['Carpet not printed'] }; } });
+    extract: async () => { calls++; if (fail) throw Error('AI unavailable'); return { CompletenessReview:{Version:'full-page-review-v1',Status:'automated_checks_passed',PageCount:2}, ProjectName:'Coral Heights', BuilderName:'Swagat Developers', ConfigDetails:[], Amenities:['Gym'], Highlights:['Good tiles'], SourceEvidence:[], ReadingWarnings:['Carpet not printed'] }; } });
   return { ...api, svc, repo, calls:()=>calls };
 }
 const pdf = id => ({ MediaID:id,DriveFileID:id,verified:true,downloadStatus:'downloaded',Filename:id+'.pdf' });
@@ -36,8 +37,8 @@ test('queue covers all distinct stored PDFs, excludes other tenants and remote-o
   let out=await x.svc.step(start.data.JobID,'user'); assert.equal(out.data.Saved,1); assert.equal(out.data.Pending,1);
   out=await x.svc.step(start.data.JobID,'user'); assert.equal(out.data.Saved,2); assert.equal(out.data.Status,'complete');
   await x.svc.step(start.data.JobID,'user'); assert.equal(x.calls(),2);
-  assert.deepEqual(x.repo.read().BuilderProjects[0].Amenities,['Garden','Gym']);
-  assert.ok(x.repo.read().BuilderProjects[0].Highlights.includes('Manual specification'));
+  assert.deepEqual(x.repo.read().BuilderProjects[0].Amenities,['Gym']);
+  assert.deepEqual(x.repo.read().BuilderProjects[0].Highlights,['Good tiles']);
 });
 test('AI failures are logged; following PDF remains queued and no project fields are changed',async()=>{
   const x=setup([project],true); const j=x.svc.start('user').data; const out=await x.svc.step(j.JobID,'user');

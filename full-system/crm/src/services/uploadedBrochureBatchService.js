@@ -4,6 +4,7 @@ const { BuilderProjectService } = require('./builderProjectService');
 const { ProjectMediaCanaryMigrationService } = require('./projectMediaCanaryMigrationService');
 const { extractBrochure } = require('./brochureExtractionService');
 const { preparePdfForAi } = require('./brochurePdfPreparationService');
+const { REVIEW_VERSION } = require('./brochureCompletenessService');
 const mongoStore = require('../data/mongoStore');
 const running = new Set();
 const stored = m => m && m.verified === true && String(m.downloadStatus || '').toLowerCase() === 'downloaded' && (m.DriveFileID || m.DriveFileId || m.StoragePath);
@@ -32,9 +33,9 @@ function buildPayload(project, data, appendConfigs = false) {
     if (data[key] != null && data[key] !== '') payload[key] = data[key];
   }
   if (payload.BuilderName) payload.BuilderID = null; // Resolve the printed developer, not a stale imported builder ID.
-  // Preserve richer reviewed point lists when an AI pass misses an item.
-  payload.Amenities = unique([...(project.Amenities || []), ...(data.Amenities || [])]);
-  payload.Highlights = unique([...(project.Highlights || []), ...(project.Specifications || []), ...(data.Highlights || [])]).filter(x => !/^(YoutubeVideo|Broucher|Brochure)$/i.test(x));
+  // Replace legacy/imported claims with audited source points; append only when processing another PDF in the same job.
+  payload.Amenities = unique([...(appendConfigs ? project.Amenities || [] : []), ...(data.Amenities || [])]);
+  payload.Highlights = unique([...(appendConfigs ? project.Highlights || [] : []), ...(data.Highlights || [])]).filter(x => !/^(YoutubeVideo|Broucher|Brochure)$/i.test(x));
   payload.Specifications = [];
   const evidence = unique(data.SourceEvidence);
   const warnings = unique(data.ReadingWarnings);
@@ -81,7 +82,7 @@ class UploadedBrochureBatchService {
   view(job) {
     if (!job) return null;
     const items = job.Items.map(({ Draft, Before, ...item }) => item);
-    return { ...job, Items: items, Total: items.length, Saved: items.filter(x => x.Status === 'saved').length,
+    return { ...job, Items: items, Total: items.length, Saved: items.filter(x => x.Status === 'saved').length, ChecksPassed: items.filter(x => x.Status === 'saved' && x.CompletenessReview?.Version === REVIEW_VERSION).length,
       Failed: items.filter(x => x.Status === 'failed').length, Pending: items.filter(x => x.Status === 'pending' || x.Status === 'reading').length,
       Projects: new Set(items.map(x => x.ProjectID)).size };
   }
@@ -90,7 +91,7 @@ class UploadedBrochureBatchService {
     const job = this.jobs().find(j => j.JobID === jobId && j.ActorID === actorId);
     if (!job) return { ok: false, statusCode: 404, error: 'Batch not found' };
     if (running.has(jobId) || job.Items.some(i => i.Status === 'reading')) return { ok: false, statusCode: 409, error: 'Pause and wait for the current PDF before retrying failed PDFs' };
-    for (const item of job.Items) if (item.Status === 'failed') { item.Status = 'pending'; item.Error = null; }
+    for (const item of job.Items) if (item.Status === 'failed' || (item.Status === 'saved' && item.CompletenessReview?.Version !== REVIEW_VERSION)) { item.Status = 'pending'; item.Error = null; if (item.Draft?.CompletenessReview?.Version !== REVIEW_VERSION) delete item.Draft; }
     job.Status = job.Items.some(i => i.Status === 'pending') ? 'ready' : 'complete'; this.save(job);
     return { ok: true, data: this.view(job) };
   }
@@ -128,6 +129,7 @@ class UploadedBrochureBatchService {
           if (!before || before.Active === false || !this.visible(before)) throw new Error('Project unavailable');
           const media = (before.Brochures || []).find(m => stored(m) && String(m.DriveFileID || m.DriveFileId || m.StoragePath) === item.FileKey);
           if (!media) throw new Error('Uploaded brochure changed or removed');
+          if (item.Draft?.CompletenessReview?.Version !== REVIEW_VERSION) delete item.Draft;
           if (!item.Draft) {
             const file = await this.media.getProjectBrochureFile(item.ProjectID, media.MediaID, item.FileKey);
             if (!file.ok) throw new Error(file.error || 'Stored PDF unavailable');
@@ -139,6 +141,7 @@ class UploadedBrochureBatchService {
             // Persist the draft only on failure. Successful fields and queue state
             // share one snapshot write, rather than three serial full snapshots.
           }
+          if (item.Draft.CompletenessReview?.Version !== REVIEW_VERSION || item.Draft.CompletenessReview?.Status !== 'automated_checks_passed') throw new Error('Review required: independent full-page checks were not completed');
           const current = this.projects.get(item.ProjectID).data;
           if (!current || !this.visible(current)) throw new Error('Project unavailable');
           if (current.UpdatedAt !== before.UpdatedAt) throw new Error('Review required: project edited while AI was reading');
@@ -146,6 +149,7 @@ class UploadedBrochureBatchService {
           const payload = buildPayload(current, item.Draft, append);
           item.Before = Object.fromEntries(Object.keys(payload).map(k => [k, current[k] == null ? null : current[k]]));
           const result = this.projects.update(item.ProjectID, payload, db => {
+            item.CompletenessReview = item.Draft.CompletenessReview;
             item.Status = 'saved'; item.SavedAt = new Date().toISOString(); item.Error = null;
             item.Warnings = unique(item.Draft.ReadingWarnings); delete item.Draft;
             if (!job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';

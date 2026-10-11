@@ -6,7 +6,8 @@ const crypto = require('node:crypto');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
-const CACHE_VERSION = 'brochure-v4';
+const CACHE_VERSION = 'brochure-v5-completeness';
+const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces } = require('./brochureCompletenessService');
 // Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
 const MAX_BYTES = 50 * 1024 * 1024;
 
@@ -37,7 +38,7 @@ Read the document carefully and return STRICT JSON ONLY (no markdown fences, no 
   "SourceEvidence": array of strings with PDF page number and short supporting printed label for builder, layout, carpet, saleable and terrace facts,
   "ConfigDetails": array of objects like {"Tower": "A", "FlatType": "1", "Type": "Apartment", "BHK": 3, "CarpetAreaSqft": 995, "SuperBuiltUpAreaSqft": 1809, "TerraceAreaSqft": null, "ParkingAllotted": 2, "ServantRoom": true}, one entry per distinct layout/configuration/size, NOT one entry per numbered flat. Combine identical layouts across towers into one entry with Tower like "A/B/C". FlatType is a printed layout/type label or combined applicable flat labels. Use null for every unknown value
 }
-Inspect EVERY page, including site plans, floor plans, legends and location maps. Count distinctly labelled buildings/towers (e.g. A and B = 2). A typical plan labelled LVL. 1-14 supports TotalFloors 14. Only derive TotalUnits when all towers, residential floor counts and units per floor are explicit and uniform; otherwise use null. Never infer current construction status from an undated "coming soon" marketing phrase. Overview must contain only supported facts, not invented marketing copy. Read C.A. as CarpetAreaSqft and S.A. (saleable/super built-up area) as SuperBuiltUpAreaSqft. Do not add EXTRA or EQ./equivalent figures to either area. This is a configuration catalogue, not unit inventory. Do NOT expand site-plan flat numbers (101, 102, etc.) or floor ranges into individual units. Combine explicitly identical typical layouts across towers; retain the exact applicable tower labels together. Distinct layouts, sizes, unit kinds, terrace areas, parking or servant-room allocations need separate entries. If area is unknown, matching BHK alone does not prove two layouts are identical. Preserve printed layout labels so different unknown-area layouts remain distinct. Type must identify Apartment, Penthouse, Terrace Flat, Duplex or the explicitly printed unit kind; keep BHK separate. Regular flats, penthouses and terrace flats are separate configurations even when their areas match. TerraceAreaSqft is only the explicitly stated private terrace allotted to that unit, never a common rooftop, garden, balcony or total project terrace. Keep private terrace area separate from CarpetAreaSqft and SuperBuiltUpAreaSqft; copy each stated area without adding or subtracting terrace area. Do not assume every penthouse has a private terrace. Preserve distinct penthouse/duplex layouts rather than merging them into typical-floor apartments. List ALL supported amenities and features point-wise, including lifts labelled on floor plans, buildings, floor ranges, units per floor, and printed specifications. Do not invent amenities from pictures or surrounding landmarks. Extract every explicitly listed amenity, but never count nearby landmarks as amenities. Prices must be plain numbers in INR (no commas, no "Cr"/"L" suffix; convert e.g. 1.2 Cr to 12000000). Area values are in sqft; convert only when the brochure states units clearly. ParkingAllotted means spaces allotted to that unit, not total project parking. Extract a sales phone only if explicitly printed as a sales contact. If a field is genuinely not present, use null (or an empty array for list fields). For every numeric area provide a SourceEvidence item identifying the PDF page and printed area label/value. If an area has no supporting printed total, use null and explain in ReadingWarnings; do not calculate carpet from room dimensions or apply a loading percentage. Distinguish room measurements from total unit area. BuilderName must be the explicitly named developer/promoter; inspect cover, introduction and contact pages. Do not invent or guess data that is not in the document.`;
+Inspect EVERY page, including site plans, floor plans, legends and location maps. Roof/terrace plans with PRIVATE TERRACE require separate top-floor Terrace Flat configurations even when the brochure does not use the word penthouse. Preserve every printed private terrace size and its exact tower/layout association; do not apply it to all typical floors. If a private terrace cannot be reliably allocated, report the ambiguity in ReadingWarnings. Count distinctly labelled buildings/towers (e.g. A and B = 2). A typical plan labelled LVL. 1-14 supports TotalFloors 14. Only derive TotalUnits when all towers, residential floor counts and units per floor are explicit and uniform; otherwise use null. Never infer current construction status from an undated "coming soon" marketing phrase. Overview must contain only supported facts, not invented marketing copy. Read C.A. as CarpetAreaSqft and S.A. (saleable/super built-up area) as SuperBuiltUpAreaSqft. Do not add EXTRA or EQ./equivalent figures to either area. This is a configuration catalogue, not unit inventory. Do NOT expand site-plan flat numbers (101, 102, etc.) or floor ranges into individual units. Combine explicitly identical typical layouts across towers; retain the exact applicable tower labels together. Distinct layouts, sizes, unit kinds, terrace areas, parking or servant-room allocations need separate entries. If area is unknown, matching BHK alone does not prove two layouts are identical. Preserve printed layout labels so different unknown-area layouts remain distinct. Type must identify Apartment, Penthouse, Terrace Flat, Duplex or the explicitly printed unit kind; keep BHK separate. Regular flats, penthouses and terrace flats are separate configurations even when their areas match. TerraceAreaSqft is only the explicitly stated private terrace allotted to that unit, never a common rooftop, garden, balcony or total project terrace. Keep private terrace area separate from CarpetAreaSqft and SuperBuiltUpAreaSqft; copy each stated area without adding or subtracting terrace area. Do not assume every penthouse has a private terrace. Preserve distinct penthouse/duplex layouts rather than merging them into typical-floor apartments. List ALL supported amenities and features point-wise, including lifts labelled on floor plans, buildings, floor ranges, units per floor, and printed specifications. Do not invent amenities from pictures or surrounding landmarks. Extract every explicitly listed amenity, but never count nearby landmarks as amenities. Prices must be plain numbers in INR (no commas, no "Cr"/"L" suffix; convert e.g. 1.2 Cr to 12000000). Area values are in sqft; convert only when the brochure states units clearly. ParkingAllotted means spaces allotted to that unit, not total project parking. Extract a sales phone only if explicitly printed as a sales contact. If a field is genuinely not present, use null (or an empty array for list fields). For every numeric area provide a SourceEvidence item identifying the PDF page and printed area label/value. If an area has no supporting printed total, use null and explain in ReadingWarnings; do not calculate carpet from room dimensions or apply a loading percentage. Distinguish room measurements from total unit area. BuilderName must be the explicitly named developer/promoter; inspect cover, introduction and contact pages. Do not invent or guess data that is not in the document.`;
 
 function parseModelJson(text) {
   const cleaned = String(text || '')
@@ -84,6 +85,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     });
   }
 
+  async function generate(prompt) {
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     signal: AbortSignal.timeout(240000),
     method: 'POST',
@@ -91,7 +93,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     body: JSON.stringify({
       contents: [{
         parts: [
-          { text: EXTRACTION_PROMPT },
+          { text: prompt },
           ...documentParts
         ]
       }],
@@ -120,7 +122,15 @@ async function extractBrochureUncached(fileBase64, pageImages) {
   }
   const text = payload?.candidates?.[0]?.content?.parts?.filter((part) => !part.thought).map((part) => part.text || '').join('') || '';
   if (!text) throw new Error('Gemini returned no extraction result');
+  if (payload.candidates[0].finishReason && payload.candidates[0].finishReason !== 'STOP') throw new Error('Review required: AI response was truncated or incomplete');
   return parseModelJson(text);
+  }
+  const pageCount = Array.isArray(pageImages) && pageImages.length ? pageImages.length : await countPdfPages(buffer);
+  const data = await generate(EXTRACTION_PROMPT);
+  validatePrivateTerraces(data);
+  const review = await generate(reviewPrompt(data, pageCount));
+  data.CompletenessReview = validateReview(review, data, pageCount);
+  return data;
 }
 
 async function extractBrochure(fileBase64, pageImages, scope = '') {
