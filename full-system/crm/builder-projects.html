@@ -149,7 +149,32 @@
       .page-title { font-size: 18px; }
       .card-top, .card-body, .card-footer { padding-left: 13px; padding-right: 13px; }
     }
-  </style>
+  
+  .project-detail {border:0;padding:0;border-radius:20px;width:min(1120px,calc(100vw - 28px));max-height:94vh;color:var(--clr-text);background:#f7f5f0;box-shadow:0 30px 90px #21150844}
+  .project-detail::backdrop {background:#201a15aa;backdrop-filter:blur(4px)}
+  .pd-topbar {position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:16px 24px;border-bottom:1px solid var(--clr-border)}
+  .pd-content {padding:26px}
+  .pd-hero {display:grid;grid-template-columns:1.35fr 1fr;gap:28px;align-items:center;background:#fff;border:1px solid var(--clr-border);border-radius:18px;overflow:hidden}
+  .pd-visual {min-height:280px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e7dfd1,#f5eee2);color:#6b543b;text-align:center}
+  .pd-visual img {width:100%;height:340px;object-fit:cover}
+  .pd-intro {padding:24px}.pd-intro h1 {font-size:32px;line-height:1.15;margin:12px 0}
+  .pd-eyebrow {font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#866b45;font-weight:700}
+  .pd-muted {color:var(--clr-text-light);font-size:13px;line-height:1.6}
+  .pd-price {font-size:25px;font-weight:800;margin:22px 0 6px}
+  .pd-actions {display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.pd-actions a,.pd-actions button {display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+  .pd-nav {display:flex;gap:8px;overflow:auto;margin:24px 0;padding:4px 0}.pd-nav button {white-space:nowrap;border:1px solid var(--clr-border);background:white;border-radius:30px;padding:9px 15px;cursor:pointer}
+  .pd-section {background:white;border:1px solid var(--clr-border);border-radius:16px;padding:24px;margin:16px 0;scroll-margin-top:76px}
+  .pd-section h2 {font-size:21px;margin:0 0 18px}.pd-stats {display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .pd-stats strong {display:block;font-size:16px;margin-top:5px}.pd-configs {display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .pd-config {padding:20px;border:1px solid var(--clr-border);border-radius:12px;background:#fcfbf8}.pd-config h3 {margin:0 0 5px;font-size:18px}
+  .pd-area-grid {display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.pd-area-grid strong {display:block;font-size:18px;margin-top:5px}
+  .pd-amenities {display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.pd-amenity {display:flex;gap:10px;align-items:center;padding:14px;background:#f7f5f0;border-radius:10px;font-size:13px}
+  .pd-gallery {display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.pd-gallery img {width:100%;height:170px;object-fit:cover;border-radius:10px}
+  .pd-specs {columns:2;column-gap:32px;padding-left:20px;line-height:1.8}.pd-specs li {break-inside:avoid;margin-bottom:9px;font-size:13px}
+  .pd-empty {padding:24px;border:1px dashed #d5c7b3;border-radius:10px;background:#fcfbf8;color:var(--clr-text-light);font-size:13px}
+  @media(max-width:700px){.project-detail{width:calc(100vw - 12px);max-height:97vh;border-radius:12px}.pd-content{padding:12px}.pd-hero{grid-template-columns:1fr;gap:0}.pd-visual{min-height:160px}.pd-visual img{height:220px}.pd-intro{padding:20px}.pd-intro h1{font-size:27px}.pd-section{padding:18px}.pd-stats{grid-template-columns:repeat(2,1fr)}.pd-configs{grid-template-columns:1fr}.pd-amenities{grid-template-columns:repeat(2,1fr)}.pd-gallery{grid-template-columns:repeat(2,1fr)}.pd-specs{columns:1}.pd-topbar{padding:12px 16px}}
+
+</style>
 
 <style id="v2-unified-architect">
 :root{
@@ -201,6 +226,7 @@ table td,table th{border-color:var(--v2-line)!important}
 </style>
 </head>
 <body>
+<dialog id="project-detail" class="project-detail" aria-labelledby="pd-title"><div class="pd-topbar"><strong>Project details</strong><button class="btn btn-secondary" type="button" onclick="closeProjectDetail()" aria-label="Close project details">Close ×</button></div><div id="project-detail-content" class="pd-content"></div></dialog>
 
 <nav class="topnav">
   <span class="brand" style="display:inline-flex;align-items:center;gap:8px"><img src="/assets/signature-mark.svg" alt="logo" style="width:26px;height:26px;border-radius:50%;object-fit:cover" />Signature Properties</span>
@@ -1102,6 +1128,42 @@ table td,table th{border-color:var(--v2-line)!important}
     }));
   }
 
+
+  function amenityIcon(label) {
+    const text = String(label).toLowerCase();
+    for (const [pattern, icon] of [[/gym|fitness/,'🏋'],[/pool|jacuzzi/,'◉'],[/garden|lawn|tree/,'🌿'],[/child|kid|play/,'★'],[/parking/,'P'],[/lift|elevator/,'↕'],[/security|gate/,'◇'],[/game|court|sport/,'⚽'],[/power|generator/,'ϟ']]) if (pattern.test(text)) return icon;
+    return '✓';
+  }
+  function renderProjectDetail(p) {
+    const empty = text => '<div class="pd-empty">' + esc(text) + '</div>';
+    const val = value => value == null || value === '' ? 'Not available' : esc(value);
+    const area = value => value == null || value === '' ? 'Not available' : esc(value) + ' sqft';
+    const photos = (p.Photos || []).filter(isStoredPhoto).map(photo => ({url:preferredPhotoUrl(p,photo),name:photo.FileName || p.ProjectName})).filter(x=>x.url);
+    const brochure = preferredBrochureUrl(p,(p.Brochures || []).find(isStoredBrochure));
+    const configs = groupedConfigDetails(p.ConfigDetails || []);
+    const amenities = [...new Set(p.Amenities || [])];
+    const specs = [...new Set([...(p.Highlights || []),...(p.Specifications || [])])].filter(x=>!/^(youtubevideo|brou?cher|brochure)$/i.test(String(x).trim()));
+    const price = p.PriceRange && (p.PriceRange.min != null || p.PriceRange.max != null) ? [fmtPrice(p.PriceRange.min),fmtPrice(p.PriceRange.max)].filter(Boolean).join(' – ') : p.StartingPrice != null ? fmtPrice(p.StartingPrice) : 'Price on request';
+    const arg = esc(JSON.stringify(p.ProjectID));
+    const nav = [['overview','Overview'],['configurations','Configurations & area'],['amenities','Amenities'],['plans','Floor plans'],['specifications','Specifications'],['location','Location']];
+    return `<div class="pd-hero"><div class="pd-visual">${photos.length ? '<img src="'+esc(photos[0].url)+'" alt="'+esc(p.ProjectName || 'Project photo')+'">' : '<div><div style="font-size:52px;margin-bottom:12px">⌂</div><strong>Project gallery</strong><p class="pd-muted">Photos not available</p></div>'}</div>
+      <div class="pd-intro"><div class="pd-eyebrow">${esc(p.Category || 'Project')} · ${esc(p.ProjectStatus || 'Status not available')}</div><h1 id="pd-title">${esc(p.ProjectName || 'Untitled project')}</h1><p class="pd-muted">By ${esc(p.BuilderName || 'Builder not available')}<br>📍 ${esc(p.Location1 || 'Location not available')}, Surat</p><div class="pd-price">${esc(price)}</div><div class="pd-muted">Contact for current availability and pricing</div>
+      <div class="pd-actions">${brochure ? '<a class="btn btn-primary" href="'+esc(brochure)+'" target="_blank" rel="noopener">View brochure ↗</a>' : ''}<button class="btn btn-secondary" onclick="shareProjectOnWhatsApp(${arg})">Share project</button><button class="btn btn-secondary" onclick="closeProjectDetail();openEditModal(${arg})">Edit project</button></div></div></div>
+      <nav class="pd-nav" aria-label="Project sections">${nav.map(([id,title])=>'<button type="button" onclick="document.getElementById(\'pd-'+id+'\').scrollIntoView({behavior:\'smooth\'})">'+title+'</button>').join('')}</nav>
+      <section id="pd-overview" class="pd-section"><h2>Project overview</h2><p class="pd-muted">${esc(p.Overview || p.Description || 'Overview not available')}</p><div class="pd-stats">${[['Towers',p.TotalTowers],['Total units',p.TotalUnits],['Floors per tower',p.TotalFloors],['Possession',p.PossessionDate ? String(p.PossessionDate).slice(0,10) : null],['Land area',p.ProjectArea],['RERA',p.RERANumber]].map(([label,value])=>'<div><span class="pd-muted">'+label+'</span><strong>'+val(value)+'</strong></div>').join('')}</div></section>
+      <section id="pd-configurations" class="pd-section"><h2>Configurations & area</h2><div class="pd-configs">${configs.length ? configs.map(c=>`<article class="pd-config"><h3>${esc(c.Type || 'Apartment')}${c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK)+' bhk') ? ' · '+esc(c.BHK)+' BHK' : ''}</h3><div class="pd-muted">${esc([c.Tower ? 'Tower '+c.Tower : '', c.FlatType || ''].filter(Boolean).join(' · '))}</div><div class="pd-area-grid"><div><span class="pd-muted">Carpet area</span><strong>${area(c.CarpetAreaSqft)}</strong></div><div><span class="pd-muted">Super built-up / Saleable</span><strong>${area(c.SuperBuiltUpAreaSqft)}</strong></div>${c.TerraceAreaSqft != null ? '<div><span class="pd-muted">Private terrace</span><strong>'+area(c.TerraceAreaSqft)+'</strong></div>' : ''}</div><div class="pd-muted">Parking: ${val(c.ParkingAllotted)} · Servant room: ${c.ServantRoom === true ? 'Yes' : c.ServantRoom === false ? 'No' : 'Not available'}</div></article>`).join('') : empty('Configuration and area details not available')}</div></section>
+      <section id="pd-amenities" class="pd-section"><h2>Amenities</h2>${amenities.length ? '<div class="pd-amenities">'+amenities.map(x=>'<div class="pd-amenity"><span aria-hidden="true">'+amenityIcon(x)+'</span><span>'+esc(x)+'</span></div>').join('')+'</div>' : empty('Amenities not available')}</section>
+      <section id="pd-plans" class="pd-section"><h2>Floor plans & gallery</h2>${photos.length ? '<div class="pd-gallery">'+photos.map(x=>'<a href="'+esc(x.url)+'" target="_blank" rel="noopener"><img loading="lazy" src="'+esc(x.url)+'" alt="'+esc(x.name || 'Project photo')+'"></a>').join('')+'</div>' : empty('Project photos not available')}${brochure ? '<p class="pd-muted">View the brochure for published floor plans.</p><a class="btn btn-secondary" href="'+esc(brochure)+'" target="_blank" rel="noopener">Open floor plans in brochure ↗</a>' : empty('Floor plans and brochure not available')}</section>
+      <section id="pd-specifications" class="pd-section"><h2>Specifications & highlights</h2>${specs.length ? '<ul class="pd-specs">'+specs.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>' : empty('Specifications not available')}</section>
+      <section id="pd-location" class="pd-section"><h2>Location & contact</h2><p>${esc(p.Address || p.Location1 || 'Address not available')}</p>${p.Address || p.Location1 ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent([p.Address || p.Location1,'Surat'].join(', '))+'">View on map ↗</a>' : ''}<p class="pd-muted">Sales contact: ${esc([p.SalesPersonName,p.SalesPersonPhone].filter(Boolean).join(' · ') || 'Not available')}</p><a class="btn btn-secondary" href="/inventory?projectId=${encodeURIComponent(p.ProjectID)}">View linked inventory</a></section>`;
+  }
+  function openProjectDetail(id) {
+    const p = allProjects.find(x=>x.ProjectID===id); if (!p) return;
+    document.getElementById('project-detail-content').innerHTML=renderProjectDetail(p);
+    const dialog=document.getElementById('project-detail'); dialog.showModal(); dialog.scrollTop=0;
+  }
+  function closeProjectDetail() { document.getElementById('project-detail').close(); }
+
   function renderCard(p) {
     const statusClass = 'st-' + String(p.ProjectStatus || 'Under Construction').replace(/\s+/g, '-');
     const catColors = { Residential: '#dbeafe', Commercial: '#fef3c7', Industrial: '#fee2e2', Land: '#dcfce7' };
@@ -1132,13 +1194,13 @@ table td,table th{border-color:var(--v2-line)!important}
       ${coverPhotoUrl ? `<img class="card-cover" src="${esc(coverPhotoUrl)}" alt="${esc(p.ProjectName||'')}" loading="lazy" decoding="async" data-testid="card-cover-${esc(p.ProjectID)}" />` : ''}
       <div class="card-top">
         <span class="card-status ${statusClass}">${esc(p.ProjectStatus || '—')}</span>
-        <div class="card-project">${esc(p.ProjectName || 'Untitled')}</div>
+        <button class="card-project" style="background:none;border:0;color:inherit;text-align:left;padding:0;cursor:pointer" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">${esc(p.ProjectName || 'Untitled')} ↗</button>
         <div class="card-builder">${esc(p.BuilderName || '—')}</div>
         <div class="card-loc">📍 ${esc(p.Location1 || '—')}</div>
       </div>
       <div class="card-body">
         <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(p.Category || 'Residential')}</span>
-        <div class="card-price">${priceText}</div>
+        <div class="card-price">${priceText === '—' ? 'Price on request' : priceText}</div><button class="btn btn-secondary" style="width:100%;margin:8px 0 12px" data-testid="detail-${esc(p.ProjectID)}" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">View project details →</button>
         <div class="card-facts">${facts.map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
           ${p.SalesPersonName || p.SalesPersonPhone ? `<span class="card-fact">Sales: ${esc([p.SalesPersonName, p.SalesPersonPhone].filter(Boolean).join(' · '))}</span>` : ''}
           ${storedPhotos.length ? `<span class="card-fact">📷 ${storedPhotos.length}</span>` : ''}
@@ -1147,7 +1209,7 @@ table td,table th{border-color:var(--v2-line)!important}
           ${brochureDriveLink ? `<a class="card-fact" href="${esc(brochureDriveLink)}" target="_blank" rel="noopener" data-testid="brochure-drive-link-${esc(p.ProjectID)}">🗂 Drive</a>` : ''}
           <span class="card-fact">📄 ${esc(brochureStatusText(p))}</span>
         </div>
-        ${[ ['Amenities', p.Amenities], ['Features', [...(p.Highlights || []), ...(p.Specifications || [])]] ].map(([title, points]) => Array.isArray(points) && points.length ? `<section style="margin-top:12px"><strong>${title}</strong><ul style="padding-left:18px;margin:6px 0">${[...new Set(points)].map(point => `<li style="margin:4px 0">${esc(point)}</li>`).join('')}</ul></section>` : '').join('')}
+        ${[ ['Amenities', p.Amenities], ['Features', [...(p.Highlights || []), ...(p.Specifications || [])]] ].map(([title, points]) => Array.isArray(points) && points.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">${title} (${points.length})</summary><ul style="padding-left:18px;margin:6px 0">${[...new Set(points)].map(point => `<li style="margin:4px 0">${esc(point)}</li>`).join('')}</ul></details>` : '').join('')}
         ${p.RERANumber ? `<div class="card-rera">RERA: ${esc(p.RERANumber)}</div>` : ''}
       </div>
       <div class="card-footer">
