@@ -7,7 +7,7 @@ const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
 const CACHE_VERSION = 'brochure-v5-completeness';
-const { countPdfPages, reviewPrompt, validateReview } = require('./brochureCompletenessService');
+const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces } = require('./brochureCompletenessService');
 // Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
 const MAX_BYTES = 50 * 1024 * 1024;
 
@@ -127,6 +127,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
   }
   const pageCount = Array.isArray(pageImages) && pageImages.length ? pageImages.length : await countPdfPages(buffer);
   const data = await generate(EXTRACTION_PROMPT);
+  validatePrivateTerraces(data);
   const review = await generate(reviewPrompt(data, pageCount));
   data.CompletenessReview = validateReview(review, data, pageCount);
   return data;
