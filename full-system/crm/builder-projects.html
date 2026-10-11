@@ -365,6 +365,7 @@ table td,table th{border-color:var(--v2-line)!important}
           <input type="file" accept="application/pdf" data-testid="brochure-autofill-input" onchange="onBrochureAutoFill(this.files[0])" style="display:none" />
           <span class="btn btn-ghost" style="padding:5px 12px;font-size:12px;background:#fff">📄 Choose PDF</span>
         </label>
+        <button type="button" id="read-stored-brochure" class="btn btn-ghost" onclick="readStoredBrochure()" style="margin-top:8px;display:none">📄 Read uploaded brochure</button>
         <div id="autofill-status" data-testid="autofill-status" style="font-size:11.5px;color:var(--clr-text-light);margin-top:6px"></div>
       </div>
       <div class="form-grid">
@@ -1395,6 +1396,7 @@ table td,table th{border-color:var(--v2-line)!important}
   // ── Add / Edit ────────────────────────────────────────────────────────
   function openAddModal() {
     editingId = null;
+    document.getElementById('read-stored-brochure').style.display = 'none';
     pendingBrochureFile = null;
     document.getElementById('modal-title').textContent = 'Add Builder Project';
     document.getElementById('form-error').textContent = '';
@@ -1413,6 +1415,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const p = allProjects.find(x => x.ProjectID === id);
     if (!p) return;
     editingId = id;
+    document.getElementById('read-stored-brochure').style.display = (p.Brochures || []).length ? 'inline-flex' : 'none';
     pendingBrochureFile = null;
     document.getElementById('modal-title').textContent = 'Edit — ' + p.ProjectName;
     document.getElementById('form-error').textContent = '';
@@ -1439,7 +1442,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-notes').value = p.Notes || '';
     document.getElementById('f-highlights').value = [...(p.Highlights || []), ...(p.Specifications || [])].join('\n');
     configRows = (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length)
-      ? p.ConfigDetails.map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || '', BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }))
+      ? p.ConfigDetails.map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }))
       : (p.Configurations || []).map(t => ({ Tower: '', FlatType: '', SuperBuiltUpAreaSqft: '', Type: t, BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }));
     renderConfigRowsUI();
     document.getElementById('media-hint').style.display = 'none';
@@ -1485,12 +1488,12 @@ table td,table th{border-color:var(--v2-line)!important}
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const original = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: 1800 / Math.max(original.width, original.height) });
+        const viewport = page.getViewport({ scale: 2400 / Math.max(original.width, original.height) });
         const canvas = document.createElement('canvas');
         canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         const text = (await page.getTextContent()).items.map(item => item.str || '').join(' ').slice(0, 20000);
-        pages.push({ data: canvas.toDataURL('image/jpeg', 0.82).split(',')[1], text });
+        pages.push({ data: canvas.toDataURL('image/jpeg', 0.9).split(',')[1], text });
         canvas.width = canvas.height = 0;
         page.cleanup();
       }
@@ -1498,7 +1501,32 @@ table td,table th{border-color:var(--v2-line)!important}
     } finally { await pdf.destroy(); }
   }
 
+  async function brochureCache(action, key, value) {
+    if (!window.indexedDB) return null;
+    return new Promise(resolve => {
+      const open = indexedDB.open('signature-brochure-reader-v2', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('results');
+      open.onerror = () => resolve(null);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction('results', action === 'get' ? 'readonly' : 'readwrite');
+        const store = tx.objectStore('results');
+        const request = action === 'get' ? store.get(key) : store.put(value, key);
+        let result = null;
+        request.onsuccess = () => { result = request.result || null; };
+        tx.oncomplete = () => { db.close(); resolve(result); };
+        tx.onerror = tx.onabort = () => { db.close(); resolve(null); };
+      };
+    });
+  }
+
   async function requestBrochureExtraction(filename, fileBase64) {
+    const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
+    const digest = await crypto.subtle.digest('SHA-256', rawBytes);
+    const cacheKey = 'reader-v2:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cached = await brochureCache('get', cacheKey);
+    if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
+
     // Render heavy/vector PDFs into readable pages so malformed annotations and
     // oversized source images do not hold up the AI. Keep the original for saving.
     let pageImages = null;
@@ -1516,6 +1544,7 @@ table td,table th{border-color:var(--v2-line)!important}
         throw new Error('AI service could not respond (HTTP ' + response.status + '). Please retry.');
       }
       if (!response.ok || !result.ok) throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
+      await brochureCache('put', cacheKey, result);
       return result;
     } catch (error) {
       if (error.name === 'AbortError') throw new Error('AI extraction timed out. Please retry with a smaller PDF.');
@@ -1523,28 +1552,52 @@ table td,table th{border-color:var(--v2-line)!important}
     } finally { clearTimeout(timer); }
   }
 
-  async function onBrochureAutoFill(file) {
-    if (!file) return;
+  let brochureReadInProgress = false;
+  async function readStoredBrochure() {
+    if (!editingId || brochureReadInProgress) return;
+    const id = editingId;
+    const button = document.getElementById('read-stored-brochure');
+    button.disabled = true;
+    document.getElementById('autofill-status').textContent = 'Loading uploaded brochure…';
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
+      if (!response.ok) throw new Error(`Stored brochure unavailable (HTTP ${response.status})`);
+      const blob = await response.blob();
+      const file = new File([blob], 'stored-brochure.pdf', { type: 'application/pdf' });
+      if (editingId !== id) return;
+      await onBrochureAutoFill(file, true);
+    } catch (error) {
+      document.getElementById('autofill-status').textContent = error.message;
+    } finally { button.disabled = false; }
+  }
+
+  async function onBrochureAutoFill(file, stored = false) {
+    if (!file || brochureReadInProgress) return;
     if (file.size > MEDIA_LIMITS.brochure) {
       toast(`Brochure too large (max ${Math.round(MEDIA_LIMITS.brochure / 1024 / 1024)} MB)`, true);
       return;
     }
-    pendingBrochureFile = file;
+    brochureReadInProgress = true;
+    const readProjectId = editingId;
+    if (!stored) pendingBrochureFile = file;
     const statusEl = document.getElementById('autofill-status');
     statusEl.textContent = '⏳ AI brochure padh raha hai… (30-60 sec lag sakte hain)';
     try {
       const fileBase64 = await fileToBase64Full(file);
       const res = await requestBrochureExtraction(file.name, fileBase64);
       if (!res.ok) throw new Error(res.error || 'Extraction failed');
+      if (editingId !== readProjectId || document.getElementById('project-modal').classList.contains('hidden')) return;
       applyAutoFill(res.data);
-      const missing = [['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
-        .filter(([key]) => res.data[key] == null).map(([, label]) => label);
+      const missing = [['BuilderName', 'builder'], ['Amenities', 'amenities'], ['Highlights', 'features'], ['ConfigDetails', 'configurations'], ['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
+        .filter(([key]) => res.data[key] == null || (Array.isArray(res.data[key]) && !res.data[key].length)).map(([, label]) => label);
+      const areaMissing = (res.data.ConfigDetails || []).some(c => c.CarpetAreaSqft == null || c.SuperBuiltUpAreaSqft == null);
+      if (areaMissing) missing.push('carpet / super built-up area for some configurations');
       statusEl.textContent = '✅ Brochure fields filled — review before saving.' +
-        (missing.length ? ' Not stated in PDF: ' + missing.join(', ') + '.' : '');
+        (missing.length ? ' Not extracted — verify in PDF; existing values retained: ' + missing.join(', ') + '.' : '');
     } catch (e) {
       statusEl.textContent = '';
       toast('Auto-fill failed: ' + e.message, true);
-    }
+    } finally { brochureReadInProgress = false; }
   }
 
   function applyAutoFill(d) {
@@ -1569,7 +1622,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (Array.isArray(d.Amenities) && d.Amenities.length) document.getElementById('f-amenities').value = d.Amenities.join('\n');
     if (Array.isArray(d.Highlights) && d.Highlights.length) document.getElementById('f-highlights').value = d.Highlights.join('\n');
     if (Array.isArray(d.ConfigDetails) && d.ConfigDetails.length) {
-      configRows = d.ConfigDetails.map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || '', BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }));
+      configRows = d.ConfigDetails.map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }));
       renderConfigRowsUI();
     }
   }
@@ -1577,6 +1630,7 @@ table td,table th{border-color:var(--v2-line)!important}
   function closeProjectModal() { document.getElementById('project-modal').classList.add('hidden'); }
 
   async function saveProject() {
+    if (brochureReadInProgress) { document.getElementById('form-error').textContent = 'Wait for brochure reading to finish before saving'; return; }
     const projectName = document.getElementById('f-project-name').value.trim();
     const builderName = document.getElementById('f-builder-name').value.trim();
     const location1 = document.getElementById('f-location1').value.trim();
@@ -1623,12 +1677,15 @@ table td,table th{border-color:var(--v2-line)!important}
 
     const btn = document.getElementById('save-project-btn');
     btn.disabled = true; btn.textContent = 'Saving…';
+    let fieldsSaved = false;
     try {
       const url = editingId ? `/api/v2/builder-projects/${encodeURIComponent(editingId)}` : '/api/v2/builder-projects';
       const method = editingId ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r => r.json());
       if (!res.ok) throw new Error(res.error || 'Save failed');
       const savedProject = res.data;
+      fieldsSaved = true;
+      if (savedProject?.ProjectID) editingId = savedProject.ProjectID;
       if (pendingBrochureFile && savedProject?.ProjectID) {
         const fileBase64 = await fileToBase64Full(pendingBrochureFile);
         const mediaResponse = await fetch(`/api/v2/builder-projects/${encodeURIComponent(savedProject.ProjectID)}/media`, {
@@ -1643,7 +1700,7 @@ table td,table th{border-color:var(--v2-line)!important}
       toast(editingId ? 'Project updated' : 'Project added');
       loadProjects();
     } catch (e) {
-      document.getElementById('form-error').textContent = e.message;
+      document.getElementById('form-error').textContent = fieldsSaved ? 'Project fields saved, but brochure upload failed: ' + e.message + '. Retry Save to upload the PDF; no AI reread is required.' : e.message;
     } finally {
       btn.disabled = false; btn.textContent = 'Save Project';
     }
@@ -2221,3 +2278,4 @@ table td,table th{border-color:var(--v2-line)!important}
 </script>
 </body>
 </html>
+
