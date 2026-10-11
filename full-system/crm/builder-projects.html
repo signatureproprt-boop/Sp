@@ -1086,13 +1086,28 @@ table td,table th{border-color:var(--v2-line)!important}
     return '— No brochure';
   }
 
+  function groupedConfigDetails(rows) {
+    const groups = new Map();
+    const fields = ['Type', 'BHK', 'CarpetAreaSqft', 'SuperBuiltUpAreaSqft', 'TerraceAreaSqft', 'BuiltUpAreaSqft', 'AreaSqft', 'ParkingAllotted', 'ServantRoom'];
+    for (const row of rows || []) {
+      const key = JSON.stringify(fields.map(field => row[field] === '' || row[field] == null ? null : row[field]));
+      if (!groups.has(key)) groups.set(key, { ...row, towers: new Set(), flats: new Set() });
+      const group = groups.get(key);
+      if (row.Tower) group.towers.add(String(row.Tower).trim());
+      if (row.FlatType) group.flats.add(String(row.FlatType).trim());
+    }
+    return Array.from(groups.values(), group => ({ ...group,
+      Tower: Array.from(group.towers).join('/'), FlatType: Array.from(group.flats).join('/')
+    }));
+  }
+
   function renderCard(p) {
     const statusClass = 'st-' + String(p.ProjectStatus || 'Under Construction').replace(/\s+/g, '-');
     const catColors = { Residential: '#dbeafe', Commercial: '#fef3c7', Industrial: '#fee2e2', Land: '#dcfce7' };
     const catColor = catColors[p.Category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      p.ConfigDetails.forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
+      groupedConfigDetails(p.ConfigDetails).forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       facts.push(p.Configurations.join(' / '));
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
@@ -1155,7 +1170,7 @@ table td,table th{border-color:var(--v2-line)!important}
     lines.push(`📍 ${p.Location1 || '—'}${p.Address ? ' — ' + p.Address : ''}`);
     lines.push(`Category: ${p.Category || 'Residential'} · Status: ${p.ProjectStatus || '—'}`);
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      p.ConfigDetails.forEach(c => lines.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? c.BHK + ' BHK' : '', c.CarpetAreaSqft != null ? 'Carpet ' + c.CarpetAreaSqft + ' sqft' : '', c.SuperBuiltUpAreaSqft != null ? 'Super Built-up ' + c.SuperBuiltUpAreaSqft + ' sqft' : '', c.TerraceAreaSqft != null ? 'Private Terrace ' + c.TerraceAreaSqft + ' sqft' : ''].filter(Boolean).join(' · ')));
+      groupedConfigDetails(p.ConfigDetails).forEach(c => lines.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? c.BHK + ' BHK' : '', c.CarpetAreaSqft != null ? 'Carpet ' + c.CarpetAreaSqft + ' sqft' : '', c.SuperBuiltUpAreaSqft != null ? 'Super Built-up ' + c.SuperBuiltUpAreaSqft + ' sqft' : '', c.TerraceAreaSqft != null ? 'Private Terrace ' + c.TerraceAreaSqft + ' sqft' : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       lines.push(`Configs: ${p.Configurations.join(' / ')}`);
     }
