@@ -66,7 +66,12 @@ async function extractBrochure(fileBase64) {
           { inline_data: { mime_type: 'application/pdf', data: buffer.toString('base64') } }
         ]
       }],
-      generationConfig: { responseMimeType: 'application/json' }
+      generationConfig: {
+        responseMimeType: 'application/json',
+        // Brochure transcription needs fast extraction rather than extended reasoning.
+        ...(/^gemini-3(?:\.|-)/i.test(GEMINI_MODEL.replace(/^models\//, ''))
+          ? { thinkingConfig: { thinkingLevel: 'low' } } : {})
+      }
     })
   }).catch((error) => {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
@@ -79,7 +84,7 @@ async function extractBrochure(fileBase64) {
   if (!response.ok) {
     throw new Error(payload?.error?.message || `Gemini request failed (${response.status})`);
   }
-  const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('') || '';
+  const text = payload?.candidates?.[0]?.content?.parts?.filter((part) => !part.thought).map((part) => part.text || '').join('') || '';
   if (!text) throw new Error('Gemini returned no extraction result');
   return parseModelJson(text);
 }

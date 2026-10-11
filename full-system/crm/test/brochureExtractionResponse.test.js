@@ -38,3 +38,27 @@ test('individual and bulk PDF extraction report upstream text errors without a J
   assert.equal((await context.requestBrochureExtraction('brochure.pdf', 'cGRm')).data.ProjectName, 'Milestone');
   assert.match(html, /requestBrochureExtraction\(bulkBrochureFiles\[i\].file.name, fileBase64\)/);
 });
+
+test('Gemini PDF extraction uses low reasoning and reads only final JSON fields', async () => {
+  const oldFetch = global.fetch, oldKey = process.env.GEMINI_API_KEY;
+  try {
+    process.env.GEMINI_API_KEY = 'test-key';
+    global.fetch = async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, 'low');
+      assert.equal(body.generationConfig.responseMimeType, 'application/json');
+      assert.equal(body.contents[0].parts[1].inline_data.mime_type, 'application/pdf');
+      assert.ok(options.signal);
+      return { ok: true, json: async () => ({ candidates: [{ content: { parts: [
+        { thought: true, text: 'Internal reasoning' },
+        { text: '{"ProjectName":"Milestone Utsav","TotalUnits":48}' }
+      ] } }] }) };
+    };
+    const result = await require('../src/services/brochureExtractionService').extractBrochure(Buffer.from('%PDF sample').toString('base64'));
+    assert.equal(result.ProjectName, 'Milestone Utsav');
+    assert.equal(result.TotalUnits, 48);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey;
+  }
+});
