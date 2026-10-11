@@ -37,8 +37,8 @@ test('queue covers all distinct stored PDFs, excludes other tenants and remote-o
   let out=await x.svc.step(start.data.JobID,'user'); assert.equal(out.data.Saved,1); assert.equal(out.data.Pending,1);
   out=await x.svc.step(start.data.JobID,'user'); assert.equal(out.data.Saved,2); assert.equal(out.data.Status,'complete');
   await x.svc.step(start.data.JobID,'user'); assert.equal(x.calls(),2);
-  assert.deepEqual(x.repo.read().BuilderProjects[0].Amenities,['Garden','Gym']);
-  assert.ok(x.repo.read().BuilderProjects[0].Highlights.includes('Manual specification'));
+  assert.deepEqual(x.repo.read().BuilderProjects[0].Amenities,['Gym']);
+  assert.deepEqual(x.repo.read().BuilderProjects[0].Highlights,['Good tiles']);
 });
 test('AI failures are logged; following PDF remains queued and no project fields are changed',async()=>{
   const x=setup([project],true); const j=x.svc.start('user').data; const out=await x.svc.step(j.JobID,'user');
