@@ -9,9 +9,9 @@ function repo(projects) {
   return { read: () => data, write: () => {}, list: () => data.BuilderProjects };
 }
 
-test('filters BHK and carpet/built-up sizes within the same configuration', () => {
+test('filters BHK and carpet/super-built-up sizes within the same configuration', () => {
   const service = new BuilderProjectService(repo([
-    { ProjectID: 'one', ConfigDetails: [{ Type: '2 BHK', CarpetAreaSqft: 800, BuiltUpAreaSqft: 1000 }, { Type: '3 BHK', CarpetAreaSqft: 1100, BuiltUpAreaSqft: 1400 }] },
+    { ProjectID: 'one', ConfigDetails: [{ Type: '2 BHK', CarpetAreaSqft: 800, SuperBuiltUpAreaSqft: 1000 }, { Type: '3 BHK', CarpetAreaSqft: 1100, SuperBuiltUpAreaSqft: 1400 }] },
     { ProjectID: 'legacy', ConfigDetails: [{ Type: '2 BHK', AreaSqft: 900 }] }
   ]));
   assert.deepEqual(service.list({ bhk: '2 BHK', carpetMin: 750, carpetMax: 850, builtUpMin: 950 }).data.map(p => p.ProjectID), ['one']);
@@ -78,4 +78,16 @@ test('sales contact and distinct penthouse and terrace flat details survive edit
   assert.equal(project.ConfigDetails[1].TerraceAreaSqft, 300);
   service.update('p2', { Notes: 'Follow up' });
   assert.equal(service.get('p2').data.ConfigDetails[0].CarpetAreaSqft, 2100);
+});
+
+test('tower flat sizes and feature points survive saves without merging equal sizes', () => {
+ const project={ProjectID:'tower',Active:true,ProjectName:'Utsav',BuilderName:'Milestone',Location1:'Althan'};
+ const svc=new BuilderProjectService(repo([project]));
+ assert.equal(svc.update('tower',{ConfigDetails:[{Tower:'A',FlatType:'1',Type:'Apartment',BHK:3,CarpetAreaSqft:995,SuperBuiltUpAreaSqft:1809},{Tower:'B',FlatType:'1',Type:'Apartment',BHK:3,CarpetAreaSqft:1020,SuperBuiltUpAreaSqft:1855}],Amenities:['Lift','Play area'],Highlights:['2 towers','14 floors']}).ok,true);
+ assert.equal(project.ConfigDetails.length,2);
+ assert.equal(project.ConfigDetails[1].Tower,'B');
+ assert.equal(project.ConfigDetails[1].FlatType,'1');
+ assert.equal(project.ConfigDetails[1].SuperBuiltUpAreaSqft,1855);
+ assert.deepEqual(project.Highlights,['2 towers','14 floors']);
+ assert.equal(svc.list({builtUpMin:1850}).count,1);
 });

@@ -319,7 +319,7 @@ class BuilderProjectService {
       const minBuiltUp = parseNum(builtUpMin), maxBuiltUp = parseNum(builtUpMax);
       rows = rows.filter((p) => (p.ConfigDetails || []).some((c) => {
         if (bhk && String(c.Type || '').toLowerCase() !== String(bhk).toLowerCase()) return false;
-        const carpet = parseNum(c.CarpetAreaSqft), builtUp = parseNum(c.BuiltUpAreaSqft);
+        const carpet = parseNum(c.CarpetAreaSqft), builtUp = parseNum(c.SuperBuiltUpAreaSqft);
         return (minCarpet == null || carpet != null && carpet >= minCarpet) &&
           (maxCarpet == null || carpet != null && carpet <= maxCarpet) &&
           (minBuiltUp == null || builtUp != null && builtUp >= minBuiltUp) &&
@@ -451,6 +451,9 @@ class BuilderProjectService {
       out.ConfigDetails = Array.isArray(payload.ConfigDetails)
         ? payload.ConfigDetails.filter((c) => c && String(c.Type || '').trim())
           .map((c) => ({
+            Tower: String(c.Tower || "").trim() || null,
+            FlatType: String(c.FlatType || "").trim() || null,
+            SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft != null && c.SuperBuiltUpAreaSqft !== "" ? parseNum(c.SuperBuiltUpAreaSqft) : null,
             Type: String(c.Type).trim(),
             BHK: c.BHK != null && c.BHK !== '' ? parseIntSafe(c.BHK) : null,
             AreaSqft: c.AreaSqft != null && c.AreaSqft !== '' ? parseNum(c.AreaSqft) : null,
