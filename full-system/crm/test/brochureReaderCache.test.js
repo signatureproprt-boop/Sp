@@ -9,27 +9,27 @@ test('same PDF shares one extraction; failed attempts are retryable and scopes s
   let calls = 0;
   let fail = false;
   const data = { ProjectName: 'Test', Amenities: ['Gym'], Highlights: [], ConfigDetails: [] };
-  const context = { module: { exports: {} }, require, process: { env: { GEMINI_API_KEY: 'test' } },
+  const context = { module: { exports: {} }, require: name => name === './brochureCompletenessService' ? {...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1} : require(name), process: { env: { GEMINI_API_KEY: 'test' } },
     Buffer, AbortSignal, structuredClone,
     fetch: async (_url, options) => { calls++;
       const request = JSON.parse(options.body);
       assert.equal(request.contents[0].parts[1].inline_data.mime_type, 'application/pdf');
       await new Promise(resolve => setImmediate(resolve));
       return { ok: !fail, status: 500, json: async () => fail ? { error: { message: 'temporary failure' } } :
-        { candidates: [{ content: { parts: [{ text: JSON.stringify(data) }] } }] } }; } };
+        { candidates: [{ content: { parts: [{ text: JSON.stringify(request.contents[0].parts[0].text.startsWith('Independently audit') ? {Complete:true,Pages:[{Page:1,Kind:'other',HasConfigurations:false}],ConfigChecks:[],Findings:[]} : data) }] } }] } }; } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
   const extract = context.module.exports.extractBrochure;
   const pdf = Buffer.from('%PDF test').toString('base64');
   const [a, b] = await Promise.all([extract(pdf, null, 'one'), extract(pdf, null, 'one')]);
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
   a.Amenities.push('mutation');
   assert.deepEqual(b.Amenities, ['Gym']);
-  await extract(pdf, null, 'one'); assert.equal(calls, 1);
-  await extract(pdf, null, 'two'); assert.equal(calls, 2);
+  await extract(pdf, null, 'one'); assert.equal(calls, 2);
+  await extract(pdf, null, 'two'); assert.equal(calls, 4);
   fail = true;
   await assert.rejects(extract(pdf, null, 'three'), /temporary failure/);
   fail = false;
-  await extract(pdf, null, 'three'); assert.equal(calls, 4);
+  await extract(pdf, null, 'three'); assert.equal(calls, 7);
 });
 
 test('brochure form compiles and BHK-only extracted configurations survive save filtering', () => {
@@ -51,11 +51,12 @@ test('brochure form compiles and BHK-only extracted configurations survive save 
 test('response body timeout reports service delay and remains retryable', async () => {
   let fail = true;
   let timeoutMs;
-  const context = { module: { exports: {} }, require, process: { env: { GEMINI_API_KEY: 'test' } },
+  const context = { module: { exports: {} }, require: name => name === './brochureCompletenessService' ? {...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1} : require(name), process: { env: { GEMINI_API_KEY: 'test' } },
     Buffer, structuredClone, AbortSignal: { timeout: ms => { timeoutMs = ms; return {}; } },
-    fetch: async () => ({ ok: true, json: async () => {
+    fetch: async (_url, options) => ({ ok: true, json: async () => {
       if (fail) throw Object.assign(new Error('body timeout'), { name: 'TimeoutError' });
-      return { candidates: [{ content: { parts: [{ text: '{"ProjectName":"Test"}' }] } }] };
+      const review = JSON.parse(options.body).contents[0].parts[0].text.startsWith('Independently audit');
+      return { candidates: [{ content: { parts: [{ text: review ? JSON.stringify({Complete:true,Pages:[{Page:1,Kind:'other',HasConfigurations:false}],ConfigChecks:[],Findings:[]}) : '{"ProjectName":"Test"}' }] } }] };
     } }) };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
   const pdf = Buffer.from('%PDF timeout').toString('base64');
