@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const objectStorage = require('./objectStorageService');
 const downloader = require('./safeUrlDownloader');
 const { google } = require('googleapis');
+const { createDriveAuth } = require('./googleDriveClient');
 
 const DEFAULT_TIMEOUT_MS = 20000;
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
@@ -68,7 +69,7 @@ class ProjectMediaCanaryMigrationService {
     this.repo = repository;
     this.objectStorage = deps.objectStorage || objectStorage;
     this.downloader = deps.downloader || downloader;
-    this.drive = deps.drive || google.drive({ version: 'v3', auth: new google.auth.GoogleAuth({ scopes: ['https://www.googleapis.com/auth/drive.readonly'] }) });
+    this.drive = deps.drive || google.drive({ version: 'v3', auth: createDriveAuth(process.env) });
   }
 
   _all(db) {
