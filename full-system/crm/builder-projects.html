@@ -1488,12 +1488,12 @@ table td,table th{border-color:var(--v2-line)!important}
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const original = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: 1800 / Math.max(original.width, original.height) });
+        const viewport = page.getViewport({ scale: 2400 / Math.max(original.width, original.height) });
         const canvas = document.createElement('canvas');
         canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
         const text = (await page.getTextContent()).items.map(item => item.str || '').join(' ').slice(0, 20000);
-        pages.push({ data: canvas.toDataURL('image/jpeg', 0.82).split(',')[1], text });
+        pages.push({ data: canvas.toDataURL('image/jpeg', 0.9).split(',')[1], text });
         canvas.width = canvas.height = 0;
         page.cleanup();
       }
@@ -1590,6 +1590,8 @@ table td,table th{border-color:var(--v2-line)!important}
       applyAutoFill(res.data);
       const missing = [['BuilderName', 'builder'], ['Amenities', 'amenities'], ['Highlights', 'features'], ['ConfigDetails', 'configurations'], ['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
         .filter(([key]) => res.data[key] == null || (Array.isArray(res.data[key]) && !res.data[key].length)).map(([, label]) => label);
+      const areaMissing = (res.data.ConfigDetails || []).some(c => c.CarpetAreaSqft == null || c.SuperBuiltUpAreaSqft == null);
+      if (areaMissing) missing.push('carpet / super built-up area for some configurations');
       statusEl.textContent = '✅ Brochure fields filled — review before saving.' +
         (missing.length ? ' Not extracted — verify in PDF; existing values retained: ' + missing.join(', ') + '.' : '');
     } catch (e) {
