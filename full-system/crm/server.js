@@ -3318,7 +3318,13 @@ async function handleApi(req, res, url) {
 
 
     if (pathname === '/api/auth/login-state' && req.method === 'GET') {
-      const nextPath = sanitizeAuthNextPath(url?.searchParams?.get('next') || '/');
+      let nextPath = sanitizeAuthNextPath(url?.searchParams?.get('next') || '/');
+      const driveReconnect = nextPath.startsWith('/admin?driveReconnect=');
+      if (driveReconnect) {
+        if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+        const initiator = getAuthenticatedActor(req, url);
+        nextPath = '/admin?driveReconnect=' + encodeURIComponent(initiator.userId);
+      }
       const authStateMaxAgeSeconds = getAuthExchangeStateMaxAgeSeconds(runtime?.repository);
       const googleAuth = resolveGoogleOAuthConfig();
       if (!googleAuth.enabled && (isProductionLikeRuntime() || isProductionRuntime())) {
@@ -3351,7 +3357,12 @@ async function handleApi(req, res, url) {
         const authorizeUrl = new URL(resolveGoogleOAuthAuthorizeUrl());
         authorizeUrl.searchParams.set('client_id', googleAuth.clientId);
         authorizeUrl.searchParams.set('response_type', 'code');
-        authorizeUrl.searchParams.set('scope', resolveGoogleOAuthScopes());
+        authorizeUrl.searchParams.set('scope', driveReconnect ? 'openid email profile https://www.googleapis.com/auth/drive' : resolveGoogleOAuthScopes());
+        if (driveReconnect) {
+          authorizeUrl.searchParams.set('access_type', 'offline');
+          authorizeUrl.searchParams.set('prompt', 'consent');
+          authorizeUrl.searchParams.set('include_granted_scopes', 'true');
+        }
         authorizeUrl.searchParams.set('state', state);
         authorizeUrl.searchParams.set('redirect_uri', redirectUri);
         signInUrl = authorizeUrl.toString();
@@ -3483,6 +3494,21 @@ async function handleApi(req, res, url) {
           { 'Set-Cookie': buildAuthFlowCookies(req, { state: '', nextPath: '/', maxAgeSeconds: 0 }) }
         );
         return;
+      }
+
+      if (nextPath.startsWith('/admin?driveReconnect=')) {
+        const expectedUser = new URL(nextPath, 'https://local.invalid').searchParams.get('driveReconnect');
+        if (!authCode || user.UserID !== expectedUser || String(user.Role).toUpperCase() !== 'ADMIN') {
+          sendJson(res, { ok: false, error: 'Drive reconnect must be approved by the initiating administrator' }, 403);
+          return;
+        }
+        try {
+          await require('./src/services/driveConnectionService').saveDriveReconnect(remote.payload);
+          nextPath = '/admin?drive=connected';
+        } catch (error) {
+          sendJson(res, { ok: false, error: error.message }, 503);
+          return;
+        }
       }
 
       const localSessionId = await issueLoginSession(res, {
@@ -4995,6 +5021,13 @@ async function handleApi(req, res, url) {
       const service = new (require('./src/services/mediaService').MediaService)(runtime.repository);
       const result = await service.listMedia({ CompanyID: actor.companyId, BrokerageID: actor.brokerageId }, actor, { companyId: actor.companyId, brokerageId: actor.brokerageId });
       sendJson(res, { ok: true, data: (result.data || []).map(stripSensitiveMedia) }, 200);
+      return;
+    }
+
+    if (pathname === '/api/admin/drive-connection/test' && req.method === 'POST') {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_UPDATE')) return;
+      const result = await require('./src/services/driveConnectionService').testDriveConnection();
+      sendJson(res, { ok: true, data: result }, 200, { 'Cache-Control': 'no-store' });
       return;
     }
 
