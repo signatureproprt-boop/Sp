@@ -2066,7 +2066,7 @@ table td,table th{border-color:var(--v2-line)!important}
       uploadedBatchRunning = false;
       document.getElementById('uploaded-batch-start').disabled = false;
       document.getElementById('uploaded-batch-pause').disabled = true;
-      if (!uploadedBatchPaused) renderUploadedBrochureBatch();
+      if (!uploadedBatchPaused || uploadedBatch?.Status === 'cooldown') renderUploadedBrochureBatch();
     }
   }
 
