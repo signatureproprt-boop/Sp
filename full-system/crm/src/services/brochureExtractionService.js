@@ -85,9 +85,11 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     });
   }
 
+  // One shared deadline covers extraction, review and the bounded correction pass.
+  const extractionSignal = AbortSignal.timeout(240000);
   async function generate(prompt) {
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-    signal: AbortSignal.timeout(240000),
+    signal: extractionSignal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
