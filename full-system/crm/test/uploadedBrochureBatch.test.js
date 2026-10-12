@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+const { REVIEW_VERSION } = require('../src/services/brochureCompletenessService');
 function setup(rows, fail = false) {
   let db = { BuilderProjects: structuredClone(rows) }, calls = 0;
   const repo = { read: () => structuredClone(db), write: value => { db = structuredClone(value); }, list: key => structuredClone(db[key] || []) };
@@ -15,7 +16,7 @@ function setup(rows, fail = false) {
     if (name.endsWith('projectMediaCanaryMigrationService')) return { ProjectMediaCanaryMigrationService: class {} };
     if (name.endsWith('brochureExtractionService')) return { extractBrochure() {} };
     if (name.endsWith('brochurePdfPreparationService')) return { preparePdfForAi:async buffer=>({buffer,optimized:false}) };
-    if (name.endsWith('brochureCompletenessService')) return { REVIEW_VERSION:'full-page-review-v1' };
+    if (name.endsWith('brochureCompletenessService')) return { REVIEW_VERSION };
     if (name.endsWith('mongoStore')) return { isEnabled: () => false };
     throw Error(name);
   } };
@@ -23,7 +24,7 @@ function setup(rows, fail = false) {
   const api = ctx.module.exports;
   const svc = new api.UploadedBrochureBatchService(repo,{ projects, visible:p=>p.CompanyID === 'mine',
     media: { getProjectBrochureFile: async (_id, mediaId, key) => { assert.ok(mediaId); assert.ok(key); return { ok:true,buffer:Buffer.from('%PDF test') }; } },
-    extract: async () => { calls++; if (fail) throw Error('AI unavailable'); return { CompletenessReview:{Version:'full-page-review-v1',Status:'automated_checks_passed',PageCount:2}, ProjectName:'Coral Heights', BuilderName:'Swagat Developers', ConfigDetails:[], Amenities:['Gym'], Highlights:['Good tiles'], SourceEvidence:[], ReadingWarnings:['Carpet not printed'] }; } });
+    extract: async () => { calls++; if (fail) throw Error('AI unavailable'); return { CompletenessReview:{Version:REVIEW_VERSION,Status:'automated_checks_passed',PageCount:2}, ProjectName:'Coral Heights', BuilderName:'Swagat Developers', ConfigDetails:[], Amenities:['Gym'], Highlights:['Good tiles'], SourceEvidence:[], ReadingWarnings:['Carpet not printed'] }; } });
   return { ...api, svc, repo, calls:()=>calls };
 }
 const pdf = id => ({ MediaID:id,DriveFileID:id,verified:true,downloadStatus:'downloaded',Filename:id+'.pdf' });
@@ -106,4 +107,13 @@ test('transient retries stop after three attempts without cascading through othe
  const job=x.svc.latest('user').data;
  assert.equal(calls,3);assert.equal(job.Items[0].Status,'failed');assert.equal(job.Items[0].Attempts,3);
  assert.equal(job.Items[1].Attempts,0);assert.equal(job.Status,'cooldown');
+});
+
+test('older saved reviews do not count as current source checks and are requeued',async()=>{
+ const x=setup([project]);const j=x.svc.start('user').data;
+ const db=x.repo.read();db.UploadedBrochureBatches[0].Items[0].Status='saved';
+ db.UploadedBrochureBatches[0].Items[0].CompletenessReview={Version:'full-page-review-v1',Status:'automated_checks_passed'};
+ x.repo.write(db);assert.equal(x.svc.latest('user').data.ChecksPassed,0);
+ assert.equal(x.svc.retry(j.JobID,'user').data.Items[0].Status,'pending');
+ const out=await x.svc.step(j.JobID,'user');assert.equal(out.data.ChecksPassed,1);
 });
