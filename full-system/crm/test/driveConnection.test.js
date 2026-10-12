@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-function setup({folderAccess=true,writeAllowed=true}={}) {
+function setup({folderAccess=true,writeAllowed=true,hangToken=false,hangFolder=false,timers={setTimeout,clearTimeout}}={}) {
  const requests=[];
  const google = {
   auth: {
@@ -16,12 +16,12 @@ function setup({folderAccess=true,writeAllowed=true}={}) {
    OAuth2: class {
     constructor(){this.credentials={};}
     setCredentials(v){this.credentials=v;}
-    async getAccessToken(){this.credentials.expiry_date=123456;return {token:'access'};}
+    async getAccessToken(){if(hangToken)return new Promise(()=>{});this.credentials.expiry_date=123456;return {token:'access'};}
    }
   },
-  drive:()=>({files:{get:async()=>{if(!folderAccess)throw Error('private provider error');return {data:{id:'folder'}};}}})
+  drive:()=>({files:{get:async()=>{if(hangFolder)return new Promise(()=>{});if(!folderAccess)throw Error('private provider error');return {data:{id:'folder'}};}}})
  };
- const context={module:{exports:{}},require:()=>({google}),Buffer,Date,process:{env:{}}};
+ const context={module:{exports:{}},require:name=>name==='./googleDriveClient'?{createDriveAuth:()=>({})}:{google},...timers,Buffer,Date,process:{env:{}}};
  vm.runInNewContext(fs.readFileSync(__dirname+'/../src/services/driveConnectionService.js','utf8'),context);
  return {...context.module.exports,requests};
 }
@@ -48,4 +48,45 @@ test('scripts compile and reconnect state is bound to initiating admin',()=>{
  new vm.Script(fs.readFileSync(__dirname+'/../server.js','utf8'));
  for(const name of ['admin.html','login.html'])for(const m of fs.readFileSync(__dirname+'/../'+name,'utf8').matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);
  const source=fs.readFileSync(__dirname+'/../server.js','utf8');assert.match(source,/user.UserID !== expectedUser/);assert.match(source,/String\(user.Role\).toUpperCase\(\) !== 'ADMIN'/);
+});
+
+test('token refresh and connection tests have independent deadlines',async()=>{
+ const pending=[];
+ const timers={setTimeout:fn=>{pending.push(fn);return fn;},clearTimeout:()=>{}};
+ const x=setup({hangToken:true,timers});
+ const token=x.refreshManagedDriveToken(env);
+ pending.shift()();
+ await assert.rejects(token,/token refresh timed out/);
+ const y=setup({hangFolder:true,timers});
+ const connection=y.testDriveConnection({...env,SIG_REALTY_GOOGLE_REFRESH_TOKEN:'configured'});
+ pending.shift()();
+ const out=await connection;
+ assert.equal(out.status,'timeout');
+ assert.match(out.message,/connection test timed out/);
+});
+test('late auth-me response cannot overwrite successful reconnect redirect',async()=>{
+ const source=fs.readFileSync(__dirname+'/../login.html','utf8');
+ const scripts=[...source.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
+ const js=scripts[scripts.length-1][1];
+ let meResolve;
+ const destinations=[];
+ const inputs=Array.from({length:4},()=>({value:'',addEventListener(){},focus(){}}));
+ const elements={'pin-form':{addEventListener(){}},'submit-btn':{},'google-btn':{addEventListener(){}},status:{}};
+ const document={getElementById:id=>elements[id]||{},querySelectorAll:()=>inputs};
+ const location={search:'?code=callback',hash:'',origin:'https://crm.example',href:'https://crm.example/login.html?code=callback',replace:to=>destinations.push(to)};
+ const window={location,history:{replaceState:()=>{location.search='';}},matchMedia:()=>({matches:true})};
+ let meCalls=0;
+ const fetch=async url=>{
+  if(url==='/api/auth/session-exchange') return {ok:true,json:async()=>({ok:true,data:{redirectTo:'/admin?drive=connected'}})};
+  meCalls++;
+  if(meCalls===1) return new Promise(resolve=>{meResolve=resolve;});
+  return {ok:true,json:async()=>({ok:true})};
+ };
+ const context={window,document,localStorage:{getItem:()=> '{}',removeItem(){},setItem(){}},URL,URLSearchParams,fetch,AbortController,setTimeout,clearTimeout};
+ vm.runInNewContext(js,context);
+ await new Promise(setImmediate);
+ assert.deepEqual(destinations,['/admin?drive=connected']);
+ meResolve({ok:true,json:async()=>({ok:true})});
+ await new Promise(setImmediate);
+ assert.deepEqual(destinations,['/admin?drive=connected']);
 });
