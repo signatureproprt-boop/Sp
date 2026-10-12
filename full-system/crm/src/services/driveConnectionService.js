@@ -1,5 +1,12 @@
 'use strict';
 const { google } = require('googleapis');
+function withDeadline(work, message, timeoutMs = 25000) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([Promise.resolve().then(work), timeout]).finally(() => clearTimeout(timer));
+}
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 function secretName(env = process.env) {
   const id = env.SIG_REALTY_GOOGLE_REFRESH_SECRET || 'sig-realty-google-refresh-token';
@@ -28,6 +35,9 @@ async function secretRequest(action, token, env = process.env) {
   }
 }
 async function refreshManagedDriveToken(env = process.env) {
+  return withDeadline(() => refreshManagedDriveTokenWithinDeadline(env), 'Google Drive token refresh timed out. Check Cloud Run connectivity to Google APIs.');
+}
+async function refreshManagedDriveTokenWithinDeadline(env = process.env) {
   const token = await secretRequest('read', null, env);
   const auth = new google.auth.OAuth2(env.SIG_REALTY_GOOGLE_CLIENT_ID, env.SIG_REALTY_GOOGLE_CLIENT_SECRET);
   auth.setCredentials({ refresh_token: token });
@@ -52,6 +62,10 @@ async function saveDriveReconnect(payload, env = process.env) {
   return { connected: true };
 }
 async function testDriveConnection(env = process.env) {
+  try { return await withDeadline(() => testDriveConnectionWithinDeadline(env), 'Google Drive connection test timed out. Check Cloud Run connectivity to Google APIs.', 35000); }
+  catch (error) { return { status: 'timeout', message: error.message }; }
+}
+async function testDriveConnectionWithinDeadline(env = process.env) {
   const configured = ['SIG_REALTY_GOOGLE_CLIENT_ID','SIG_REALTY_GOOGLE_CLIENT_SECRET','SIG_REALTY_GOOGLE_REFRESH_TOKEN'].every(k => String(env[k] || '').trim());
   if (!configured) return { status: 'not_configured', message: 'Google Drive connection is not configured' };
   try {
@@ -61,6 +75,13 @@ async function testDriveConnection(env = process.env) {
     if (!folder) return { status: 'not_configured', message: 'Builder Projects Drive folder is not configured' };
     await google.drive({ version: 'v3', auth }).files.get({ fileId: folder, fields: 'id', supportsAllDrives: true }, { timeout: 30000 });
     return { status: 'connected', message: 'Google Drive connected. Builder Projects folder is accessible.' };
-  } catch (_) { return { status: 'reconnect_required', message: 'Google Drive connection failed. Reconnect Google Drive and test again.' }; }
+  } catch (error) {
+    const safeMessages = [
+      'Drive token could not be read from Secret Manager',
+      'Google Drive authorization failed. Reconnect Google Drive in CRM Admin.',
+      'Google Drive token refresh timed out. Check Cloud Run connectivity to Google APIs.'
+    ];
+    return { status: 'reconnect_required', message: safeMessages.includes(error.message) ? error.message : 'Google Drive folder could not be accessed. Check the configured folder and account permission.' };
+  }
 }
 module.exports = { DRIVE_SCOPE, secretName, refreshManagedDriveToken, saveDriveReconnect, testDriveConnection };
