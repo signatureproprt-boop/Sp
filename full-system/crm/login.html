@@ -218,6 +218,14 @@
       window.location.replace(safeNextPath((payload.data && payload.data.redirectTo) || next));
     }
 
+    // Capture callback state before finishGoogleLogin removes callback parameters.
+    // A late /auth/me response must not override the reconnect redirect.
+    var callbackParams = new URLSearchParams(window.location.search);
+    var callbackHash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    var hasAuthCallback = ['code','session_id','sessionId'].some(function(key) {
+      return callbackParams.has(key) || callbackHash.has(key);
+    });
+
     finishGoogleLogin().catch(function (err) {
       clearAuthFlowArtifacts();
       setStatus(err && err.message ? err.message : 'Unable to start sign-in. Please try again.', 'error');
@@ -226,7 +234,7 @@
     // If already signed in, skip straight to the app.
     fetch('/api/auth/me', { credentials: 'include' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (me) { if (me && me.ok && !new URLSearchParams(window.location.search).has('code') && !new URLSearchParams(window.location.search).has('session_id') && !window.location.hash) window.location.replace(next); })
+      .then(function (me) { if (me && me.ok && !hasAuthCallback) window.location.replace(next); })
       .catch(function () {});
 
     // Avoid opening the on-screen keyboard before a mobile user taps a PIN box.
