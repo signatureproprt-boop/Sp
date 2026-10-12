@@ -13,9 +13,12 @@ const unique = rows => Array.from(new Set((rows || []).filter(x => typeof x === 
 function grouped(rows) {
   const groups = new Map();
   const fields = ['Type','BHK','CarpetAreaSqft','SuperBuiltUpAreaSqft','TerraceAreaSqft','ParkingAllotted','ServantRoom'];
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
+    const hasArea = ['CarpetAreaSqft','SuperBuiltUpAreaSqft','BuiltUpAreaSqft'].some(f => Number(row[f]) > 0);
+    // Matching BHK alone never proves that unknown-area layouts are identical.
+    const unknownLayout = !hasArea ? [String(row.FlatType || '').trim() || null, String(row.Tower || '').trim() || null, index] : null;
     const label = /[a-z]/i.test(String(row.FlatType || '')) ? String(row.FlatType).trim() : null;
-    const key = JSON.stringify([label, ...fields.map(f => row[f] == null || row[f] === '' ? null : row[f])]);
+    const key = JSON.stringify([unknownLayout, label, ...fields.map(f => row[f] == null || row[f] === '' ? null : row[f])]);
     if (!groups.has(key)) groups.set(key, { ...row, towers: new Set(), flats: new Set() });
     const g = groups.get(key);
     String(row.Tower || '').split('/').filter(Boolean).forEach(x => g.towers.add(x.trim()));
