@@ -120,7 +120,16 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     throw new Error('AI service returned an unreadable response');
   });
   if (!response.ok) {
-    throw new Error(payload?.error?.message || `Gemini request failed (${response.status})`);
+    const error = new Error(payload?.error?.message || `Gemini request failed (${response.status})`);
+    error.status = response.status;
+    if ([429,503].includes(response.status)) {
+      error.code = response.status === 429 ? 'AI_RATE_LIMIT' : 'AI_UNAVAILABLE';
+      const header = response.headers?.get?.('retry-after');
+      const headerSeconds = header && /^\\d+(?:\\.\\d+)?$/.test(header) ? Number(header) : Math.max(0, (Date.parse(header || '') - Date.now()) / 1000);
+      const delays = (payload?.error?.details || []).map(d => /^([0-9]+(?:\\.[0-9]+)?)s$/.exec(String(d?.retryDelay || ''))).filter(Boolean).map(m => Number(m[1]));
+      error.retryAfterSeconds = Math.ceil(Math.max(60, Number.isFinite(headerSeconds) ? headerSeconds : 0, ...delays));
+    }
+    throw error;
   }
   const text = payload?.candidates?.[0]?.content?.parts?.filter((part) => !part.thought).map((part) => part.text || '').join('') || '';
   if (!text) throw new Error('Gemini returned no extraction result');

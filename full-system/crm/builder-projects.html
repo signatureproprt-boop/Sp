@@ -1183,7 +1183,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const catColor = catColors[p.Category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      groupedConfigDetails(p.ConfigDetails).forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK) + ' bhk') ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
+      groupedConfigDetails(p.ConfigDetails).forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK) + ' bhk') ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : 'Carpet: not provided', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : 'Saleable / super built-up: not provided', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       facts.push(p.Configurations.join(' / '));
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
@@ -1616,7 +1616,7 @@ table td,table th{border-color:var(--v2-line)!important}
   async function requestBrochureExtraction(filename, fileBase64) {
     const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
-    const cacheKey = 'reader-v5-review-repair:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cacheKey = 'reader-v6-production:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     const cached = await brochureCache('get', cacheKey);
     if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
 
@@ -1673,6 +1673,7 @@ table td,table th{border-color:var(--v2-line)!important}
     }
     brochureReadInProgress = true;
     const readProjectId = editingId;
+    const readProjectName = document.getElementById('f-project-name').value;
     if (!stored) pendingBrochureFile = file;
     const statusEl = document.getElementById('autofill-status');
     statusEl.textContent = '⏳ Uploaded brochure padh raha hai… 4 minute tak lag sakte hain. Dobara click na karein.';
@@ -1681,6 +1682,12 @@ table td,table th{border-color:var(--v2-line)!important}
       const res = await requestBrochureExtraction(file.name, fileBase64);
       if (!res.ok) throw new Error(res.error || 'Extraction failed');
       if (editingId !== readProjectId || document.getElementById('project-modal').classList.contains('hidden')) return;
+      if (readProjectId) {
+        const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/s$/, '');
+        if (!normalize(res.data.ProjectName) || normalize(res.data.ProjectName) !== normalize(readProjectName)) {
+          throw new Error('Review required: brochure project name does not match ' + readProjectName + ' (PDF: ' + (res.data.ProjectName || 'missing') + '). Project fields were not changed.');
+        }
+      }
       applyAutoFill(res.data);
       const missing = [['BuilderName', 'builder'], ['Amenities', 'amenities'], ['Highlights', 'features'], ['ConfigDetails', 'configurations'], ['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
         .filter(([key]) => res.data[key] == null || (Array.isArray(res.data[key]) && !res.data[key].length)).map(([, label]) => label);
@@ -2006,7 +2013,8 @@ table td,table th{border-color:var(--v2-line)!important}
     const job = uploadedBatch;
     const summary = document.getElementById('uploaded-batch-summary');
     if (!job) { summary.textContent = 'No batch loaded.'; return; }
-    summary.textContent = job.Projects + ' projects · ' + job.Total + ' stored PDFs · Saved ' + job.Saved + ' · Checks passed ' + (job.ChecksPassed || 0) + ' · Failed / needs review ' + job.Failed + ' · Remaining ' + job.Pending + ' · Without stored PDF ' + job.WithoutStoredBrochure + (uploadedBatchRunning ? ' · Processing…' : job.Pending ? ' · Paused — resume to continue' : ' · Complete');
+    summary.textContent = job.Projects + ' projects · ' + job.Total + ' stored PDFs · Saved ' + job.Saved + ' · Checks passed ' + (job.ChecksPassed || 0) + ' · Failed / needs review ' + job.Failed + ' · Remaining ' + job.Pending + ' · Without stored PDF ' + job.WithoutStoredBrochure + (uploadedBatchRunning ? ' · Processing…' : job.Status === 'cooldown' ? ' · Paused — AI unavailable' : job.Pending ? ' · Paused — resume to continue' : ' · Complete');
+    if (job.Status === 'cooldown') summary.textContent += ' · AI paused — retry after ' + new Date(job.NextRetryAt).toLocaleString() + '. ' + (job.PauseReason || '');
     document.getElementById('uploaded-batch-results').innerHTML = '<thead><tr><th>Project</th><th>PDF</th><th>Status</th><th>Details</th></tr></thead><tbody>' +
       job.Items.map(item => '<tr><td>' + esc(item.ProjectName) + '</td><td>' + esc(item.Filename) + '</td><td>' + esc(item.Status) + '</td><td>' + esc(item.Error || (item.Warnings || []).join('; ') || '') + '</td></tr>').join('') + '</tbody>';
   }
@@ -2047,6 +2055,7 @@ table td,table th{border-color:var(--v2-line)!important}
           try { result = JSON.parse(text); } catch (_) { throw new Error('Server response unavailable (HTTP ' + response.status + '). Saved progress retained.'); }
           if (!response.ok || !result.ok) throw new Error(result.error || 'Batch stopped');
           uploadedBatch = result.data; renderUploadedBrochureBatch();
+          if (uploadedBatch.Status === 'cooldown') { uploadedBatchPaused = true; break; }
         } finally { clearTimeout(timer); }
       }
       await loadProjects();
@@ -2057,7 +2066,7 @@ table td,table th{border-color:var(--v2-line)!important}
       uploadedBatchRunning = false;
       document.getElementById('uploaded-batch-start').disabled = false;
       document.getElementById('uploaded-batch-pause').disabled = true;
-      if (!uploadedBatchPaused) renderUploadedBrochureBatch();
+      if (!uploadedBatchPaused || uploadedBatch?.Status === 'cooldown') renderUploadedBrochureBatch();
     }
   }
 

@@ -2545,7 +2545,10 @@ async function handleApi(req, res, url) {
         const { extractBrochure } = require('./src/services/brochureExtractionService');
         extractBrochure(body.fileBase64, body.pageImages, String(actor?.userId || ""))
           .then((data) => sendJson(res, { ok: true, data }))
-          .catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
+          .catch((e) => {
+            console.warn('[brochure-reader]', JSON.stringify({ model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', status: e.status || 500, code: e.code || 'EXTRACTION_FAILED' }));
+            sendJson(res, { ok: false, error: e.message, code: e.code || null, retryAfterSeconds: e.retryAfterSeconds || null }, [429,503].includes(e.status) ? e.status : 500);
+          });
         return;
       }
 

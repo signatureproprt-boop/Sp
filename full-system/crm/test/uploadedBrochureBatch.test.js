@@ -79,3 +79,31 @@ test('real project update commits fields and queue metadata in one snapshot and 
   assert.equal(result.ok,true);assert.equal(writes,1);assert.equal(db.BuilderProjects[0].BuilderName,'Printed developer');
   assert.equal(db.BuilderProjects[0].ConfigDetails[0].CarpetAreaSqft,995);assert.equal(db.UploadedBrochureBatches[0].Items[0].Status,'saved');
 });
+
+test('project-name prefixes cannot authorize importing a different phase',()=>{
+ const x=setup([]);
+ assert.throws(()=>x.buildPayload({...project,ProjectName:'Coral Heights'},{ProjectName:'Coral Heights II'}),/does not match/);
+});
+test('transient AI failure pauses queue durably and resume cannot bypass provider cooldown',async()=>{
+ const x=setup([project]);let now=1000000000000,calls=0;x.svc.now=()=>now;
+ x.svc.extract=async()=>{calls++;const e=new Error('High demand');e.status=503;e.code='AI_UNAVAILABLE';e.retryAfterSeconds=120;throw e;};
+ const j=x.svc.start('user').data;
+ const out=await x.svc.step(j.JobID,'user');
+ assert.equal(out.data.Status,'cooldown');assert.equal(out.data.Failed,0);assert.equal(out.data.Pending,2);
+ assert.equal(Date.parse(out.data.NextRetryAt),now+120000);
+ assert.equal(out.data.Items[0].Attempts,1);assert.equal(out.data.Items[1].Attempts,0);
+ await x.svc.step(j.JobID,'user');assert.equal(calls,1);
+ assert.equal(x.svc.retry(j.JobID,'user').statusCode,409);
+ assert.equal(x.svc.latest('user').data.Status,'cooldown');
+ now+=120001;await x.svc.step(j.JobID,'user');assert.equal(calls,2);
+ assert.equal(x.repo.read().BuilderProjects[0].BuilderName,undefined);
+});
+test('transient retries stop after three attempts without cascading through other PDFs',async()=>{
+ const x=setup([project]);let now=1000000000000,calls=0;x.svc.now=()=>now;
+ x.svc.extract=async()=>{calls++;const e=new Error('Quota exceeded');e.status=429;throw e;};
+ const j=x.svc.start('user').data;
+ for(let i=0;i<3;i++){const out=await x.svc.step(j.JobID,'user');now=Date.parse(out.data.NextRetryAt)+1;}
+ const job=x.svc.latest('user').data;
+ assert.equal(calls,3);assert.equal(job.Items[0].Status,'failed');assert.equal(job.Items[0].Attempts,3);
+ assert.equal(job.Items[1].Attempts,0);assert.equal(job.Status,'cooldown');
+});

@@ -28,7 +28,7 @@ function grouped(rows) {
 }
 function buildPayload(project, data, appendConfigs = false) {
   const actual = identity(data), expected = identity(project);
-  if (!actual || !expected || !(actual === expected || actual.startsWith(expected) || expected.startsWith(actual))) {
+  if (!actual || !expected || actual !== expected) {
     throw new Error('Review required: PDF project name does not match CRM project (' + String(data.ProjectName || 'missing') + ')');
   }
   const payload = {};
@@ -71,6 +71,7 @@ class UploadedBrochureBatchService {
     this.extract = deps.extract || extractBrochure;
     this.prepare = deps.prepare || preparePdfForAi;
     this.visible = deps.visible || (() => true);
+    this.now = deps.now || (() => Date.now());
     this.lock = deps.lock || (mongoStore.isEnabled() ? (name, fn) => mongoStore.withDistributedLock(name, fn, { leaseMs: 600000 }) : async (_name, fn) => ({ acquired: true, result: await fn() }));
   }
   jobs() { return this.repo.read().UploadedBrochureBatches || []; }
@@ -93,8 +94,10 @@ class UploadedBrochureBatchService {
   retry(jobId, actorId) {
     const job = this.jobs().find(j => j.JobID === jobId && j.ActorID === actorId);
     if (!job) return { ok: false, statusCode: 404, error: 'Batch not found' };
+    if (Date.parse(job.NextRetryAt || '') > this.now()) return { ok: false, statusCode: 409, error: 'AI temporarily unavailable. Retry after ' + job.NextRetryAt };
     if (running.has(jobId) || job.Items.some(i => i.Status === 'reading')) return { ok: false, statusCode: 409, error: 'Pause and wait for the current PDF before retrying failed PDFs' };
-    for (const item of job.Items) if (item.Status === 'failed' || (item.Status === 'saved' && item.CompletenessReview?.Version !== REVIEW_VERSION)) { item.Status = 'pending'; item.Error = null; if (item.Draft?.CompletenessReview?.Version !== REVIEW_VERSION) delete item.Draft; }
+    for (const item of job.Items) if (item.Status === 'failed' || (item.Status === 'saved' && item.CompletenessReview?.Version !== REVIEW_VERSION)) { item.Status = 'pending'; item.Error = null; item.Attempts = 0; if (item.Draft?.CompletenessReview?.Version !== REVIEW_VERSION) delete item.Draft; }
+    delete job.NextRetryAt; delete job.PauseReason;
     job.Status = job.Items.some(i => i.Status === 'pending') ? 'ready' : 'complete'; this.save(job);
     return { ok: true, data: this.view(job) };
   }
@@ -124,6 +127,8 @@ class UploadedBrochureBatchService {
       const locked = await this.lock('uploaded-brochure-batch-' + jobId, async () => {
         const job = this.jobs().find(j => j.JobID === jobId && j.ActorID === actorId);
         if (!job) return { ok: false, statusCode: 404, error: 'Batch not found' };
+        if (Date.parse(job.NextRetryAt || '') > this.now()) return { ok: true, data: this.view(job) };
+        delete job.NextRetryAt; delete job.PauseReason;
         const item = job.Items.find(i => ['pending','reading'].includes(i.Status));
         if (!item) { job.Status = 'complete'; this.save(job); return { ok: true, data: this.view(job) }; }
         item.Status = 'reading'; item.Attempts++; item.StartedAt = new Date().toISOString(); job.Status = 'running'; this.save(job);
@@ -155,14 +160,25 @@ class UploadedBrochureBatchService {
             item.CompletenessReview = item.Draft.CompletenessReview;
             item.Status = 'saved'; item.SavedAt = new Date().toISOString(); item.Error = null;
             item.Warnings = unique(item.Draft.ReadingWarnings); delete item.Draft;
-            if (!job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';
+            if (job.Status !== 'cooldown' && !job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';
             job.UpdatedAt = new Date().toISOString();
             db.UploadedBrochureBatches = db.UploadedBrochureBatches || [];
             const index = db.UploadedBrochureBatches.findIndex(j => j.JobID === job.JobID);
             if (index < 0) db.UploadedBrochureBatches.push(job); else db.UploadedBrochureBatches[index] = job;
           });
           if (!result.ok) throw new Error(result.error || 'Project save failed');
-        } catch (error) { item.Status = 'failed'; item.Error = String(error.message || error).slice(0,1000); }
+        } catch (error) {
+          item.Error = String(error.message || error).slice(0,1000);
+          const transient = [429,503].includes(error.status) || ['AI_RATE_LIMIT','AI_UNAVAILABLE'].includes(error.code) || /high demand|quota exceeded|exceeded your current quota|RESOURCE_EXHAUSTED/i.test(item.Error);
+          if (transient) {
+            item.Status = item.Attempts < 3 ? 'pending' : 'failed';
+            item.ErrorCode = error.code || 'AI_UNAVAILABLE';
+            const delay = Math.max(60 * Math.pow(2, Math.min(item.Attempts - 1, 4)), Number(error.retryAfterSeconds) || 0);
+            job.NextRetryAt = new Date(this.now() + delay * 1000).toISOString();
+            job.PauseReason = item.Error;
+            job.Status = 'cooldown';
+          } else { item.Status = 'failed'; item.ErrorCode = error.code || null; }
+        }
         if (!job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';
         if (item.Status !== 'saved') this.save(job);
         return { ok: true, data: this.view(job) };
