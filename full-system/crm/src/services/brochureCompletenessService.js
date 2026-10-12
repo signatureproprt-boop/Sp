@@ -26,6 +26,7 @@ function validateReview(review, data, pageCount) {
   if (!review || typeof review.Complete !== 'boolean' || !Array.isArray(review.Pages) || !Array.isArray(review.Findings) || !Array.isArray(review.ConfigChecks)) fail('incomplete independent brochure review: expected Complete, Pages, Findings and ConfigChecks');
   const warnings = [], blocking = [];
   const scalarFields = new Set(['RERANumber','BuilderName','Location1','Address','SalesPersonName','SalesPersonPhone','Category','ProjectStatus','TotalUnits','ProjectArea','TotalTowers','TotalFloors','FloorHeightFt','PriceMin','PriceMax','PossessionDate']);
+  const listFields = new Set(['Amenities','Highlights','ConfigDetails']);
   const configFields = new Set(['CarpetAreaSqft','SuperBuiltUpAreaSqft','TerraceAreaSqft','ParkingAllotted','ServantRoom']);
   for (const finding of review.Findings) {
     if (finding?.Kind !== 'not_stated') { blocking.push(finding); continue; }
@@ -34,9 +35,11 @@ function validateReview(review, data, pageCount) {
     if (configFields.has(finding.Field)) {
       if (!Number.isInteger(finding.ConfigIndex) || finding.ConfigIndex < 0 || finding.ConfigIndex >= (data.ConfigDetails || []).length) fail('not-stated finding requires an exact configuration index');
       target = data.ConfigDetails[finding.ConfigIndex];
-    } else if (scalarFields.has(finding.Field) && finding.ConfigIndex == null) target = data;
+    } else if ((scalarFields.has(finding.Field) || listFields.has(finding.Field)) && finding.ConfigIndex == null) target = data;
     else fail('not-stated finding requires an allowed field');
-    if (target[finding.Field] != null && target[finding.Field] !== '') fail('not-stated source field has an unsupported extracted value: ' + finding.Field, 'BROCHURE_REVIEW_FINDINGS');
+    const value = target[finding.Field];
+    const absent = listFields.has(finding.Field) ? value == null || (Array.isArray(value) && value.length === 0) : value == null || value === '';
+    if (!absent) fail('not-stated source field has an unsupported extracted value: ' + finding.Field, 'BROCHURE_REVIEW_FINDINGS');
     warnings.push('Page ' + finding.Page + ': ' + finding.Field + (finding.ConfigIndex == null ? '' : ' (configuration ' + finding.ConfigIndex + ')') + ' not stated. ' + finding.Issue);
   }
   if (blocking.length) fail(blocking.map(x => 'page ' + (x?.Page ?? 'unknown') + ': ' + String(x?.Issue || 'unspecified finding')).join('; ').slice(0, 850), 'BROCHURE_REVIEW_FINDINGS');
