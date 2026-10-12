@@ -85,6 +85,12 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="full"><button type="submit">Save PIN</button><div id="status" class="status"></div></div>
 </form>
 </section>
+<section class="card" id="settings"><h2>Google Drive connection</h2>
+<p class="muted">Connect the Google account that owns your Builder Projects brochures. Google authorization is required when reconnecting.</p>
+<p id="driveStatus" class="status" role="status">Connection not tested.</p>
+<button id="driveTest" type="button">Test connection</button>
+<button id="driveReconnect" type="button">Reconnect Google Drive</button>
+</section>
 <section class="card"><h2>Admin Modules</h2><div class="links">
 <a href="#users">👥 Users & Roles</a><a href="#settings">⚙️ System Settings</a><a href="#health">🩺 System Health</a>
 </div></section>
@@ -111,6 +117,27 @@ $('pinForm').addEventListener('submit',async e=>{
  st.textContent=d.ok?'PIN saved successfully.':(d.error||'PIN save failed.');
  st.classList.add(d.ok?'ok':'error'); if(d.ok){e.target.reset();boot()}
 });
+$('driveTest').addEventListener('click',async()=>{
+  $('driveTest').disabled=true;$('driveStatus').textContent='Checking Google Drive…';
+  try { const {d}=await api('/api/admin/drive-connection/test',{method:'POST',body:'{}'});
+    $('driveStatus').textContent=d.data?.message||d.error||'Connection test failed';
+    $('driveStatus').className='status '+(d.data?.status==='connected'?'ok':'error');
+  } catch (_) { $('driveStatus').textContent='Connection test could not finish. Try again.'; }
+  finally {$('driveTest').disabled=false;}
+});
+$('driveReconnect').addEventListener('click',async()=>{
+  $('driveReconnect').disabled=true;$('driveStatus').textContent='Opening Google authorization…';
+  try {
+    const {d}=await api('/api/auth/login-state?next='+encodeURIComponent('/admin?driveReconnect=start'));
+    if(!d.ok) throw new Error(d.error||'Unable to reconnect Google Drive');
+    localStorage.setItem('sig_auth_flow',JSON.stringify({state:d.data.state,browserFlowId:d.data.browserFlowId}));
+    location.assign(d.data.signInUrl);
+  } catch(e) {$('driveStatus').textContent=e.message;$('driveReconnect').disabled=false;}
+});
+if(new URLSearchParams(location.search).get('drive')==='connected') {
+  $('driveStatus').textContent='Google Drive reconnected. Use Test connection to verify.';
+  history.replaceState(null,'','/admin');
+}
 boot();
 </script>
 </body>
