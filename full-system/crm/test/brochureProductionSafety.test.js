@@ -29,3 +29,19 @@ test('provider capacity errors preserve typed status and full retry delay',async
  vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);
  await assert.rejects(ctx.module.exports.extractBrochure(Buffer.from('%PDF test').toString('base64')),e=>e.code==='AI_RATE_LIMIT'&&e.status===429&&e.retryAfterSeconds===67000);
 });
+
+test('frontend stops after capacity cooldown instead of spinning through PDFs',async()=>{
+ const start=html.indexOf('  let uploadedBatch = null,'),end=html.indexOf('  async function retryUploadedBrochureBatch()',start);
+ const elements={};const element=id=>elements[id]||(elements[id]={textContent:'',innerHTML:'',disabled:false});
+ const ready={JobID:'job',Projects:2,Total:2,Saved:0,Failed:0,Pending:2,WithoutStoredBrochure:0,Items:[],Status:'ready'};
+ const paused={...ready,Status:'cooldown',NextRetryAt:'2099-01-01T00:00:00Z',PauseReason:'High demand'};
+ let steps=0;
+ const ctx={document:{getElementById:element},esc:String,AbortController,setTimeout,clearTimeout,loadProjects:async()=>{},fetch:async(_url,opt)=>{
+   const data=opt?.method==='POST'?(steps++,paused):ready;
+   return {ok:true,status:200,json:async()=>({ok:true,data}),text:async()=>JSON.stringify({ok:true,data})};
+ }};
+ vm.createContext(ctx);vm.runInContext(html.slice(start,end),ctx);await ctx.startUploadedBrochureBatch();
+ assert.equal(steps,1);assert.equal(element('uploaded-batch-start').disabled,false);
+ assert.match(element('uploaded-batch-summary').textContent,/Paused — AI unavailable/);
+ assert.doesNotMatch(element('uploaded-batch-summary').textContent,/Processing/);
+});
