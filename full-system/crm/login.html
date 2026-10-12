@@ -226,7 +226,7 @@
     // If already signed in, skip straight to the app.
     fetch('/api/auth/me', { credentials: 'include' })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (me) { if (me && me.ok) window.location.replace(next); })
+      .then(function (me) { if (me && me.ok && !new URLSearchParams(window.location.search).has('code') && !new URLSearchParams(window.location.search).has('session_id') && !window.location.hash) window.location.replace(next); })
       .catch(function () {});
 
     // Avoid opening the on-screen keyboard before a mobile user taps a PIN box.
