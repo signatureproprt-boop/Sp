@@ -47,5 +47,5 @@ test('running instances refresh through latest secret version',async()=>{
 test('scripts compile and reconnect state is bound to initiating admin',()=>{
  new vm.Script(fs.readFileSync(__dirname+'/../server.js','utf8'));
  for(const name of ['admin.html','login.html'])for(const m of fs.readFileSync(__dirname+'/../'+name,'utf8').matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);
- const source=fs.readFileSync(__dirname+'/server.js','utf8');assert.match(source,/user.UserID !== expectedUser/);assert.match(source,/String\(user.Role\).toUpperCase\(\) !== 'ADMIN'/);
+ const source=fs.readFileSync(__dirname+'/../server.js','utf8');assert.match(source,/user.UserID !== expectedUser/);assert.match(source,/String\(user.Role\).toUpperCase\(\) !== 'ADMIN'/);
 });
