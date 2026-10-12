@@ -18,7 +18,10 @@ function createDriveAuth(env = process.env) {
   }
   if (configured) {
     const auth = new google.auth.OAuth2(clientId, clientSecret);
-    auth.setCredentials({ refresh_token: refreshToken });
+    if (env.K_SERVICE || env.SIG_REALTY_GOOGLE_REFRESH_SECRET) {
+      // Each instance picks up the latest secret on access-token refresh.
+      auth.refreshHandler = () => require('./driveConnectionService').refreshManagedDriveToken(env);
+    } else auth.setCredentials({ refresh_token: refreshToken });
     return auth;
   }
   return new google.auth.GoogleAuth({ scopes: [DRIVE_SCOPE] });
