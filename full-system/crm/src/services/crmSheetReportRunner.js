@@ -50,6 +50,8 @@ function createReportRunner({ mongoStore, env = process.env, serviceFactory, loc
         else if (/snapshot unavailable|Snapshot read timed out|Mongo store is not initialized/i.test(text)) { reason = 'CRM_SNAPSHOT'; message = 'Saved CRM snapshot unavailable or delayed; report was not generated.'; }
         else if (/timed out|timeout|ETIMEDOUT/i.test(text)) { reason = 'TIMEOUT'; message = 'Report timed out at '+stage+'; check saved state before retrying.'; }
         else if (/Incomplete Google OAuth configuration/.test(text)) { reason = 'GOOGLE_AUTH_CONFIG'; message = 'CRM Google authorization is incomplete.'; }
+        else if (require('./cloudDiagnosticsService').reasonFor(error) === 'API_DISABLED') { reason = 'API_DISABLED'; message = 'Google Sheets API is disabled for the CRM Google authorization project. Enable Sheets API in that project.'; }
+        else if (require('./cloudDiagnosticsService').reasonFor(error) === 'OAUTH_SCOPE') { reason = 'OAUTH_SCOPE'; message = 'CRM Google authorization lacks spreadsheet access. Reconnect the approved Google account.'; }
         else if ([401,403,404].includes(code)) { reason = 'GOOGLE_ACCESS'; message = 'CRM Google account cannot access the reporting workbook (Google '+code+').' ; }
         last = { ok: false, state: 'ERROR', code: Number.isFinite(code) ? code : null,
           reason, stage, message,
