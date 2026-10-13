@@ -487,6 +487,7 @@ function mergeArray(base, desired, remote) {
     return true;
   };
   if (!hasUniqueIds(base) || !hasUniqueIds(desired) || !hasUniqueIds(remote)) {
+    if (!deepEqual(remote, base)) throw new Error('Ambiguous record IDs changed concurrently; reload before saving');
     return clone(desired);
   }
   const baseMap = new Map((base || []).map((row) => [String(row[key]), row]));

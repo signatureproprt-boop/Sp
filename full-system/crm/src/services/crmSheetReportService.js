@@ -27,7 +27,7 @@ function buildProjection(db, snapshotAt) {
   for (const [collection, rows] of Object.entries(db)) {
     if (!Array.isArray(rows)) continue;
     rows.forEach((row, i) => {
-      if (row?.IdentityMappingReview) issue(collection, id(row.TransactionID || row.RequirementID || row.FollowUpID || row.DocumentID || row.ActivityID) || `source-row-${i + 1}`, 'Shared client identity requires ownership review; excluded from client reporting');
+      if (row?.IdentityMappingReview) issue(collection, id(row.TransactionID || row.RequirementID || row.FollowUpID || row.DocumentID || row.ActivityID || row.ArtifactID) || `source-row-${i + 1}`, 'Shared client identity requires ownership review; excluded from client reporting');
     });
   }
   function unique(collection, key) {
@@ -213,7 +213,7 @@ class CrmSheetReportService {
   async sync(db, snapshotAt) {
     const began = Date.now();
     const projection = buildProjection(db, snapshotAt);
-    const options = { timeout: 30000, retry: false };
+    const options = { timeout: 60000, retry: false };
     const metadata = (await this.sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId,
       fields: 'spreadsheetId,sheets.properties' }, options)).data;
     const byName = new Map((metadata.sheets || []).map(s => [s.properties.title, s.properties]));
@@ -246,7 +246,7 @@ class CrmSheetReportService {
     }
     const body = { requests };
     if (Buffer.byteLength(JSON.stringify(body)) > 1800000) throw new Error('Report exceeds atomic batch budget; no data written');
-    if (Date.now() - began > 90000) throw new Error('Report preparation timed out; no data written');
+    if (Date.now() - began > 150000) throw new Error('Report preparation timed out; no data written');
     // One atomic write across all tabs: status changes cannot leave an active
     // copy behind while writing a second Lost/Closed record.
     await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: body }, options);
