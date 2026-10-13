@@ -13,3 +13,19 @@ test('invalid identity is rejected before client create or edit writes',()=>{
  assert.equal(writes,0);
  assert.equal(isValidPhone('+91 98765-43210'),true);
 });
+
+test('unchanged client score reads do not queue snapshots or alter client edit time',()=>{
+ const {V2ScoringService}=require('../src/services/v2ScoringService');
+ const db={Leads:[{LeadID:'L1',UpdatedAt:'2026-01-01'}]};
+ let writes=0;
+ const svc=new V2ScoringService({read:()=>db,write:()=>writes++});
+ let score=25;
+ svc.calculateClientScore=()=>({ok:true,score,calculationVersion:'test',calculatedAt:new Date().toISOString(),factors:[]});
+ assert.equal(svc.recalculateClientScore('L1').ok,true);
+ assert.equal(svc.recalculateClientScore('L1').unchanged,true);
+ assert.equal(writes,1);
+ assert.equal(db.Leads[0].UpdatedAt,'2026-01-01');
+ score=50;
+ assert.equal(svc.recalculateClientScore('L1').ok,true);
+ assert.equal(writes,2);
+});

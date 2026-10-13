@@ -344,13 +344,21 @@ class V2ScoringService {
     const result = this.calculateClientScore(lead, txnCount, reqCount);
     if (!result.ok) return result;
 
+    const stableScore = value => {
+      const { calculatedAt, ...stable } = value || {};
+      return stable;
+    };
+    if (lead.ClientScore === result.score && lead.ClientScoreCalculationVersion === result.calculationVersion &&
+        JSON.stringify(stableScore(lead.ClientScoreBreakdown)) === JSON.stringify(stableScore(result))) {
+      return { ok: true, leadId, ...result, calculatedAt: lead.ClientScoreCalculatedAt, unchanged: true };
+    }
+
     db.Leads[idx] = {
       ...lead,
       ClientScore:                    result.score,
       ClientScoreBreakdown:           result,
       ClientScoreCalculationVersion:  result.calculationVersion,
-      ClientScoreCalculatedAt:        result.calculatedAt,
-      UpdatedAt:                      result.calculatedAt
+      ClientScoreCalculatedAt:        result.calculatedAt
     };
     this.repository.write(db);
 
