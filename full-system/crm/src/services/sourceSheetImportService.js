@@ -32,10 +32,10 @@ function comm57Repair(db,source){
   if(rows.length!==1)throw new Error('Dr Arohi source identity is not uniquely verified');
   const item=rows[0];
   const already=(db.Leads||[]).find(l=>l.LeadID==='RENT-0006'&&l.LegacyID==='RENT-0006'&&phone(l.PrimaryMobile||l.Phone)===phone(item.row.Phone));
-  if(already)return [];
   const matches=(db.Leads||[]).filter(l=>l.LeadID==='COMM-0057'&&l.LegacyID==='RENT-0006'&&String(l.ClientName||'').trim().toLowerCase()==='dr arohi');
+  if(already&&!matches.length)return [];
   if(matches.length!==1)throw new Error('CRM Dr Arohi identity does not match the source repair');
-  return [{oldLeadId:'COMM-0057',legacyId:'RENT-0006',sourceTab:'Rent',sourceRow:item.sourceRow}];
+  return [{oldLeadId:'COMM-0057',legacyId:'RENT-0006',sourceTab:'Rent',sourceRow:item.sourceRow,...(already?{action:'ARCHIVE_SOURCE_ARTIFACT'}:{})}];
 }
 function buildSourcePlan(db,source,actor,{repairComm57=false}={}){
   const input={...source,identityRepairs:repairComm57?comm57Repair(db,source):[]};

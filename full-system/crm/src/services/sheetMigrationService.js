@@ -39,6 +39,24 @@ function planMigration(db, input, actor = {}) {
     const item = input.records.find(r => r.tab === repair.sourceTab && r.sourceRow === repair.sourceRow && String(r.row?.['Lead ID'] || '') === repair.legacyId);
     if (!item || !phone(item.row.Phone)) throw new Error('Identity repair needs a valid original source row');
     const target = next.Leads.filter(l => l.LeadID === repair.oldLeadId && l.LegacyID === repair.legacyId && String(l.ClientName || '').trim().toLowerCase() === String(item.row.Name || '').trim().toLowerCase());
+    if (repair.action === 'ARCHIVE_SOURCE_ARTIFACT') {
+      const canonical = next.Leads.filter(l => l.LeadID === repair.legacyId && l.LegacyID === repair.legacyId && phone(l.PrimaryMobile || l.Phone) === phone(item.row.Phone) && String(l.ClientName || '').trim().toLowerCase() === String(item.row.Name || '').trim().toLowerCase());
+      const lead = target[0];
+      const other = next.Leads.filter(l => l.LeadID === repair.oldLeadId && l !== lead);
+      const sourceOwner = input.records.filter(r => r.tab === 'Comm' && r.row?.['Lead ID'] === repair.oldLeadId && phone(r.row.Phone) && String(r.row.Name || '').trim().toLowerCase() === String(other[0]?.ClientName || '').trim().toLowerCase() && phone(r.row.Phone) === phone(other[0]?.PrimaryMobile || other[0]?.Phone));
+      if (target.length !== 1 || canonical.length !== 1 || other.length !== 1 || sourceOwner.length !== 1 || lead.PrimaryMobile !== '#ERROR!' || lead.CreatedBy !== 'GoogleSheetSync' || lead._source !== 'GoogleSheet:Rent') throw new Error('Source-error artifact and both real client identities are not uniquely verified');
+      const review = { Reason: 'Previously shared client ID; verify owner', PreviousLeadID: repair.oldLeadId, SeparateLeadID: repair.legacyId };
+      for (const [collection, rows] of Object.entries(next)) if (collection !== 'Leads' && collection !== 'Audit' && Array.isArray(rows)) {
+        for (const record of rows) if (record?.LeadID === repair.oldLeadId && !record.IdentityMappingReview) record.IdentityMappingReview = copy(review);
+      }
+      next.SourceSheetArtifacts ||= [];
+      const artifactId = `SOURCE-ERROR:${repair.oldLeadId}:${repair.legacyId}`;
+      if (next.SourceSheetArtifacts.some(a => a.ArtifactID === artifactId)) throw new Error('Source artifact archive already exists; review before retrying');
+      next.SourceSheetArtifacts.push({ ArtifactID: artifactId, OriginalLead: copy(lead), ArchivedAt: new Date().toISOString(), ArchivedBy: actor.userId, SourceTab: item.tab, SourceRow: item.sourceRow, IdentityMappingReview: copy(review) });
+      next.Leads = next.Leads.filter(l => l !== lead);
+      changes.push({ tab: item.tab, row: item.sourceRow, legacyId: repair.legacyId, leadId: repair.oldLeadId, action: 'SOURCE_ARTIFACT_ARCHIVED', fields: ['SourceSheetArtifacts','IdentityMappingReview'] });
+      continue;
+    }
     if (!target.length && next.Leads.some(l => l.LeadID === repair.legacyId && l.LegacyID === repair.legacyId && phone(l.PrimaryMobile) === phone(item.row.Phone))) continue;
     if (target.length !== 1 || next.Leads.filter(l => l.LeadID === repair.oldLeadId).length < 2 || next.Leads.some(l => l.LeadID === repair.legacyId)) throw new Error('Identity repair no longer matches the duplicate ID; preview stopped');
     const lead = target[0];

@@ -48,3 +48,28 @@ test('automatic import only uses an enabled, current administrator binding',()=>
  assert.equal(enabledImportActor({...db,Users:[{UserID:'admin',Role:'AGENT',Status:'Active'}]}),null);
  assert.equal(enabledImportActor({...db,Users:[{UserID:'admin',Role:'ADMIN',Status:'Inactive'}]}),null);
 });
+
+test('source-error duplicate is archived with full original data when both actual clients exist',()=>{
+ const source={spreadsheetId:SOURCE_ID,reviewedRows:true,records:[
+ {tab:'Comm',sourceRow:58,row:{'Lead ID':'COMM-0057',Name:'Kenil Shah',Phone:'9167658880',Budget:'1L'}},
+ {tab:'Rent',sourceRow:7,row:{'Lead ID':'RENT-0006',Name:'Dr Arohi',Phone:'9157060560',Budget:'30000'}}]};
+ const artifact={LeadID:'COMM-0057',LegacyID:'RENT-0006',ClientName:'Dr Arohi',PrimaryMobile:'#ERROR!',CreatedBy:'GoogleSheetSync',_source:'GoogleSheet:Rent',Notes:'retain original',SheetSourceTabs:['Comm','Sale','Rent']};
+ const db={Leads:[{LeadID:'COMM-0057',LegacyID:'COMM-0057',ClientName:'Kenil Shah',PrimaryMobile:'9167658880',ClientStatus:'Contacted'},artifact,{LeadID:'RENT-0006',LegacyID:'RENT-0006',ClientName:'Dr Arohi',PrimaryMobile:'9157060560'}],Activities:[{ActivityID:'A1',LeadID:'COMM-0057',Notes:'Unclear owner'}]};
+ const plan=buildSourcePlan(db,source,actor,{repairComm57:true});
+ assert.deepEqual(plan.next.Leads.map(l=>l.LeadID),['COMM-0057','RENT-0006']);
+ assert.deepEqual(plan.next.SourceSheetArtifacts[0].OriginalLead,artifact);
+ assert.equal(plan.next.Leads[0].ClientStatus,'Contacted');
+ assert.equal(plan.next.Activities[0].LeadID,'COMM-0057');
+ assert.ok(plan.next.Activities[0].IdentityMappingReview);
+ assert.equal(buildSourcePlan(plan.next,source,actor,{repairComm57:true}).report.changes.length,0);
+ assert.equal(db.Leads.length,3);
+ assert.throws(()=>buildSourcePlan({...db,Leads:[db.Leads[0],{...artifact,PrimaryMobile:'9999999999'},db.Leads[2]]},source,actor,{repairComm57:true}),/not uniquely verified/);
+});
+
+test('repair with duplicate IDs refuses to overwrite a concurrent change',()=>{
+ const merge=require('../src/data/mongoStore').__threeWayMergeForTests;
+ const base={Leads:[{LeadID:'X',LegacyID:'A'},{LeadID:'X',LegacyID:'B'}]};
+ const desired={Leads:[base.Leads[0]],SourceSheetArtifacts:[{ArtifactID:'review',OriginalLead:base.Leads[1]}]};
+ assert.deepEqual(merge(base,desired,base),desired);
+ assert.throws(()=>merge(base,desired,{Leads:[{...base.Leads[0],Notes:'Concurrent update'},base.Leads[1]]}),/changed concurrently/);
+});
