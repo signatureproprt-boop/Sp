@@ -101,3 +101,18 @@ test('single quoted Sheet budget participates in bounded filters without treatin
  assert.equal(router._reqMatchesFilters({BudgetMax:7500000},{budgetMax:4999999},[]),false);
  assert.equal(router._reqMatchesFilters({},{budgetMax:4999999},[]),false);
 });
+
+test('merged aliases stay off operational lists and investor filtering matches displayed intent',()=>{
+ const router=routerForFilters();
+ router.repo={read:()=>({Leads:[
+  {LeadID:'master',ClientIntent:'Investor'},
+  {LeadID:'both',ClientIntent:'Both'},
+  {LeadID:'normal'},
+  {LeadID:'alias',ClientStatus:'Merged',MergedIntoClientID:'master'}
+ ]})};
+ router._enrichClientsForList=rows=>rows;
+ assert.equal(router._queryClientsByNeed({}).totalCount,3);
+ assert.deepEqual(router._queryClientsByNeed({clientType:'investor'}).data.map(l=>l.LeadID),['master','both']);
+ assert.deepEqual(router._queryClientsByNeed({clientType:'normal'}).data.map(l=>l.LeadID),['normal']);
+ assert.deepEqual(router._queryClientsByNeed({q:'alias'}).data.map(l=>l.LeadID),['master']);
+});

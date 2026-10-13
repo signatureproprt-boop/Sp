@@ -31,10 +31,10 @@ async function fetchJsonWithTimeout(url, options={}, timeoutMs=12000){
    const text=await res.text();
    let json={};
    try{json=text?JSON.parse(text):{}}catch(_){json={ok:false,error:text||('HTTP '+res.status)}}
-   if(!res.ok||json.ok===false) throw new Error(json.error||('HTTP '+res.status));
+   if(!res.ok||json.ok===false) { const error=new Error(json.error||('HTTP '+res.status)); error.responseReceived=true; error.statusCode=res.status; throw error; }
    return json;
  }catch(e){
-   if(e.name==='AbortError') throw new Error('Clients API timed out after 12 seconds');
+   if(e.name==='AbortError') throw new Error('Request timed out after 12 seconds');
    throw e;
  }finally{clearTimeout(timer)}
 }
@@ -173,7 +173,7 @@ async function createClient(){
   })});
   if(!j.ok){err.textContent=j.requiresConfirmation?'Possible duplicate found. Existing client should be opened instead.':(j.error||'Unable to create client.');return}
   closeNewClient();window.location.href='/client-workspace?id='+encodeURIComponent(j.client?.leadId||j.leadId||'');
- }catch(e){err.textContent='Save could not be confirmed: '+e.message+'. Search this mobile before retrying; the request may still complete.'}
+ }catch(e){err.textContent=e.responseReceived&&e.statusCode<500?e.message:('Save could not be confirmed: '+e.message+'. Search this mobile before retrying; the request may still complete.')}
  finally{creatingClient=false}
 }
 window.__signatureClientsBooted = true;

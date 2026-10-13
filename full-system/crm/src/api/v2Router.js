@@ -1251,6 +1251,8 @@ class V2Router {
     }
 
     let result = hasNeedFilters ? leads.filter(l => matchingLeadIds.has(l.LeadID)) : [...leads];
+    // Archived merge aliases are searchable redirects, never operational cards.
+    if (!filters.q) result = result.filter(l => !l.MergedIntoClientID && l.ClientStatus !== 'Merged');
 
     if (filters.sourceTab) {
       const tab = String(filters.sourceTab).trim().toLowerCase();
@@ -1278,9 +1280,9 @@ class V2Router {
       result = result.filter(l => Array.isArray(l.Tags) && l.Tags.includes(filters.tag));
     }
     if (filters.clientType === 'investor') {
-      result = result.filter(l => Array.isArray(l.Tags) && l.Tags.includes('Investor'));
+      result = result.filter(l => ['Investor','Both'].includes(l.ClientIntent) || (Array.isArray(l.Tags) && l.Tags.includes('Investor')));
     } else if (filters.clientType === 'normal') {
-      result = result.filter(l => !(Array.isArray(l.Tags) && l.Tags.includes('Investor')));
+      result = result.filter(l => !(['Investor','Both'].includes(l.ClientIntent) || (Array.isArray(l.Tags) && l.Tags.includes('Investor'))));
     }
     if (filters.q) {
       const q = String(filters.q).toLowerCase();
