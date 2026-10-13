@@ -104,6 +104,12 @@ table td,table th{border-color:var(--v2-line)!important}
 <section class="card"><h2>Admin Modules</h2><div class="links">
 <a href="#users">👥 Users & Roles</a><a href="#settings">⚙️ System Settings</a><a href="#health">🩺 System Health</a>
 </div></section>
+<section class="card" id="cloud-diagnostics"><h2>Google Cloud diagnostics</h2>
+<p class="muted">Cloud Run status, save health and recent diagnostic events for this CRM.</p>
+<button id="cloudRefresh" type="button">Check Google Cloud connection</button>
+<div id="cloudState" class="status" role="status">Not checked.</div>
+<div id="cloudDetails" class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px"></div>
+<div id="cloudEvents" style="overflow-x:auto;margin-top:12px"></div></section>
 <section class="card" id="health"><h2>System Health</h2><div id="healthText" class="muted">Checking…</div></section>
 </main>
 <script>
@@ -174,6 +180,32 @@ $('reportSync').onclick=async()=>{
  $('reportSync').disabled=true;$('sheetState').textContent='Updating Management Sheet from saved CRM…';
  try{const {d}=await api('/api/sync/crm-report',{method:'POST'});if(!d.ok)throw new Error(d.message||d.error||d.state||'Report sync failed');await sheetStatus();}
  catch(e){$('sheetState').textContent=e.message;}finally{$('reportSync').disabled=false;}
+};
+$('cloudRefresh').onclick=async()=>{
+ $('cloudRefresh').disabled=true;$('cloudState').textContent='Checking Cloud Run and logs…';
+ try{
+  const {d}=await api('/api/admin/cloud-diagnostics');if(!d.ok)throw new Error(d.error||'Cloud diagnostics unavailable');
+  const c=d.data||{},m=c.mongo||{},r=c.report||{};
+  $('cloudState').textContent='Cloud Run: '+(c.service?.state||'Unknown')+' | Logs: '+(c.logs?.state||'Unknown');
+  $('cloudDetails').textContent=[
+   'Project: '+c.project+' · '+c.region+' · '+c.serviceName,
+   'Current revision: '+(c.currentRevision||'Unknown'),
+   'Latest ready revision: '+(c.service?.revision||'Unavailable'),
+   'Runtime account: '+(c.service?.serviceAccount||'Unavailable'),
+   'Mongo: '+(m.initialized?'initialized':'unavailable')+' · Pending saves '+(m.pendingWrites||0)+' · Confirmed '+(m.successes||0)+' · Failed '+(m.failures||0),
+   'Snapshot: '+((m.snapshotBytes||0)/1048576).toFixed(2)+' MB · Last failure: '+(m.lastFailure||'None'),
+   'Management Sheet: '+(r.state||'Unknown')+' · '+(r.stage||'')+' · '+(r.reason||''),r.message||'',
+   c.service?.permission?'Missing access: '+c.service.permission:'',c.logs?.permission?'Missing access: '+c.logs.permission:''
+  ].filter(Boolean).join('\n');
+  $('cloudEvents').replaceChildren();
+  const entries=c.logs?.entries||[];
+  if(!entries.length)$('cloudEvents').textContent=c.logs?.state==='CONNECTED'?'No matching events in the last hour.':'Recent events unavailable until logging access is available.';
+  else{const table=document.createElement('table');table.style.width='100%';
+   for(const row of [['Time','Component','Event','Detail'],...entries.map(e=>[e.timestamp,e.component,e.event,[e.reason,e.stage,e.totalMs==null?'':e.totalMs+' ms'].filter(Boolean).join(' · ')])]){
+    const tr=document.createElement('tr');for(const value of row){const td=document.createElement('td');td.textContent=value||'—';td.style.padding='8px';tr.append(td)}table.append(tr)
+   }$('cloudEvents').append(table)
+  }
+ }catch(e){$('cloudState').textContent=e.message;}finally{$('cloudRefresh').disabled=false;}
 };
 sheetStatus();
 boot();

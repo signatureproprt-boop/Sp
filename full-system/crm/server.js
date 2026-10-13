@@ -71,6 +71,7 @@ let shutdownForceExitTimer = null;
 let googleSheetSyncInterval = null;
 const { createReportRunner } = require('./src/services/crmSheetReportRunner');
 const crmSheetReportRunner = createReportRunner({ mongoStore });
+const cloudDiagnostics = require('./src/services/cloudDiagnosticsService').createCloudDiagnostics();
 let serverBinding = null;
 
 const MIME_TYPES = {
@@ -3129,6 +3130,17 @@ async function handleApi(req, res, url) {
         if(plan.report.changed) runtime.repository.write(plan.next);
       }
       sendJson(res,{ok:true,data:plan.report}); return;
+    }
+
+    if (/^\/api\/admin\/cloud-diagnostics\/?$/i.test(pathname)) {
+      if (!ensureAdminPermissionOrRespond(req, res, url, 'ADMIN_READ')) return;
+      if (req.method !== 'GET') { sendJson(res,{ok:false,error:'Method not allowed'},405); return; }
+      const {safeMongo,PROJECT,REGION,SERVICE} = require('./src/services/cloudDiagnosticsService');
+      const cloud = await cloudDiagnostics.load();
+      const report = crmSheetReportRunner.status();
+      sendJson(res,{ok:true,data:{...cloud,project:PROJECT,region:REGION,serviceName:SERVICE,
+        currentRevision:process.env.K_REVISION || null,mongo:safeMongo(mongoStore.stats()),
+        report:{state:report.state,stage:report.stage,reason:report.reason,message:report.message}}}); return;
     }
 
     // Read-only source import and separate reporting remain independently enabled.
