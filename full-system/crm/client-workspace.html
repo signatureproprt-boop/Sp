@@ -1228,7 +1228,18 @@ table td,table th{border-color:var(--v2-line)!important}
     const root = document.getElementById(state.containerId);
     if (!root) return;
     root.querySelectorAll('[data-field-key], .field-priority').forEach(el => {
-      el.onchange = () => rerenderDynamicForm(mode);
+      el.onchange = () => {
+        const values = collectDynamicValues(mode);
+        const visibleStates = evaluateFieldVisibility(state.config, state.rules, values);
+        const nextKeys = asArray(state.config?.fields).filter(f => f && (
+          ['RELEVANT', 'VISIBLE'].includes(visibleStates[f.FieldKey] || 'RELEVANT') ||
+          values[f.FieldKey] !== undefined
+        )).map(f => f.FieldKey).sort();
+        const renderedKeys = Array.from(root.querySelectorAll('[data-field-key]'))
+          .map(input => input.dataset.fieldKey).sort();
+        // Keep the next focused input attached when a blur changes only a value.
+        if (JSON.stringify(nextKeys) !== JSON.stringify(renderedKeys)) rerenderDynamicForm(mode, values);
+      };
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.oninput = () => collectDynamicValues(mode);
     });
   }
