@@ -90,3 +90,26 @@ test('three-way merge preserves independent additions from both replicas', () =>
     ]
   });
 });
+
+test('different records concurrently created with the same ID are rejected instead of merged',()=>{
+ const base={Leads:[]},desired={Leads:[{LeadID:'L1',ClientName:'One',PrimaryMobile:'9876543210'}]},remote={Leads:[{LeadID:'L1',ClientName:'Two',PrimaryMobile:'9876543211'}]};
+ assert.throws(()=>threeWayMerge(base,desired,remote),error=>error.code==='CONCURRENT_CREATE_CONFLICT');
+ assert.deepEqual(threeWayMerge(base,desired,structuredClone(desired)),desired);
+});
+
+test('a new cross-replica mobile collision is rejected while existing legacy conflicts can be reviewed',()=>{
+ const check=require('../src/data/mongoStore').__assertNoNewPrimaryPhoneConflictForTests;
+ const before=[{LeadID:'L1',PrimaryMobile:'9876543210'}];
+ assert.throws(()=>check(before,[...before,{LeadID:'L2',PrimaryMobile:'+91 98765-43210'}]),error=>error.code==='DUPLICATE_CLIENT_IDENTITY');
+ const legacy=[...before,{LeadID:'L2',PrimaryMobile:'9876543210'}];
+ assert.doesNotThrow(()=>check(legacy,legacy.map(l=>({...l,Notes:'same records reviewed'}))));
+ assert.doesNotThrow(()=>check(before,[...before,{LeadID:'L3',PrimaryMobile:'9999999999'}]));
+});
+
+test('a repeated client foreign key does not hide the actual transaction identity during concurrent edits',()=>{
+ const base={Transactions:[{LeadID:'L1',TransactionID:'T1',Notes:'one'},{LeadID:'L1',TransactionID:'T2',Notes:'two'}]};
+ const desired=structuredClone(base),remote=structuredClone(base);
+ desired.Transactions[0].Notes='local';remote.Transactions[1].Notes='remote';
+ const result=threeWayMerge(base,desired,remote);
+ assert.deepEqual(result.Transactions.map(t=>t.Notes),['local','remote']);
+});

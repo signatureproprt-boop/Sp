@@ -138,6 +138,7 @@ let _initPromise = null;
 let _initAttempts = 0;
 let _clientCreations = 0;
 let _writeQueue = Promise.resolve();
+const snapshotWriteQueue = require('./snapshotWriteQueue').createSnapshotWriteQueue(persistSnapshot);
 let _pendingWrites = 0;
 let _lastWriteError = null;
 let _writeStats = { successes: 0, failures: 0, conflicts: 0, lastWriteAt: null };
@@ -345,7 +346,22 @@ function write(db) {
   _lastLocalWriteAt = Date.now();
   _pendingWrites += 1;
 
-  const persist = async () => {
+  _writeQueue = snapshotWriteQueue.enqueue(base, desired).finally(() => {
+    _pendingWrites -= 1;
+    if (!_pendingWrites && _lastWriteError) {
+      // A rejected optimistic save must not leave a phantom client in this
+      // instance. Refresh from the acknowledged snapshot, even if it is older.
+      _lastLocalWriteAt = 0;
+      _lastSnapshotReadAt = 0;
+      void pollOnce();
+    }
+  });
+  require('./writeScope').recordWrite(_writeQueue);
+  return _writeQueue;
+}
+
+async function persistSnapshot(base, desired) {
+  try {
     const activeDb = _db;
     if (!activeDb) throw new Error('Mongo database handle is unavailable');
 
@@ -359,6 +375,17 @@ function write(db) {
           );
           const remote = current && current.payload ? current.payload : {};
           const merged = threeWayMerge(base, desired, remote);
+          for (const [collection, key] of [['Leads','LeadID'],['Requirements','RequirementID'],['Transactions','TransactionID']]) {
+            const counts = rows => (rows || []).reduce((map, row) => {
+              const id = row?.[key]; if (id) map.set(id, (map.get(id) || 0) + 1); return map;
+            }, new Map());
+            const before = counts(remote[collection]);
+            for (const [id, count] of counts(merged[collection])) if (count > 1 && count > (before.get(id) || 0)) {
+              const error = new Error('Duplicate business record ID introduced; reload before saving');
+              error.code = 'CONCURRENT_CREATE_CONFLICT'; throw error;
+            }
+          }
+          assertNoNewPrimaryPhoneConflict(remote.Leads || [], merged.Leads || []);
 
           await activeDb.collection(SNAP_COLL).replaceOne(
             { _id: SNAP_ID },
@@ -395,6 +422,7 @@ function write(db) {
         if (attempt < SNAPSHOT_WRITE_RETRIES) await delay(SNAPSHOT_WRITE_RETRY_DELAY_MS);
       } catch (error) {
         lastError = error;
+        if (['CONCURRENT_CREATE_CONFLICT', 'DUPLICATE_CLIENT_IDENTITY'].includes(error.code)) throw error;
         const diagnostic = serializeMongoError(error);
         console.error('[mongoStore] snapshot write attempt failed:', JSON.stringify({
           attempt,
@@ -423,9 +451,7 @@ function write(db) {
       }));
     }
     throw lastError || new Error('Mongo snapshot write failed');
-  };
-
-  _writeQueue = _writeQueue.catch(() => {}).then(persist).catch((error) => {
+  } catch (error) {
     _writeStats.failures += 1;
     _lastWriteError = error;
     const diagnostic = serializeMongoError(error);
@@ -438,11 +464,7 @@ function write(db) {
       cause: diagnostic.cause || null
     }));
     throw error;
-  }).finally(() => { _pendingWrites -= 1; });
-
-  // Preserve the existing synchronous repository contract while exposing a
-  // Promise for future callers that want request-level durability.
-  return _writeQueue;
+  }
 }
 
 function delay(ms) {
@@ -459,12 +481,12 @@ function clone(value) {
 
 function stableArrayIdKey(values) {
   if (!Array.isArray(values) || !values.length || !values.every((item) => item && typeof item === 'object' && !Array.isArray(item))) return null;
-  const candidates = ['id', 'ID', 'Id'];
+  // Prefer the record's own identity before foreign references. Duplicate own
+  // identities must remain ambiguous rather than falling back to LegacyID.
+  const candidates = ['id', 'ID', 'Id', 'RequirementID', 'TransactionID', 'LeadID'];
   const discovered = Object.keys(values[0] || {}).filter((key) => /id$/i.test(key));
   for (const key of [...candidates, ...discovered]) {
-    if (values.every((item) => item[key] != null && item[key] !== '')) {
-      return key;
-    }
+    if (values.every((item) => item[key] != null && item[key] !== '')) return key;
   }
   return null;
 }
@@ -508,7 +530,12 @@ function mergeArray(base, desired, remote) {
       continue;
     }
     if (b === undefined && d !== undefined) {
-      out.push(clone(r === undefined ? d : threeWayMerge({}, d, r)));
+      if (r !== undefined && !deepEqual(d, r)) {
+        const error = new Error('Concurrent record creation reused an ID; reload before saving');
+        error.code = 'CONCURRENT_CREATE_CONFLICT';
+        throw error;
+      }
+      out.push(clone(r === undefined ? d : r));
       continue;
     }
     if (d === undefined && r === undefined) continue;
@@ -555,7 +582,32 @@ async function flush() {
   try {
     await _writeQueue;
   } catch (_) {}
-  return { ..._writeStats, lastError: _lastWriteError ? _lastWriteError.message : null };
+  return { ..._writeStats, lastError: _lastWriteError ? _lastWriteError.message : null, lastErrorCode: _lastWriteError?.code || null };
+}
+
+function primaryPhoneConflicts(rows) {
+  const owners = new Map(), conflicts = new Set();
+  for (const row of rows) {
+    if (!row || row.MergedIntoClientID || row.ClientStatus === 'Merged') continue;
+    const raw = String(row.PrimaryMobile || row.Phone || '').trim();
+    if (!/^[+\d\s().-]+$/.test(raw)) continue;
+    let number = raw.replace(/\D/g, '');
+    if (number.length === 12 && number.startsWith('91')) number = number.slice(2);
+    if (number.length === 11 && number.startsWith('0')) number = number.slice(1);
+    if (number.length < 10 || number.length > 15 || /^0+$/.test(number)) continue;
+    const ids = owners.get(number) || [];
+    for (const owner of ids) if (owner !== row.LeadID) conflicts.add(JSON.stringify([number, ...[owner, row.LeadID].sort()]));
+    owners.set(number, [...ids, row.LeadID]);
+  }
+  return conflicts;
+}
+function assertNoNewPrimaryPhoneConflict(before, after) {
+  const existing = primaryPhoneConflicts(before);
+  for (const conflict of primaryPhoneConflicts(after)) if (!existing.has(conflict)) {
+    const error = new Error('A concurrent save created a duplicate client mobile; reload before saving');
+    error.code = 'DUPLICATE_CLIENT_IDENTITY';
+    throw error;
+  }
 }
 
 async function withDistributedLock(lockName, fn, options = {}) {
@@ -649,5 +701,6 @@ module.exports = {
   MONGO_POLL_INTERVAL_MS,
   __pollOnceForTests: pollOnce,
   __threeWayMergeForTests: threeWayMerge,
-  __mergeArrayForTests: mergeArray
+  __mergeArrayForTests: mergeArray,
+  __assertNoNewPrimaryPhoneConflictForTests: assertNoNewPrimaryPhoneConflict
 };

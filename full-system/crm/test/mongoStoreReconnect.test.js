@@ -242,3 +242,55 @@ test('older snapshot completion and polling cannot erase newer queued local chan
     assert.equal(store.stats().pendingWrites,0);
   } finally { for(const gate of gates)gate?.(); await cleanupStore(store); }
 });
+
+test('Mongo coalesces queued client saves while preserving a concurrent remote client and durability counts',async()=>{
+ let snapshot={payload:{Leads:[],SourceSheetArtifacts:[{ArtifactID:'review',OriginalLead:{LeadID:'original-conflict'}}]},updatedAt:new Date(1)};
+ let writes=0,releaseFirst,signalStart;
+ const started=new Promise(resolve=>signalStart=resolve);
+ class Client {
+  async connect(){} async close(){}
+  db(){return {collection:name=>name==='distributed_locks'?{
+   findOneAndUpdate:async(_filter,update)=>update.$set,
+   deleteOne:async()=>{if(writes===1&&!snapshot.payload.Leads.some(l=>l.LeadID==='remote-client'))snapshot.payload.Leads.push({LeadID:'remote-client',Notes:'other replica'});}
+  }:{findOne:async()=>snapshot,replaceOne:async(_filter,next)=>{
+   writes++;if(writes===1){signalStart();await new Promise(resolve=>releaseFirst=resolve);}snapshot=structuredClone(next);
+  }}};}
+ }
+ const store=loadStore({MongoClient:Client});
+ try {
+  await store.initMongo();
+  let local=structuredClone(snapshot.payload);
+  local.Leads.push({LeadID:'first',Notes:'original'});
+  const pending=[store.write(local)];await started;
+  for(let i=0;i<30;i++){
+   local=structuredClone(store.read());local.Leads.push({LeadID:'local-'+i,ClientStatus:'New'});local.Leads[0].Notes='updated-'+i;
+   pending.push(store.write(local));
+  }
+  assert.equal(store.stats().pendingWrites,31);assert.equal(store.read().Leads.length,31);
+  releaseFirst();await Promise.all(pending);await store.flush();
+  assert.equal(writes,2);assert.equal(store.stats().pendingWrites,0);
+  assert.equal(snapshot.payload.Leads.length,32);
+  assert.equal(snapshot.payload.Leads[0].Notes,'updated-29');
+  assert.equal(snapshot.payload.Leads.find(l=>l.LeadID==='remote-client').Notes,'other replica');
+  assert.equal(store.read().Leads.length,32);
+  assert.equal(snapshot.payload.SourceSheetArtifacts[0].OriginalLead.LeadID,'original-conflict');
+ }finally{releaseFirst?.();await cleanupStore(store);}
+});
+
+test('rejected concurrent client creation restores the acknowledged snapshot rather than leaving a phantom client',async()=>{
+ let snapshot={payload:{Leads:[]},updatedAt:new Date(1)},writes=0;
+ class Client {
+  async connect(){} async close(){}
+  db(){return {collection:name=>name==='distributed_locks'?{findOneAndUpdate:async(_filter,update)=>update.$set,deleteOne:async()=>{}}:{findOne:async()=>structuredClone(snapshot),replaceOne:async()=>{writes++;}}};}
+ }
+ const store=loadStore({MongoClient:Client});
+ try{
+  await store.initMongo();
+  snapshot={payload:{Leads:[{LeadID:'L000001',ClientName:'Other replica',PrimaryMobile:'9876543210'}]},updatedAt:new Date(1)};
+  await assert.rejects(store.write({Leads:[{LeadID:'L000001',ClientName:'Unsaved client',PrimaryMobile:'9876543211'}]}),error=>error.code==='CONCURRENT_CREATE_CONFLICT');
+  await store.__pollOnceForTests();
+  assert.equal(writes,0);assert.equal(store.stats().pendingWrites,0);
+  assert.equal(store.read().Leads[0].ClientName,'Other replica');
+  assert.equal((await store.flush()).lastErrorCode,'CONCURRENT_CREATE_CONFLICT');
+ }finally{await cleanupStore(store);}
+});
