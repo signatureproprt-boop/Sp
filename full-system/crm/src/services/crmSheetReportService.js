@@ -203,17 +203,19 @@ function reconcileRows(headers, desired, existing) {
 }
 
 class CrmSheetReportService {
-  constructor({ sheets, spreadsheetId, sourceSheetId = SOURCE_SHEET_ID } = {}) {
+  constructor({ sheets, spreadsheetId, sourceSheetId = SOURCE_SHEET_ID, onStage = () => {} } = {}) {
     this.spreadsheetId = id(spreadsheetId);
     if (!this.spreadsheetId || this.spreadsheetId === SOURCE_SHEET_ID || this.spreadsheetId === id(sourceSheetId)) {
       throw new Error('A separate CRM reporting spreadsheet is required');
     }
     this.sheets = sheets;
+    this.onStage = onStage;
   }
   async sync(db, snapshotAt) {
     const began = Date.now();
     const projection = buildProjection(db, snapshotAt);
     const options = { timeout: 60000, retry: false };
+    this.onStage('WORKBOOK_METADATA');
     const metadata = (await this.sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId,
       fields: 'spreadsheetId,sheets.properties' }, options)).data;
     const byName = new Map((metadata.sheets || []).map(s => [s.properties.title, s.properties]));
@@ -222,6 +224,7 @@ class CrmSheetReportService {
     if (TABS.reduce((n, tab) => n + byName.get(tab).gridProperties.rowCount * HEADERS[tab].length, 0) > 500000) {
       throw new Error('Report exceeds safe scan size; no data written');
     }
+    this.onStage('WORKBOOK_READ');
     const existing = (await this.sheets.spreadsheets.values.batchGet({ spreadsheetId: this.spreadsheetId,
       ranges, valueRenderOption: 'UNFORMATTED_VALUE' }, options)).data.valueRanges || [];
     const requests = [];
@@ -249,6 +252,7 @@ class CrmSheetReportService {
     if (Date.now() - began > 150000) throw new Error('Report preparation timed out; no data written');
     // One atomic write across all tabs: status changes cannot leave an active
     // copy behind while writing a second Lost/Closed record.
+    this.onStage('WORKBOOK_WRITE');
     await this.sheets.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: body }, options);
     return { ok: true, complete: projection['Sync Issues'].length === 0, clients: projection.Clients.length,
       work: projection.Work.length, issues: projection['Sync Issues'].length, snapshotAt, spreadsheetId: this.spreadsheetId };
