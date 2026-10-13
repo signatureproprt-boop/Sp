@@ -723,7 +723,7 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('lead-lost-modal')">Cancel</button>
-      <button class="btn btn-primary" style="background:#dc2626;border-color:#dc2626" onclick="saveLeadLost()">Confirm Lost</button>
+      <button class="btn btn-primary" style="background:#dc2626;border-color:#dc2626" id="lead-lost-submit" onclick="saveLeadLost()">Confirm Lost</button>
     </div>
   </div>
 </div>
@@ -777,7 +777,7 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
     <div class="modal-body">
       <p style="font-size:13px;color:var(--clr-text-light);margin-bottom:16px">
-        Mark this transaction as lost. The <strong>client remains active</strong> — only this transaction will be closed.
+        Mark this requirement as lost. The <strong>client remains active</strong> — only this requirement will be closed.
       </p>
       <div id="lost-req-label" style="background:#faf7f2;border:1px solid var(--clr-border);border-radius:7px;padding:10px 14px;font-size:13px;font-weight:600;color:var(--clr-brown);margin-bottom:16px"></div>
       <div class="form-grid">
@@ -802,7 +802,7 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('mark-lost-modal')">Cancel</button>
-      <button class="btn btn-primary" style="background:#dc2626;border-color:#dc2626" onclick="saveMarkLost()">Confirm Lost</button>
+      <button class="btn btn-primary" style="background:#dc2626;border-color:#dc2626" id="lost-submit" onclick="saveMarkLost()">Confirm Lost</button>
     </div>
   </div>
 </div>
@@ -1854,9 +1854,23 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   // ── Mark Lost ─────────────────────────────────────────────────────────────────
+  const pendingClientSaves = new Set();
+  async function withClientSave(key, button, action) {
+    if (pendingClientSaves.has(key)) return;
+    pendingClientSaves.add(key);
+    const label = button?.textContent;
+    if (button) { button.disabled = true; button.textContent = 'Saving…'; }
+    try { return await action(); }
+    finally {
+      pendingClientSaves.delete(key);
+      if (button) { button.disabled = false; button.textContent = label; }
+    }
+  }
+
   let _markLostReqId = null;
 
   function markLostReq(reqId) {
+    if (pendingClientSaves.has('requirement-status')) return;
     _markLostReqId = reqId;
     const req = (workspace.requirements||[]).find(r => r.RequirementID === reqId);
     const txn = (workspace.transactions||[]).find(t => t.TransactionID === req?.TransactionID) || {};
@@ -1872,8 +1886,11 @@ table td,table th{border-color:var(--v2-line)!important}
     const reason = document.getElementById('lost-reason').value;
     if (!reason) { document.getElementById('lost-error').textContent = 'Please select a reason'; return; }
     const notes  = document.getElementById('lost-notes').value.trim();
+    const reqId = _markLostReqId;
+    if (!reqId) return;
+    return withClientSave('requirement-status', document.getElementById('lost-submit'), async () => {
     try {
-      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(_markLostReqId)}`, {
+      const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ RequirementStatus: 'Lost', LostReason: reason, LostNotes: notes || null })
@@ -1887,6 +1904,7 @@ table td,table th{border-color:var(--v2-line)!important}
     } catch(e) {
       document.getElementById('lost-error').textContent = e.message;
     }
+    });
   }
 
   // ── Requirement lifecycle actions ─────────────────────────────────────────
@@ -1894,6 +1912,7 @@ table td,table th{border-color:var(--v2-line)!important}
   let _requirementStatusTarget = null;
 
   function openRequirementStatusModal(reqId, targetStatus) {
+    if (pendingClientSaves.has('requirement-status')) return;
     const req = (workspace.requirements || []).find(r => r.RequirementID === reqId);
     if (!req) return;
     _requirementStatusReqId = reqId;
@@ -1922,6 +1941,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const payload = target === 'Paused'
       ? { RequirementStatus: target, HoldReason: reason, HoldNotes: notes || null }
       : { RequirementStatus: target, ClosedReason: reason, ClosedNotes: notes || null };
+    return withClientSave('requirement-status', document.getElementById('requirement-status-submit'), async () => {
     try {
       const res = await fetch('/api/v2/requirements/' + encodeURIComponent(reqId), {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -1935,6 +1955,7 @@ table td,table th{border-color:var(--v2-line)!important}
     } catch (e) {
       document.getElementById('requirement-status-error').textContent = e.message;
     }
+    });
   }
 
   function openAddFollowupForRequirement(reqId) {
@@ -2451,14 +2472,15 @@ table td,table th{border-color:var(--v2-line)!important}
   function requirementLifecycleActions(req) {
     const id = escAttr(req.RequirementID);
     const status = String(req.RequirementStatus || req.Status || 'Active').toLowerCase();
-    if (['lost', 'paused'].includes(status)) return `<button class="btn btn-ghost" type="button" onclick="reopenRequirement('${id}')">Reopen Requirement</button>`;
+    if (['lost', 'paused'].includes(status)) return `<button class="btn btn-ghost" type="button" onclick="reopenRequirement('${id}',this)">Reopen Requirement</button>`;
     if (['closed','archived','draft'].includes(status)) return '';
     return `<button class="btn btn-ghost" type="button" onclick="openRequirementStatusModal('${id}','Paused')">Hold</button>
       <button class="btn btn-ghost" type="button" onclick="openRequirementStatusModal('${id}','Closed')">Close Requirement</button>
       <button class="btn btn-ghost" type="button" onclick="markLostReq('${id}')">Lost Requirement</button>`;
   }
 
-  async function reopenRequirement(reqId) {
+  async function reopenRequirement(reqId, button) {
+    return withClientSave('requirement-status', button, async () => {
     try {
       const result = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ RequirementStatus: 'Active' })
@@ -2466,6 +2488,7 @@ table td,table th{border-color:var(--v2-line)!important}
       if (!result.ok) throw new Error(result.error || 'Could not reopen requirement');
       await loadWorkspace();
     } catch (error) { alert(error.message); }
+    });
   }
 
   function isSheetImportedTransaction(transaction) {
@@ -2919,6 +2942,7 @@ table td,table th{border-color:var(--v2-line)!important}
       document.getElementById('lead-lost-error').textContent = 'Lost reason is required';
       return;
     }
+    return withClientSave('client-status', document.getElementById('lead-lost-submit'), async () => {
     try {
       const res = await fetch(`/api/v2/clients/${encodeURIComponent(LEAD_ID)}/lost`, {
         method: 'POST',
@@ -2934,6 +2958,7 @@ table td,table th{border-color:var(--v2-line)!important}
     } catch (e) {
       document.getElementById('lead-lost-error').textContent = e.message;
     }
+    });
   }
 
   async function reactivateLead() {

@@ -77,7 +77,11 @@ class IdEngine {
 
     const db = this.repository.read();
     const counters = this._readCounters(db);
-    counters[entity] = (counters[entity] || 0) + 1;
+    const collection = { Lead: 'Leads', Transaction: 'Transactions', Requirement: 'Requirements' }[entity];
+    const key = { Lead: 'LeadID', Transaction: 'TransactionID', Requirement: 'RequirementID' }[entity];
+    const existing = new Set((db[collection] || []).map(row => row[key]));
+    do { counters[entity] = (counters[entity] || 0) + 1; }
+    while (existing.has(formatV2Id(prefix, counters[entity])));
     db._V2Counters = counters;
     this.repository.write(db);
 

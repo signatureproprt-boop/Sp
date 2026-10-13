@@ -11,6 +11,7 @@ const { MongoSessionStore } = require('./src/data/mongoSessionStore');
 const mongoSessionStore = new MongoSessionStore();
 const { PinLoginGuard } = require('./src/services/pinLoginGuard');
 const { confirmMongoPersistence, waitForPostSaveReport } = require('./src/services/durableResponse');
+const { withWriteScope, currentWriteScope, waitForScopeWrites } = require('./src/data/writeScope');
 
 const LOCAL_DEV_PORT = 3000;
 const PUBLIC_HOST = '0.0.0.0';
@@ -5580,10 +5581,15 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
     enabled: mongoStore.isEnabled(),
     initialized: mongoStore.isInitialized(),
     failureBaseline,
-    flush: () => runtime?.repository?.flush?.()
+    flush: () => res.__sigMongoWriteScope
+      ? waitForScopeWrites(res.__sigMongoWriteScope) : runtime?.repository?.flush?.()
   }).then(async (result) => {
     if (res.destroyed || res.writableEnded) return;
     if (!result.ok) {
+      if (['CONCURRENT_CREATE_CONFLICT', 'DUPLICATE_CLIENT_IDENTITY'].includes(result.errorCode)) {
+        writeResponse({ok:false,code:result.errorCode,error:'A concurrent save changed the client identity. Refresh the client list before retrying.'},409);
+        return;
+      }
       writeResponse({
         ok: false,
         error: 'PERSISTENCE_FAILED',
@@ -5592,7 +5598,7 @@ function sendJson(res, payload, statusCode = 200, extraHeaders = {}) {
       return;
     }
     // Confirm the CRM save first; optional reporting has a bounded response wait.
-    const crmReportSync = crmSheetReportRunner.status().configured
+    const crmReportSync = (!res.__sigMongoWriteScope || res.__sigMongoWriteScope.writes.length > 0) && crmSheetReportRunner.status().configured
       ? await waitForPostSaveReport(() => crmSheetReportRunner.run()) : null;
     writeResponse(crmReportSync && payload && typeof payload === 'object'
       ? { ...payload, crmReportSync } : payload, statusCode);
@@ -5620,7 +5626,8 @@ function sendHtml(res, body, statusCode = 200) {
   res.end(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Signature Properties Broker Network</title><style>body{margin:0;background:#f4f1ea;color:#17211b;font:16px Georgia,serif}main{max-width:720px;margin:0 auto;padding:32px 20px}.eyebrow{letter-spacing:.12em;text-transform:uppercase;font:12px Arial,sans-serif;color:#6d746e}.panel{background:#fffdf8;border:1px solid #d8d0c2;padding:24px;box-shadow:0 10px 30px #24352812}h1{font-size:clamp(28px,7vw,48px);line-height:1.05;margin:12px 0 24px}dl{display:grid;grid-template-columns:1fr 1fr;gap:14px;border-top:1px solid #e7e0d4;padding-top:18px}dt{font:11px Arial,sans-serif;text-transform:uppercase;color:#777}dd{margin:4px 0 0;font-size:19px}.privacy{background:#edf2e9;padding:12px;font:14px Arial,sans-serif;margin:22px 0}label{display:block;font:12px Arial,sans-serif;text-transform:uppercase;color:#555;margin-top:18px}input,button{box-sizing:border-box;width:100%;min-height:48px;margin-top:7px;padding:12px;border:1px solid #bcb5a8;font:16px Arial,sans-serif}button{background:#1f4d36;color:white;border-color:#1f4d36;cursor:pointer}#result{font:14px Arial,sans-serif;margin-top:14px}@media(max-width:480px){main{padding:20px 14px}.panel{padding:18px}dl{grid-template-columns:1fr}}</style></head><body>${body}</body></html>`);
 }
 
-appServer = http.createServer(async (req, res) => {
+appServer = http.createServer((req, res) => withWriteScope(async () => {
+  res.__sigMongoWriteScope = currentWriteScope();
   const url = parseRequestUrl(req);
   res.__sigRequireMongoDurability =
     url.pathname.startsWith('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
@@ -5821,7 +5828,7 @@ appServer = http.createServer(async (req, res) => {
     }));
     res.end(content);
   });
-});
+}));
 
 appServer.on('connection', (socket) => {
   activeSockets.add(socket);

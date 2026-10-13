@@ -7,7 +7,7 @@ async function confirmMongoPersistence({ enabled, initialized, failureBaseline =
   try {
     const stats = await flush();
     const failed = Boolean(stats?.lastError) || Number(stats?.failures || 0) > Number(failureBaseline || 0);
-    return { ok: !failed, skipped: false };
+    return { ok: !failed, skipped: false, ...(failed && stats?.lastErrorCode ? { errorCode: stats.lastErrorCode } : {}) };
   } catch (_) {
     return { ok: false, skipped: false, error: 'flush_failed' };
   }
