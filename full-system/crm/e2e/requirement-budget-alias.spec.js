@@ -19,8 +19,9 @@ test('edited lower-case budget fields beat profile prefills and explicit clears 
  await page.getByTestId('edit-add-requirement').click();await page.getByTestId('need-txn-type').selectOption('Purchase');await page.getByTestId('need-category').selectOption('Residential');
  await expect(page.locator('#need-fld-budgetMax')).toHaveValue('7500000');
  await page.locator('#need-fld-budgetMin').fill('1000');await page.locator('#need-fld-budgetMax').fill('2000');await page.getByRole('button',{name:'Add Requirement',exact:true}).click();
+ await expect.poll(()=>writes.length).toBe(1);
+ expect(writes[0]).toMatchObject({BudgetMin:1000,BudgetMax:2000,budgetMin:1000,budgetMax:2000});
  await expect(page.locator('#edit-requirements-list')).toContainText('₹1,000 – ₹2,000');
- expect(writes[0].BudgetMax).toBe(2000);expect(writes[0].budgetMax).toBe(2000);
  await page.reload();await expect(page.locator('#edit-requirements-list')).toContainText('₹1,000 – ₹2,000');
  await page.getByRole('button',{name:'✏️ Edit Property Details',exact:true}).click();await expect(page.locator('#need-fld-budgetMax')).toHaveValue('2000');
  await page.locator('#need-fld-budgetMax').fill('');await page.getByRole('button',{name:'Save Requirement',exact:true}).click();
