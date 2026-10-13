@@ -124,7 +124,22 @@ test('shared identity work is preserved but excluded from reports until reviewed
   const p = buildProjection(db, 'review');
   assert.equal(p.Work.length, 0);
   assert.equal(p.Requirements.length, 0);
+  assert.equal(JSON.parse(p.Clients[0][11]).Transactions.length, 0);
   assert.ok(p['Sync Issues'].some(row => row[1] === 'Documents' && row[2] === 'D1'));
   assert.ok(p['Sync Issues'].some(row => row[1] === 'Transactions' && row[2] === 'T1'));
   assert.equal(JSON.stringify(db), before);
+});
+
+test('report errors expose safe diagnostic categories without upstream payloads', async () => {
+  const mongoStore = { isInitialized: () => true,
+    withDistributedLock: async (_, fn) => ({ acquired: true, result: await fn() }),
+    getDb: () => ({ collection: () => ({ findOne: async () => ({ payload: fixture() }) }) }) };
+  const make = message => createReportRunner({ mongoStore, env: { CRM_REPORT_SHEET_ID: 'report' },
+    serviceFactory: () => ({ sync: async () => { throw new Error(message); } }) });
+  const schema = await make('Unexpected headers in Work; no data written').run();
+  assert.equal(schema.reason, 'WORKBOOK_SCHEMA');
+  assert.match(schema.message, /Work/);
+  const secret = await make('upstream secret payload').run();
+  assert.equal(secret.reason, 'UNKNOWN');
+  assert.doesNotMatch(JSON.stringify(secret), /upstream secret/);
 });
