@@ -40,7 +40,13 @@ function comm57Repair(db,source){
 function buildSourcePlan(db,source,actor,{repairComm57=false}={}){
   const input={...source,identityRepairs:repairComm57?comm57Repair(db,source):[]};
   const plan=planMigration(db,input,actor);
-  return {...plan,report:{...plan.report,skippedSourceRows:source.skipped||[],identityRepairs:input.identityRepairs}};
+  const identityCandidates=(db.Leads||[]).filter(l=>['COMM-0057','RENT-0006'].includes(l.LeadID)).map(l=>({
+    leadId:l.LeadID,legacyId:l.LegacyID||null,name:l.ClientName||'',primaryMobile:l.PrimaryMobile||'',phone:l.Phone||'',
+    status:l.ClientStatus||'',source:l._source||'',createdBy:l.CreatedBy||'',
+    sourceTabs:l.SheetSourceTabs||[],importedDetails:l.ImportedSheetDetails||[],basicRequirements:l.SheetBasicRequirements||[],
+    identityReview:l.IdentityMappingReview||null
+  }));
+  return {...plan,report:{...plan.report,skippedSourceRows:source.skipped||[],identityRepairs:input.identityRepairs,identityCandidates}};
 }
 function enabledImportActor(db){
   const config=db.SourceSheetImport;

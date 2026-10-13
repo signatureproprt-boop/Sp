@@ -153,7 +153,7 @@ if(new URLSearchParams(location.search).get('drive')==='connected') {
 let sourcePreviewToken=null;
 async function sheetStatus(){
  try {const {d}=await api('/api/sync/source-sheet/status');if(!d.ok)throw new Error(d.error||'Sheet status unavailable');
- const v=d.data||{}; $('sheetState').textContent='Source import: '+(v.sourceEnabled?'enabled (read-only)':'setup pending')+' | Management: '+(v.report?.state||'UNKNOWN')+(v.report?.code?' (Google error '+v.report.code+')':'');
+ const v=d.data||{}; $('sheetState').textContent='Source import: '+(v.sourceEnabled?'enabled (read-only)':'setup pending')+' | Management: '+(v.report?.state||'UNKNOWN')+(v.report?.code?' (Google error '+v.report.code+')':'')+(v.report?.reason?' | '+v.report.reason:'')+(v.report?.message?' | '+v.report.message:'');
  }catch(e){$('sheetState').textContent=e.message;}
 }
 $('repairComm57').onchange=()=>{sourcePreviewToken=null;$('sourceApply').disabled=true;};
