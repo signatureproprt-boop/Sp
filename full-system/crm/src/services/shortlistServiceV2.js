@@ -1,0 +1,286 @@
+const { workKey, resolveClientWork, workLinks } = require('./clientWorkContext');
+'use strict';
+
+/**
+ * ShortlistServiceV2 — property-level shortlist per transaction.
+ *
+ * Backed by the existing `Shortlists` collection in the JSON repository, but
+ * does NOT require a pre-existing Match record (SmartMatch V2 scores live and
+ * does not persist Match rows). We accept the SmartMatch score / level and
+ * notes at add-time, and keep the record around even if the requirement or
+ * property gets updated later.
+ */
+class ShortlistServiceV2 {
+  constructor(repository) {
+    this.repo = repository;
+  }
+
+  _now() {
+    return new Date().toISOString();
+  }
+
+  _validPriority(p) {
+    const v = String(p || 'Medium');
+    return ['High', 'Medium', 'Low'].includes(v) ? v : 'Medium';
+  }
+
+  _findActive(transactionId, propertyId) {
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    return db.Shortlists.find(
+      (s) =>
+        workKey(s) === transactionId &&
+        s.PropertyID === propertyId &&
+        s.Status === 'Active'
+    ) || null;
+  }
+
+  _propertySnapshot(prop) {
+    if (!prop) return {};
+    const mediaUrl = (item) => item?.url || item?.Url || item?.StoragePath || item?.OriginalUrl || item?.originalUrl || null;
+    const photos = (Array.isArray(prop.Photos) ? prop.Photos : []).map(mediaUrl).filter(Boolean);
+    const videos = (Array.isArray(prop.Videos) ? prop.Videos : []).map(mediaUrl).filter(Boolean);
+    const brochures = (Array.isArray(prop.Brochures) ? prop.Brochures : []).map(mediaUrl).filter(Boolean);
+    const brochureUrl = prop.BrochureUrl || prop.BrochureURL;
+    if (brochureUrl) brochures.unshift(brochureUrl);
+    return {
+      Title: prop.Title || prop.Project || prop.PropertyType || null,
+      Category: prop.Category || null,
+      SubCategory: prop.SubCategory || null,
+      Location1: prop.Location1 || prop.Location || prop.City || null,
+      SocietyName: prop.SocietyName || null,
+      AskingPrice: prop.AskingPrice ?? prop.Price ?? null,
+      AskingRatePerSqFt: prop.AskingRatePerSqFt ?? null,
+      CarpetArea: prop.CarpetArea ?? prop.Area ?? null,
+      BHK: prop.BHK ?? null,
+      FurnishingType: prop.FurnishingType || null,
+      InventorySource: prop.InventorySource || null,
+      ListingFor: prop.ListingFor || null,
+      Status: prop.Status || null,
+      PhotoUrl: (prop.Photos && prop.Photos[0]?.url) || null,
+      MediaLinks: {
+        photos: [...new Set(photos)],
+        videos: [...new Set(videos)],
+        brochures: [...new Set(brochures)]
+      },
+      IsReraMaster: !!prop.IsReraMaster,
+      RERANumber: prop.RERANumber || null,
+      ProjectName: prop.ProjectName || null,
+      BuilderName: prop.BuilderName || null
+    };
+  }
+
+  buildView(row) {
+    const transaction = resolveClientWork(this.repo, workKey(row));
+    const prop = row.IsManual ? null : this.repo.find('Inventory', 'PropertyID', row.PropertyID);
+    return {
+      ShortlistID: row.ShortlistID,
+      RequirementID: row.RequirementID || null,
+      TransactionID: row.TransactionID,
+      PropertyID: row.PropertyID,
+      LeadID: row.LeadID,
+      Status: row.Status,
+      Priority: row.Priority,
+      Notes: row.Notes || '',
+      MatchScore: row.MatchScore ?? null,
+      MatchLevel: row.MatchLevel || null,
+      CreatedAt: row.CreatedAt,
+      UpdatedAt: row.UpdatedAt,
+      TransactionCode: transaction?.TransactionCode || row.TransactionID,
+      IsManual: !!row.IsManual,
+      Property: row.IsManual ? (row.ManualProperty || {}) : this._propertySnapshot(prop)
+    };
+  }
+
+  list(transactionId, { status = 'Active' } = {}) {
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    const rows = db.Shortlists
+      .filter((s) => workKey(s) === transactionId && (!status || s.Status === status))
+      .sort((a, b) => new Date(b.CreatedAt || 0) - new Date(a.CreatedAt || 0));
+    return rows.map((r) => this.buildView(r));
+  }
+
+  add(transactionId, payload = {}) {
+    const propertyId = payload.propertyId || payload.PropertyID;
+    if (!transactionId) return { ok: false, error: 'transactionId required' };
+    if (!propertyId) return { ok: false, error: 'propertyId required' };
+
+    const transaction = resolveClientWork(this.repo, transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+
+    const prop = this.repo.find('Inventory', 'PropertyID', propertyId);
+    if (!prop) return { ok: false, error: 'Property not found' };
+
+    // Reactivate an existing Removed row if the same combo comes back
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    const existingActive = this._findActive(transactionId, propertyId);
+    if (existingActive) {
+      // Merge notes / priority / score if provided
+      const changes = { UpdatedAt: this._now() };
+      if (payload.notes !== undefined) changes.Notes = String(payload.notes || '');
+      if (payload.priority !== undefined) changes.Priority = this._validPriority(payload.priority);
+      if (payload.matchScore !== undefined) changes.MatchScore = Number(payload.matchScore);
+      if (payload.matchLevel !== undefined) changes.MatchLevel = String(payload.matchLevel || '');
+      const idx = db.Shortlists.findIndex((s) => s.ShortlistID === existingActive.ShortlistID);
+      db.Shortlists[idx] = { ...existingActive, ...changes };
+      this.repo.write(db);
+      return { ok: true, alreadyShortlisted: true, data: this.buildView(db.Shortlists[idx]) };
+    }
+
+    const row = {
+      ShortlistID: this.repo.createId('SL'),
+      ...workLinks(transaction),
+      LeadID: transaction.LeadID,
+      PropertyID: propertyId,
+      MatchID: null,
+      Status: 'Active',
+      Priority: this._validPriority(payload.priority),
+      Notes: String(payload.notes || ''),
+      MatchScore: payload.matchScore != null ? Number(payload.matchScore) : null,
+      MatchLevel: payload.matchLevel ? String(payload.matchLevel) : null,
+      CreatedBy: payload.createdBy || 'system',
+      RemovedAt: null,
+      RemovedBy: null,
+      CreatedAt: this._now(),
+      UpdatedAt: this._now()
+    };
+
+    db.Shortlists.push(row);
+    this.repo.write(db);
+    try {
+      this.repo.addTimelineEntry(row.LeadID, 'Shortlist', row.ShortlistID, 'SHORTLISTED', 'Property shortlisted', row);
+    } catch (_) { /* non-fatal */ }
+    return { ok: true, alreadyShortlisted: false, data: this.buildView(row) };
+  }
+
+  addManual(transactionId, payload = {}) {
+    if (!transactionId) return { ok: false, error: 'transactionId required' };
+    const transaction = resolveClientWork(this.repo, transactionId);
+    if (!transaction) return { ok: false, error: 'Transaction not found' };
+
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    const title = String(payload.title || payload.name || '').trim();
+    if (!title) return { ok: false, error: 'Manual property name/title is required' };
+
+    const propertyId = 'MANUAL-' + this.repo.createId('SL');
+    const row = {
+      ShortlistID: this.repo.createId('SL'),
+      ...workLinks(transaction),
+      LeadID: transaction.LeadID,
+      PropertyID: propertyId,
+      IsManual: true,
+      ManualProperty: {
+        Title: title,
+        Category: payload.category || transaction.Category || null,
+        SubCategory: payload.subCategory || null,
+        Location1: payload.location || null,
+        SocietyName: payload.societyName || null,
+        AskingPrice: payload.askingPrice != null ? Number(payload.askingPrice) : null,
+        AskingRatePerSqFt: payload.ratePerSqFt != null ? Number(payload.ratePerSqFt) : null,
+        CarpetArea: payload.carpetArea != null ? Number(payload.carpetArea) : null,
+        BHK: payload.bhk || null,
+        FurnishingType: payload.furnishing || null,
+        InventorySource: payload.source || 'Manual',
+        ListingFor: payload.listingFor || transaction.TransactionType || null,
+        Status: payload.status || 'Manual Entry',
+        PhotoUrl: payload.photoUrl || null,
+        MediaLinks: { photos: [], videos: [], brochures: [] },
+        ProjectName: payload.projectName || null,
+        BuilderName: payload.builderName || null
+      },
+      MatchID: null,
+      Status: 'Active',
+      Priority: this._validPriority(payload.priority),
+      Notes: String(payload.notes || ''),
+      MatchScore: null,
+      MatchLevel: 'MANUAL',
+      CreatedBy: payload.createdBy || 'system',
+      RemovedAt: null,
+      RemovedBy: null,
+      CreatedAt: this._now(),
+      UpdatedAt: this._now()
+    };
+    db.Shortlists.push(row);
+    this.repo.write(db);
+    try { this.repo.addTimelineEntry(row.LeadID, 'Shortlist', row.ShortlistID, 'SHORTLISTED_MANUAL', 'Manual property shortlisted', row); } catch (_) {}
+    return { ok: true, data: this.buildView(row) };
+  }
+
+  attachBuilderBrochure(transactionId, project, share, brochureUrl, actorId = 'system') {
+    const transaction = resolveClientWork(this.repo, transactionId);
+    if (!transaction || transaction.LeadID !== share.LeadID) {
+      return { ok: false, error: 'Client transaction mismatch' };
+    }
+    const db = this.repo.read();
+    db.Shortlists = db.Shortlists || [];
+    db.BuilderBrochureShares = db.BuilderBrochureShares || [];
+    const propertyId = 'BUILDER-' + project.ProjectID;
+    const existing = db.Shortlists.find(row =>
+      workKey(row) === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
+    const manualProperty = {
+      Title: project.ProjectName || 'Builder Project',
+      ProjectName: project.ProjectName || null,
+      BuilderName: project.BuilderName || null,
+      Category: project.Category || null,
+      Location1: project.Location1 || null,
+      InventorySource: 'Builder',
+      Status: project.ProjectStatus || null,
+      MediaLinks: { photos: [], videos: [], brochures: [brochureUrl] }
+    };
+    const now = this._now();
+    let row;
+    if (existing) {
+      row = { ...existing, ManualProperty: manualProperty, BuilderProjectID: project.ProjectID,
+        BrochureShareID: share.ShareID, UpdatedAt: now };
+      db.Shortlists[db.Shortlists.indexOf(existing)] = row;
+    } else {
+      row = {
+        ShortlistID: this.repo.createId('SL'), ...workLinks(transaction),
+        LeadID: share.LeadID, PropertyID: propertyId, BuilderProjectID: project.ProjectID,
+        BrochureShareID: share.ShareID, IsManual: true, ManualProperty: manualProperty,
+        MatchID: null, Status: 'Active', Priority: 'Medium', Notes: '',
+        MatchScore: null, MatchLevel: 'MANUAL', CreatedBy: actorId,
+        CreatedAt: now, UpdatedAt: now, RemovedAt: null, RemovedBy: null
+      };
+      db.Shortlists.push(row);
+    }
+    db.BuilderBrochureShares.push(share);
+    this.repo.write(db);
+    return { ok: true, alreadyShortlisted: !!existing, data: this.buildView(row) };
+  }
+
+  remove(transactionId, propertyId, removedBy = 'system') {
+    const existing = this._findActive(transactionId, propertyId);
+    if (!existing) return { ok: false, error: 'Shortlist entry not found' };
+    const updated = this.repo.updateShortlist(existing.ShortlistID, {
+      Status: 'Removed',
+      RemovedAt: this._now(),
+      RemovedBy: removedBy
+    });
+    return { ok: true, data: this.buildView(updated) };
+  }
+
+  updateNotes(transactionId, propertyId, notes) {
+    const existing = this._findActive(transactionId, propertyId);
+    if (!existing) return { ok: false, error: 'Shortlist entry not found' };
+    const updated = this.repo.updateShortlist(existing.ShortlistID, {
+      Notes: String(notes || '')
+    });
+    return { ok: true, data: this.buildView(updated) };
+  }
+
+  updateEntry(transactionId, propertyId, changes = {}) {
+    const existing = this._findActive(transactionId, propertyId);
+    if (!existing) return { ok: false, error: 'Shortlist entry not found' };
+    const patch = {};
+    if (changes.notes !== undefined) patch.Notes = String(changes.notes || '');
+    if (changes.priority !== undefined) patch.Priority = this._validPriority(changes.priority);
+    const updated = this.repo.updateShortlist(existing.ShortlistID, patch);
+    return { ok: true, data: this.buildView(updated) };
+  }
+}
+
+module.exports = { ShortlistServiceV2 };

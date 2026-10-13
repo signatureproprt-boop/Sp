@@ -1,0 +1,2471 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Builder Projects — Signature Properties</title>
+  <style>
+    :root {
+      --clr-brown: #5c3317; --clr-brown-dark: #2c1405; --clr-brown-mid: #7a4a28;
+      --clr-gold: #b8860b; --clr-gold-mid: #d4a017; --clr-gold-soft: #fdf8ec;
+      --clr-bg: #faf7f2; --clr-card: #ffffff; --clr-border: #e8ddd0;
+      --clr-text: #1c0a00; --clr-text-light: #7a6355;
+      --clr-success: #16a34a; --clr-warning: #d97706; --clr-danger: #dc2626;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--clr-bg); color: var(--clr-text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .topnav { background: var(--clr-brown-dark); color: #fff; display: flex; align-items: center; padding: 0 24px; height: 52px; gap: 4px; }
+    .topnav .brand { font-weight: 800; font-size: 15px; color: var(--clr-gold-mid); margin-right: 20px; }
+    .topnav a { color: #d4b896; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 13.5px; }
+    .topnav a.active { background: rgba(212,160,23,.18); color: var(--clr-gold-mid); font-weight: 600; }
+    .topnav a:hover:not(.active) { background: rgba(255,255,255,.08); color: #fff; }
+    .topnav-right { margin-left: auto; }
+    .page { max-width: 1280px; margin: 0 auto; padding: 22px 24px 40px; }
+    .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+    .page-title { font-size: 24px; font-weight: 800; color: var(--clr-brown); }
+    .page-sub { font-size: 13px; color: var(--clr-text-light); margin-top: 4px; }
+    .btn { padding: 9px 16px; border-radius: 8px; border: 1px solid var(--clr-border); font-size: 13px; font-weight: 700; cursor: pointer; transition: all .15s; background: #fff; }
+    .btn-primary { background: var(--clr-brown); color: #fff; border-color: var(--clr-brown); }
+    .btn-primary:hover { background: var(--clr-brown-mid); }
+    .btn-ghost { color: var(--clr-brown); }
+    .btn-accent { background: #d97706; color: #fff; border-color: #d97706; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+    .search-input { flex: 1; min-width: 220px; padding: 9px 12px; border: 1px solid var(--clr-border); border-radius: 8px; background: #fff; font-size: 14px; }
+    .chip { padding: 6px 12px; background: #fff; border: 1px solid var(--clr-border); border-radius: 999px; font-size: 12.5px; cursor: pointer; font-weight: 600; color: var(--clr-text-light); }
+    .chip:hover { border-color: var(--clr-gold-mid); color: var(--clr-brown); }
+    .chip.active { background: var(--clr-brown); color: #fff; border-color: var(--clr-brown); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .card { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; overflow: hidden; transition: all .15s; display: flex; flex-direction: column; }
+    .card:hover { border-color: var(--clr-gold-mid); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(92,51,23,.08); }
+    .card-top { background: linear-gradient(135deg, var(--clr-brown-dark), var(--clr-brown)); color: #fff; padding: 14px 16px; position: relative; }
+    .card-status { position: absolute; top: 10px; right: 10px; font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .st-New-Launch { background: #dbeafe; color: #1e3a8a; }
+    .st-Under-Construction { background: #fef3c7; color: #78350f; }
+    .st-Ready-to-Move { background: #dcfce7; color: #166534; }
+    .st-Completed { background: #f1f5f9; color: #475569; }
+    .card-project { font-size: 15.5px; font-weight: 800; padding-right: 70px; }
+    .card-builder { font-size: 12.5px; opacity: .85; margin-top: 2px; }
+    .card-loc { font-size: 11.5px; margin-top: 6px; opacity: .9; }
+    .card-body { padding: 14px 16px; flex: 1; }
+    .card-price { font-size: 16px; font-weight: 800; color: var(--clr-brown-dark); }
+    .card-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .card-fact { font-size: 11px; background: var(--clr-gold-soft); color: var(--clr-brown-mid); padding: 3px 8px; border-radius: 12px; font-weight: 600; }
+    .card-rera { font-size: 10.5px; color: var(--clr-text-light); font-family: 'Courier New', monospace; margin-top: 8px; }
+    .card-footer { padding: 10px 16px; border-top: 1px solid var(--clr-border); display: flex; justify-content: space-between; align-items: center; }
+    .card-footer .link { font-size: 12px; font-weight: 700; color: var(--clr-brown); cursor: pointer; background: none; border: none; }
+    .card-footer .link.danger { color: var(--clr-danger); }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--clr-text-light); background: #fff; border-radius: 12px; border: 1px dashed var(--clr-border); grid-column: 1/-1; }
+
+    .section-card { background: #fff; border-radius: 12px; border: 1px solid var(--clr-border); padding: 20px; margin-bottom: 20px; }
+    .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--clr-brown); margin-bottom: 12px; }
+    .drop-zone { border: 2px dashed #fbbf24; background: var(--clr-gold-soft); border-radius: 12px; padding: 32px 20px; text-align: center; cursor: pointer; transition: all .15s; }
+    .drop-zone:hover, .drop-zone.hover { background: #fde68a; border-color: var(--clr-warning); }
+    .drop-zone input { display: none; }
+    .drop-zone h3 { font-size: 14.5px; color: var(--clr-brown); margin: 6px 0 4px; }
+    .drop-zone p { font-size: 12px; color: var(--clr-text-light); }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 14px; }
+    .stat { background: #fff; border: 1px solid var(--clr-border); border-radius: 10px; padding: 10px 14px; }
+    .stat-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--clr-text-light); }
+    .stat-value { font-size: 22px; font-weight: 800; margin-top: 4px; color: var(--clr-brown-dark); }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--clr-border); text-align: left; }
+    th { background: var(--clr-gold-soft); color: var(--clr-brown); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(28,10,0,.55); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px; z-index: 100; overflow-y: auto; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 700px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--clr-border); }
+    .modal-title { font-size: 17px; font-weight: 800; color: var(--clr-brown); }
+    .modal-close { background: none; border: 0; font-size: 24px; color: var(--clr-text-light); cursor: pointer; }
+    .modal-body { padding: 18px 22px; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px; border-top: 1px solid var(--clr-border); background: #faf6f0; border-radius: 0 0 14px 14px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 16px; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group label { font-size: 11px; font-weight: 700; color: var(--clr-text-light); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+    .form-group input, .form-group select, .form-group textarea { padding: 8px 10px; border: 1px solid var(--clr-border); border-radius: 6px; font-size: 13.5px; font-family: inherit; }
+    .form-error { color: var(--clr-danger); font-size: 12.5px; margin-top: 8px; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--clr-brown-dark); color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.2); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 300; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.error { background: var(--clr-danger); }
+
+    .card-cover { width: 100%; height: 140px; object-fit: cover; display: block; }
+    .media-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+    .media-tab { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; background: var(--clr-gold-soft); color: var(--clr-brown-mid); }
+    .media-tab.active { background: var(--clr-brown); color: #fff; }
+    .media-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; min-height: 10px; }
+    .media-thumb { position: relative; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; border: 1px solid var(--clr-border); background: var(--clr-gold-soft); display: flex; align-items: center; justify-content: center; }
+    .media-thumb img, .media-thumb video { width: 100%; height: 100%; object-fit: cover; }
+    .media-thumb .file-icon { font-size: 26px; }
+    .media-thumb .play-badge { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; background: rgba(28,10,0,.35); }
+    .media-thumb .media-del { position: absolute; top: 2px; right: 2px; background: rgba(28,10,0,.75); color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; cursor: pointer; line-height: 1; }
+    .media-upload-btn { border: 1.5px dashed #fbbf24; background: var(--clr-gold-soft); border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; color: var(--clr-brown); cursor: pointer; }
+    .media-upload-btn input { display: none; }
+    .brochure-row { display: flex; align-items: center; gap: 8px; background: var(--clr-gold-soft); border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; font-size: 12.5px; }
+    .brochure-row a { color: var(--clr-brown); font-weight: 700; flex: 1; text-decoration: none; }
+    .brochure-row button { background: none; border: none; color: var(--clr-danger); cursor: pointer; font-size: 13px; font-weight: 700; }
+
+    @media (max-width: 700px) {
+      body { overflow-x: hidden; }
+      .topnav { height: auto; min-height: 52px; padding: 8px 12px; gap: 2px; overflow-x: auto; white-space: nowrap; }
+      .topnav .brand { flex: 0 0 auto; margin-right: 8px; font-size: 13px; }
+      .topnav a { flex: 0 0 auto; padding: 7px 9px; font-size: 12px; }
+      .topnav-right { margin-left: 0; }
+      .page { padding: 16px 12px 28px; }
+      .page-header { display: block; }
+      .page-title { font-size: 20px; line-height: 1.25; }
+      .page-sub { font-size: 12px; line-height: 1.45; }
+      .page-header > div:last-child { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px !important; margin-top: 14px; }
+      .page-header > div:last-child .btn { width: 100%; min-height: 40px; padding: 8px 7px; font-size: 11px; }
+      .toolbar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 3px; scrollbar-width: thin; }
+      .search-input { min-width: 100%; flex: 0 0 100%; }
+      .chip { flex: 0 0 auto; white-space: nowrap; }
+      .toolbar .chip[style*="margin-left"] { margin-left: 0 !important; }
+      .grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      .section-card { padding: 14px; border-radius: 10px; }
+      .modal-overlay { padding: 10px; }
+      .modal { max-height: 94vh; border-radius: 10px; }
+      .modal-header { padding: 14px 16px; }
+      .modal-body { padding: 14px 16px; }
+      .modal-footer { padding: 12px 16px; }
+      .form-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      .form-group.full { grid-column: auto; }
+      .form-group input, .form-group select, .form-group textarea { width: 100%; min-width: 0; }
+      .drop-zone { padding: 24px 14px; }
+      .drop-zone p { line-height: 1.4; }
+      .media-strip { gap: 6px; }
+      .media-thumb { width: 72px; height: 72px; }
+      .modal-footer .btn { flex: 1; }
+      .brochure-row { align-items: flex-start; flex-wrap: wrap; }
+      .brochure-row a { min-width: 0; overflow-wrap: anywhere; }
+    }
+
+    @media (max-width: 380px) {
+      .page-header > div:last-child { grid-template-columns: 1fr; }
+      .page-title { font-size: 18px; }
+      .card-top, .card-body, .card-footer { padding-left: 13px; padding-right: 13px; }
+    }
+  
+  .project-detail {border:0;padding:0;border-radius:20px;width:min(1120px,calc(100vw - 28px));max-height:94vh;color:var(--clr-text);background:#f7f5f0;box-shadow:0 30px 90px #21150844}
+  .project-detail::backdrop {background:#201a15aa;backdrop-filter:blur(4px)}
+  .pd-topbar {position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;align-items:center;background:#fff;padding:16px 24px;border-bottom:1px solid var(--clr-border)}
+  .pd-content {padding:26px}
+  .pd-hero {display:grid;grid-template-columns:1.35fr 1fr;gap:28px;align-items:center;background:#fff;border:1px solid var(--clr-border);border-radius:18px;overflow:hidden}
+  .pd-visual {min-height:280px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e7dfd1,#f5eee2);color:#6b543b;text-align:center}
+  .pd-visual img {width:100%;height:340px;object-fit:cover}
+  .pd-intro {padding:24px}.pd-intro h1 {font-size:32px;line-height:1.15;margin:12px 0}
+  .pd-eyebrow {font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#866b45;font-weight:700}
+  .pd-muted {color:var(--clr-text-light);font-size:13px;line-height:1.6}
+  .pd-price {font-size:25px;font-weight:800;margin:22px 0 6px}
+  .pd-actions {display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}.pd-actions a,.pd-actions button {display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+  .pd-nav {display:flex;gap:8px;overflow:auto;margin:24px 0;padding:4px 0}.pd-nav button {white-space:nowrap;border:1px solid var(--clr-border);background:white;border-radius:30px;padding:9px 15px;cursor:pointer}
+  .pd-section {background:white;border:1px solid var(--clr-border);border-radius:16px;padding:24px;margin:16px 0;scroll-margin-top:76px}
+  .pd-section h2 {font-size:21px;margin:0 0 18px}.pd-stats {display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .pd-stats strong {display:block;font-size:16px;margin-top:5px}.pd-configs {display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .pd-config {padding:20px;border:1px solid var(--clr-border);border-radius:12px;background:#fcfbf8}.pd-config h3 {margin:0 0 5px;font-size:18px}
+  .pd-area-grid {display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.pd-area-grid strong {display:block;font-size:18px;margin-top:5px}
+  .pd-amenities {display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.pd-amenity {display:flex;gap:10px;align-items:center;padding:14px;background:#f7f5f0;border-radius:10px;font-size:13px}
+  .pd-gallery {display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.pd-gallery img {width:100%;height:170px;object-fit:cover;border-radius:10px}
+  .pd-specs {columns:2;column-gap:32px;padding-left:20px;line-height:1.8}.pd-specs li {break-inside:avoid;margin-bottom:9px;font-size:13px}
+  .pd-empty {padding:24px;border:1px dashed #d5c7b3;border-radius:10px;background:#fcfbf8;color:var(--clr-text-light);font-size:13px}
+  @media(max-width:700px){.project-detail{width:calc(100vw - 12px);max-height:97vh;border-radius:12px}.pd-content{padding:12px}.pd-hero{grid-template-columns:1fr;gap:0}.pd-visual{min-height:160px}.pd-visual img{height:220px}.pd-intro{padding:20px}.pd-intro h1{font-size:27px}.pd-section{padding:18px}.pd-stats{grid-template-columns:repeat(2,1fr)}.pd-configs{grid-template-columns:1fr}.pd-amenities{grid-template-columns:repeat(2,1fr)}.pd-gallery{grid-template-columns:repeat(2,1fr)}.pd-specs{columns:1}.pd-topbar{padding:12px 16px}}
+
+</style>
+
+<style id="v2-unified-architect">
+:root{
+  --v2-ink:#21140d;--v2-brown:#5c3317;--v2-brown-dark:#2c1405;--v2-gold:#d4a017;--v2-gold-soft:#fdf8ec;
+  --v2-bg:#f7f7f6;--v2-card:#fff;--v2-line:#e7e3df;--v2-muted:#746b64;--v2-ok:#168447;
+}
+html,body{background:var(--v2-bg)!important;color:var(--v2-ink)!important}
+body{background-image:linear-gradient(rgba(92,51,23,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(92,51,23,.018) 1px,transparent 1px)!important;background-size:28px 28px!important}
+.topnav,.top,.topbar{
+  min-height:58px!important;background:#fff!important;color:var(--v2-ink)!important;border-bottom:1px solid var(--v2-line)!important;
+  box-shadow:none!important;padding:0 18px!important
+}
+.topnav .brand,.top .brand,.topbar .brand,.brand{color:var(--v2-brown-dark)!important}
+.topnav a,.top a,.topbar a,.mobile-nav a,.nav a{color:var(--v2-muted)!important}
+.topnav a:hover,.topnav a.active,.mobile-nav a:hover,.mobile-nav a.active,.nav a:hover,.nav a.active{
+  background:var(--v2-gold-soft)!important;color:var(--v2-brown-dark)!important
+}
+.topnav-avatar,.avatar{background:var(--v2-brown-dark)!important;color:#fff!important}
+.client-header,.hero{
+  background:#fff!important;color:var(--v2-ink)!important;border:1px solid var(--v2-line)!important;
+  border-radius:12px!important;box-shadow:0 8px 24px rgba(44,20,5,.045)!important
+}
+.client-header .client-name,.client-header .client-id,.client-header .client-meta-item,.hero .muted{color:var(--v2-ink)!important}
+.client-header .client-id,.client-header .client-meta-item,.hero .muted{opacity:.68}
+.client-avatar{background:var(--v2-gold-soft)!important;color:var(--v2-brown-dark)!important}
+.action-btn,.btn,.primary,button{border-radius:8px!important}
+.action-btn:not(.green):not(.accent),.back{background:#fff!important;color:var(--v2-brown)!important;border:1px solid var(--v2-line)!important}
+.action-btn.accent,.btn.gold{background:var(--v2-gold)!important;color:var(--v2-brown-dark)!important;border-color:var(--v2-gold)!important}
+.page,.workspace-body,.needs-col,.info-col{background:transparent!important}
+.card,.panel,.kpi,.stat,.summary-card,.requirement-card,.project-card,.hero,.modal-box{
+  background:#fff!important;border-color:var(--v2-line)!important;box-shadow:0 8px 24px rgba(44,20,5,.045)!important
+}
+.kpi,.stat,.card,.panel,.requirement-card,.project-card{border-radius:10px!important}
+.section-title,.ph h2,.card h2,.card h3,.head h1,.page-title,h1,h2,h3{color:var(--v2-brown-dark)!important}
+input,select,textarea,.search,.filter-wrap{
+  background:#fff!important;border-color:var(--v2-line)!important;color:var(--v2-ink)!important
+}
+input:focus,select:focus,textarea:focus,.search:focus{border-color:var(--v2-gold)!important;box-shadow:0 0 0 2px rgba(212,160,23,.12)!important}
+.chip.active,.primary,.btn-primary,button[type="submit"]{background:var(--v2-brown-dark)!important;color:#fff!important;border-color:var(--v2-brown-dark)!important}
+.chip{border-color:var(--v2-line)!important;background:#fff!important;color:var(--v2-brown)!important}
+.badge,.source,.txn-badge{box-shadow:none!important}
+.info-col{border-left:1px solid var(--v2-line)!important}
+table th{color:var(--v2-muted)!important}
+table td,table th{border-color:var(--v2-line)!important}
+@media(max-width:700px){
+  .topnav,.top,.topbar{min-height:54px!important;padding:0 11px!important}
+  .client-header,.hero{border-radius:0!important;border-left:0!important;border-right:0!important}
+}
+</style>
+</head>
+<body>
+<dialog id="project-detail" class="project-detail" aria-labelledby="pd-title"><div class="pd-topbar"><strong>Project details</strong><button class="btn btn-secondary" type="button" onclick="closeProjectDetail()" aria-label="Close project details">Close ×</button></div><div id="project-detail-content" class="pd-content"></div></dialog>
+
+<nav class="topnav">
+  <span class="brand" style="display:inline-flex;align-items:center;gap:8px"><img src="/assets/signature-mark.svg" alt="logo" style="width:26px;height:26px;border-radius:50%;object-fit:cover" />Signature Properties</span>
+  <a href="/">Dashboard</a>
+  <a href="/clients">Clients</a>
+  <a href="/inventory">Inventory</a>
+  
+  <a href="/duplicates">Duplicates</a>
+  <a href="/builder-projects" class="active">🏗️ Builder Projects</a>
+  <a href="/broker-network">👥 Broker Network</a>
+  <a href="/calculators">🧮 Calculators</a>
+  <a href="/digital-card">🪪 Digital Card</a>
+  <div class="topnav-right">
+</div>
+</nav>
+
+<div class="page">
+  <div class="page-header">
+    <div>
+      <div class="page-title">🏗️ Builder Projects — Surat</div>
+      <div class="page-sub">Manually add a project, or bulk-upload a CSV/Excel with all your builder projects.</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-accent" id="karma-scrape-btn" data-testid="karma-scrape-btn" onclick="startKarmaScrape()">🔄 Scrape Karma Group</button>
+      <button class="btn btn-ghost" id="karma-scrape-resume-btn" data-testid="karma-scrape-resume-btn" onclick="resumeKarmaScrape()" style="display:none">▶ Resume saved scrape</button>
+      <button class="btn btn-ghost" id="karma-scrape-test-btn" data-testid="karma-scrape-test-btn" onclick="startKarmaScrape(1)">🧪 Test 1 project</button>
+      <button class="btn btn-ghost" data-testid="cleanup-builders-btn" onclick="openCleanupModal()">🧹 Clean Names</button>
+      <button class="btn btn-ghost" data-testid="fix-unknown-btn" onclick="openUnknownModal()">🏗️ Fix Unknown Builders</button>
+      <button class="btn btn-ghost" data-testid="bulk-brochure-btn" onclick="openBulkBrochureModal()">🤖 Bulk from Brochures</button>
+      <button class="btn btn-ghost" id="link-drive-brochures-btn" onclick="linkDriveBrochures()">🔗 Link Drive Brochures</button>
+      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Brochure Log</button>
+      <button class="btn btn-ghost" data-testid="csv-brochure-import-btn" onclick="openCsvBrochureModal()">📑 CSV Brochures</button>
+      <button class="btn btn-ghost" data-testid="bulk-upload-btn" onclick="openUploadModal()">📤 Bulk Upload</button>
+      <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button>
+    </div>
+  </div>
+
+  <div id="karma-scrape-status" data-testid="karma-scrape-status" style="display:none;margin-bottom:14px;padding:12px 14px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-gold-soft);font-size:12.5px;color:var(--clr-brown)"></div>
+
+  <div class="modal-overlay hidden" id="brochure-status-modal">
+    <div class="modal" style="max-width:1000px">
+      <div class="modal-header"><div class="modal-title">📋 Builder brochure log</div><button class="modal-close" onclick="document.getElementById('brochure-status-modal').classList.add('hidden')" aria-label="Close">×</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Live CRM status for every active builder project. “Drive linked” means a verified Drive file is recorded against that project.</p>
+        <div id="brochure-status-summary" style="margin-bottom:12px">Loading…</div>
+        <details id="brochure-scrape-history" style="margin-bottom:12px;border:1px solid #f0c9c5;border-radius:8px;background:#fff8f7;padding:10px 12px">
+          <summary id="brochure-scrape-history-title" style="cursor:pointer;font-weight:700;color:#57221e">Historical scrape errors</summary>
+          <p style="font-size:12px;color:var(--clr-text-light);margin:8px 0">These are previous upload attempts. A project may already be linked now; use the live status table below for its current state.</p>
+          <div id="karma-scrape-errors" data-testid="karma-scrape-errors" style="display:none;color:#57221e;font-size:12px"></div>
+        </details>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <select id="brochure-status-filter" onchange="renderBrochureStatus()" aria-label="Filter brochure status" class="btn"><option value="">All projects</option><option>Drive linked</option><option>Stored outside Drive</option><option>Failed</option><option>Pending</option><option>No brochure source</option></select>
+          <select id="brochure-builder-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter builder"><option value="">All builders</option></select>
+          <select id="brochure-category-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter category"><option value="">All categories</option><option>Residential</option><option>Commercial</option><option>Industrial</option></select>
+          <select id="brochure-review-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter review"><option value="">All reviews</option><option value="unchecked">Brochure unchecked</option><option value="incomplete">Form incomplete</option><option value="unverified">Form unverified</option></select>
+          <input id="brochure-status-search" class="search-input" style="min-width:160px" placeholder="Search project or builder…" oninput="renderBrochureStatus()">
+          <a class="btn btn-primary" href="/api/v2/builder-projects/brochure-status.csv" download>Download CSV log</a>
+          <button class="btn btn-ghost" onclick="loadBrochureStatus()">↻ Refresh</button>
+        </div>
+        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID / Error</th><th>Form / Review</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="brochure-trace-modal">
+    <div class="modal" style="max-width:760px">
+      <div class="modal-header"><div class="modal-title">👁 Brochure share & opens</div><button class="modal-close" onclick="document.getElementById('brochure-trace-modal').classList.add('hidden')" aria-label="Close">×</button></div>
+      <div class="modal-body">
+        <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Har client ka alag link. “Sent” ko aap manually confirm karein. Link forward ho sakta hai; open karne wale ki identity verify nahi hoti. PDF attachment khulne ka count available nahi hai.</p>
+        <div id="brochure-trace-rows" style="max-height:60vh;overflow:auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
+    <select id="builder-select" class="btn" aria-label="Choose builder" onchange="selectBuilder(this.value)"><option value="">All builders</option></select>
+    <div class="chip active" data-testid="filter-cat-all" onclick="setCategoryFilter(this, '')">All Categories</div>
+    <div class="chip" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</div>
+    <div class="chip" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</div>
+    <div class="chip" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</div>
+  </div>
+
+  <div class="toolbar" aria-label="Project size filters">
+    <input id="filter-location" class="search-input" list="dl-surat-areas" placeholder="Location" aria-label="Location" onchange="applyProjectFilters()" />
+    <select id="filter-bhk" class="btn" aria-label="BHK" onchange="applyProjectFilters()"><option value="">All BHK</option><option>1 BHK</option><option>2 BHK</option><option>3 BHK</option><option>4 BHK</option><option>5 BHK</option></select>
+    <input id="filter-carpet-min" type="number" min="0" class="search-input" placeholder="Carpet min sqft" aria-label="Carpet minimum sqft" onchange="applyProjectFilters()" />
+    <input id="filter-carpet-max" type="number" min="0" class="search-input" placeholder="Carpet max sqft" aria-label="Carpet maximum sqft" onchange="applyProjectFilters()" />
+    <input id="filter-built-min" type="number" min="0" class="search-input" placeholder="Super built-up min sqft" aria-label="Super built-up minimum sqft" onchange="applyProjectFilters()" />
+    <input id="filter-built-max" type="number" min="0" class="search-input" placeholder="Super built-up max sqft" aria-label="Super built-up maximum sqft" onchange="applyProjectFilters()" />
+    <button class="btn btn-ghost" onclick="clearProjectFilters()">Clear size filters</button>
+  </div>
+
+  <div class="toolbar">
+    <div class="chip active" data-testid="filter-status-all" onclick="setStatusFilter(this, '')">All Status</div>
+    <div class="chip" data-testid="filter-status-new" onclick="setStatusFilter(this, 'New Launch')">New Launch</div>
+    <div class="chip" data-testid="filter-status-uc" onclick="setStatusFilter(this, 'Under Construction')">Under Construction</div>
+    <div class="chip" data-testid="filter-status-rtm" onclick="setStatusFilter(this, 'Ready to Move')">Ready to Move</div>
+    <div class="chip" data-testid="filter-status-completed" onclick="setStatusFilter(this, 'Completed')">Completed</div>
+    <div class="chip" data-testid="toggle-group-view" onclick="toggleGroupView(this)" style="margin-left:auto">📁 Group by Builder</div>
+  </div>
+
+  <div class="section-card" id="uploaded-brochure-batch-panel">
+    <div class="section-title">AI fill from uploaded brochures</div>
+    <p class="pd-muted">Existing projects only. Reads every permanently stored PDF, saves supported fields and logs missing or conflicting data. Keep this page open while processing; saved progress can be resumed.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
+      <button class="btn btn-primary" id="uploaded-batch-start" onclick="startUploadedBrochureBatch()">Start / Resume AI fill</button>
+      <button class="btn btn-ghost" id="uploaded-batch-pause" onclick="uploadedBatchPaused=true" disabled>Pause after current PDF</button>
+      <button class="btn btn-ghost" onclick="refreshUploadedBrochureBatch()">Refresh progress</button>
+      <button class="btn btn-ghost" onclick="retryUploadedBrochureBatch()">Retry failed / unchecked PDFs</button>
+    </div>
+    <p class="muted">Large PDFs are read through complete AI copies; original brochures are retained.</p>
+    <div id="uploaded-batch-summary" role="status">No batch loaded.</div>
+    <details style="margin-top:12px"><summary>Project results</summary><div style="max-height:320px;overflow:auto"><table id="uploaded-batch-results"></table></div></details>
+  </div>
+  <div id="grid" class="grid" data-testid="projects-grid"></div>
+
+  <!-- Import history -->
+  <div class="section-card">
+    <div class="section-title">🕐 Recent Bulk Imports</div>
+    <div style="overflow-x:auto"><table id="history-table"></table></div>
+  </div>
+</div>
+
+<!-- CSV Brochure Import Modal -->
+<div class="modal-overlay hidden" id="csv-brochure-modal" data-testid="csv-brochure-modal">
+  <div class="modal" style="max-width:980px">
+    <div class="modal-header">
+      <div class="modal-title">📑 Permanent Brochure Import — CSV</div>
+      <button class="modal-close" data-testid="csv-brochure-close" onclick="closeCsvBrochureModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="padding:10px 12px;background:var(--clr-gold-soft);border:1px solid var(--clr-border);border-radius:8px;margin-bottom:12px;font-size:12px;color:var(--clr-brown)">
+        Admin-only workflow. CSV must contain <b>ProjectID, ProjectName, BrochureURL</b>. Only explicitly supplied HTTPS URLs are processed; no URLs are discovered.
+      </div>
+      <label class="drop-zone" for="csv-brochure-file-input" data-testid="csv-brochure-dropzone">
+        <div style="font-size:38px">📄</div>
+        <h3 id="csv-brochure-file-title">Choose a brochure CSV</h3>
+        <p>Upload only to validate/preview first. Import starts only after admin confirmation.</p>
+        <input id="csv-brochure-file-input" type="file" accept=".csv,text/csv" data-testid="csv-brochure-file-input" onchange="onCsvBrochureFilePicked(this.files[0])" />
+      </label>
+      <div id="csv-brochure-file-status" style="font-size:12px;color:var(--clr-text-light);margin-top:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn btn-ghost" id="csv-brochure-preview-btn" data-testid="csv-brochure-preview-btn" onclick="previewCsvBrochures()" disabled>🔎 Validate / Preview</button>
+        <button class="btn btn-ghost" onclick="closeCsvBrochureModal()">Cancel</button>
+      </div>
+      <div id="csv-brochure-preview" style="display:none;margin-top:16px">
+        <div class="stat-grid" id="csv-brochure-stats"></div>
+        <div style="overflow-x:auto;margin-top:14px"><table id="csv-brochure-table"></table></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:12px;color:var(--clr-brown);font-weight:700">
+          <input type="checkbox" id="csv-brochure-confirm" data-testid="csv-brochure-confirm" onchange="updateCsvBrochureCommitState()" />
+          I confirm these explicit rows and authorize the admin import.
+        </label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-accent" id="csv-brochure-start-btn" data-testid="csv-brochure-start-btn" onclick="startCsvBrochureImport()" disabled>▶ Start Import</button>
+          <button class="btn btn-ghost" id="csv-brochure-report-btn" data-testid="csv-brochure-report-btn" onclick="downloadCsvBrochureReport()" style="display:none">⬇ Download Error Report</button>
+        </div>
+        <div id="csv-brochure-result" style="font-size:12px;color:var(--clr-text-light);margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Project Modal -->
+<div class="modal-overlay hidden" id="project-modal" data-testid="project-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Add Builder Project</div>
+      <button class="modal-close" data-testid="modal-close" onclick="closeProjectModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom:16px;padding:12px 14px;background:var(--clr-gold-soft);border:1.5px dashed #fbbf24;border-radius:10px">
+        <label style="font-size:12.5px;font-weight:700;color:var(--clr-brown);display:flex;align-items:center;gap:10px;cursor:pointer;flex-wrap:wrap">
+          🤖 Auto-fill from Brochure (PDF) — AI form fields khud bhar dega
+          <input type="file" accept="application/pdf" data-testid="brochure-autofill-input" onchange="onBrochureAutoFill(this.files[0])" style="display:none" />
+          <span class="btn btn-ghost" style="padding:5px 12px;font-size:12px;background:#fff">📄 Choose PDF</span>
+        </label>
+        <button type="button" id="read-stored-brochure" class="btn btn-ghost" onclick="readStoredBrochure()" style="margin-top:8px;display:none">📄 Read uploaded brochure</button>
+        <div id="autofill-status" data-testid="autofill-status" style="font-size:11.5px;color:var(--clr-text-light);margin-top:6px"></div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>Project Name *</label>
+          <input id="f-project-name" data-testid="f-project-name" type="text" placeholder="e.g. Ratnakar Nine Square" />
+        </div>
+        <div class="form-group">
+          <label>Builder Name *</label>
+          <input id="f-builder-name" data-testid="f-builder-name" list="dl-builder-names" type="text" placeholder="e.g. Ratnakar Group" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label>Location (Surat area) *</label>
+          <input id="f-location1" data-testid="f-location1" list="dl-surat-areas" type="text" placeholder="e.g. Vesu" autocomplete="off" />
+        </div>
+        <div class="form-group full">
+          <label>Full Address</label>
+          <input id="f-address" data-testid="f-address" type="text" placeholder="Optional" />
+        </div>
+        <div class="form-group">
+          <label>RERA Number (optional)</label>
+          <input id="f-rera-number" data-testid="f-rera-number" type="text" placeholder="e.g. PR/GJ/SURAT/..." />
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="f-category" data-testid="f-category">
+            <option>Residential</option>
+            <option>Commercial</option>
+            <option>Industrial</option>
+            <option>Land</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Project Status</label>
+          <select id="f-status" data-testid="f-status">
+            <option>New Launch</option>
+            <option selected>Under Construction</option>
+            <option>Ready to Move</option>
+            <option>Completed</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Total Units</label>
+          <input id="f-total-units" data-testid="f-total-units" type="number" min="0" />
+        </div>
+        <div class="form-group"><label>Project Land Area</label><input id="f-project-area" type="text" placeholder="e.g. 2.5 acres or 12000 sqft" /></div>
+        <div class="form-group"><label>Total Towers / Buildings</label><input id="f-total-towers" type="number" min="0" step="1" /></div>
+        <div class="form-group"><label>Floors per Tower / Building</label><input id="f-total-floors" type="number" min="0" step="1" /></div>
+        <div class="form-group"><label>Floor-to-floor Height (ft)</label><input id="f-floor-height" type="number" min="0" step="0.01" placeholder="e.g. 10.5" /></div>
+        <div class="form-group"><label>Sales person name</label><input id="f-sales-name" type="text" autocomplete="name" placeholder="Project sales contact" /></div>
+        <div class="form-group"><label>Sales person mobile</label><input id="f-sales-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile number" /></div>
+        <div class="form-group full">
+          <label>Configurations & Sizes (sqft)</label>
+          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add one row per distinct layout/size. Combine matching towers (A/B/C); keep different layouts, penthouses and terrace flats separate. Fill BHK, Carpet, Super Built-up and Private Terrace sqft separately; add parking and servant room where known.</div>
+          <div id="config-rows" data-testid="config-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:5px 12px;font-size:12px">+ Add Config</button>
+        </div>
+        <div class="form-group">
+          <label>Price Min (₹)</label>
+          <input id="f-price-min" data-testid="f-price-min" type="number" placeholder="e.g. 4500000" />
+        </div>
+        <div class="form-group">
+          <label>Price Max (₹)</label>
+          <input id="f-price-max" data-testid="f-price-max" type="number" placeholder="e.g. 8500000" />
+        </div>
+        <div class="form-group">
+          <label>Possession Date</label>
+          <input id="f-possession" data-testid="f-possession" type="date" />
+        </div>
+        <div class="form-group full">
+          <label>Amenities</label>
+          <textarea id="f-amenities" data-testid="f-amenities" rows="4" placeholder="One amenity per line"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Features / Highlights — one point per line</label>
+          <textarea id="f-highlights" data-testid="f-highlights" rows="4" placeholder="Towers, floors, units per floor, specifications"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Project Overview</label>
+          <textarea id="f-overview" data-testid="f-overview" rows="3" placeholder="Project details from the brochure"></textarea>
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="f-notes" data-testid="f-notes" rows="2" placeholder="Any additional detail"></textarea>
+        </div>
+      </div>
+      <div id="media-section" style="display:none;margin-top:18px;border-top:1px solid var(--clr-border);padding-top:16px">
+        <div class="section-title">📷 Photos, 🎥 Videos & 📄 Brochure</div>
+        <div style="font-size:11px;font-weight:700;color:var(--clr-text-light);text-transform:uppercase;margin-bottom:6px">Photos</div>
+        <div class="media-strip" id="media-photos" data-testid="media-photos"></div>
+        <label class="media-upload-btn">+ Add Photo(s)<input type="file" accept="image/*" multiple data-testid="media-photo-input" onchange="onMediaFilesPicked('photo', this.files)" /></label>
+
+        <div style="font-size:11px;font-weight:700;color:var(--clr-text-light);text-transform:uppercase;margin:14px 0 6px">Videos</div>
+        <div class="media-strip" id="media-videos" data-testid="media-videos"></div>
+        <label class="media-upload-btn">+ Add Video(s)<input type="file" accept="video/*" multiple data-testid="media-video-input" onchange="onMediaFilesPicked('video', this.files)" /></label>
+
+        <div style="font-size:11px;font-weight:700;color:var(--clr-text-light);text-transform:uppercase;margin:14px 0 6px">Brochure (PDF)</div>
+        <div id="media-brochures" data-testid="media-brochures"></div>
+        <label class="media-upload-btn">+ Add Brochure<input type="file" accept="application/pdf" multiple data-testid="media-brochure-input" onchange="onMediaFilesPicked('brochure', this.files)" /></label>
+        <div style="margin-top:12px;padding:10px 12px;background:#fff9f2;border:1px solid var(--clr-border);border-radius:8px">
+          <div style="font-size:11px;font-weight:700;color:var(--clr-text-light);text-transform:uppercase;margin-bottom:6px">Import from a legitimate URL</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select id="media-url-kind" data-testid="media-url-kind" style="padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px">
+              <option value="brochure">Brochure PDF</option>
+              <option value="photo">Photo</option>
+            </select>
+            <input id="media-url-input" data-testid="media-url-input" type="url" placeholder="https://example.com/brochure.pdf" style="flex:1;min-width:240px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px" />
+            <button type="button" class="btn btn-ghost" data-testid="media-url-import-btn" onclick="importMediaFromUrl()" style="padding:6px 12px">Import URL</button>
+          </div>
+           <div style="font-size:11px;color:var(--clr-text-light);margin-top:6px">Brochure URL imports require admin permission and use only the exact URL supplied. The verified brochure is served internally; access blocks such as HTTP 403 are not bypassed.</div>
+        </div>
+        <div id="media-status" style="font-size:11.5px;color:var(--clr-text-light);margin-top:8px"></div>
+      </div>
+      <div id="media-hint" style="display:none;margin-top:16px;font-size:12px;color:var(--clr-text-light);background:var(--clr-gold-soft);padding:10px 12px;border-radius:8px">📷 Save the project first — then reopen Edit to add photos, videos and brochure.</div>
+      <div class="form-error" id="form-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-testid="cancel-btn" onclick="closeProjectModal()">Cancel</button>
+      <button class="btn btn-primary" data-testid="save-project-btn" onclick="saveProject()" id="save-project-btn">Save Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Builder Name Cleanup Modal -->
+<div class="modal-overlay hidden" id="cleanup-modal" data-testid="cleanup-modal">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-header">
+      <div class="modal-title">🧹 Clean Up Builder Names</div>
+      <button class="modal-close" data-testid="cleanup-modal-close" onclick="closeCleanupModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="cleanup-list" data-testid="cleanup-list">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Fix Unknown Builders Modal -->
+<div class="modal-overlay hidden" id="unknown-modal" data-testid="unknown-modal">
+  <div class="modal" style="max-width:760px">
+    <div class="modal-header">
+      <div class="modal-title">🏗️ Fix Unknown Builders</div>
+      <button class="modal-close" data-testid="unknown-modal-close" onclick="closeUnknownModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="unknown-body" data-testid="unknown-body">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Brochure Extraction Modal -->
+<div class="modal-overlay hidden" id="bulk-brochure-modal" data-testid="bulk-brochure-modal">
+  <div class="modal" style="max-width:860px">
+    <div class="modal-header">
+      <div class="modal-title">🤖 Bulk Auto-fill from Brochures</div>
+      <button class="modal-close" data-testid="bulk-brochure-close" onclick="closeBulkBrochureModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="drop-zone" for="bulk-brochure-input" data-testid="bulk-brochure-dropzone">
+        <div style="font-size:38px">🤖</div>
+        <h3>Multiple brochure PDFs choose karo</h3>
+        <p>AI har PDF padh ke ek naya project bana dega — har file ~20-60 sec le sakti hai</p>
+        <input id="bulk-brochure-input" type="file" accept="application/pdf" multiple data-testid="bulk-brochure-file-input" onchange="onBulkBrochureFilesPicked(this.files)" />
+      </label>
+      <div id="bulk-brochure-rows" data-testid="bulk-brochure-rows" style="margin-top:14px;overflow-x:auto"></div>
+      <div id="bulk-brochure-actions" style="margin-top:12px;display:none;gap:8px">
+        <button class="btn btn-accent" data-testid="bulk-brochure-start-btn" id="bulk-brochure-start-btn" onclick="startBulkExtraction()">🤖 Start AI Extraction</button>
+        <button class="btn btn-primary" data-testid="bulk-brochure-create-btn" id="bulk-brochure-create-btn" style="display:none" onclick="createBulkProjects()">✅ Create Projects</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Upload Modal -->
+<div class="modal-overlay hidden" id="upload-modal" data-testid="upload-modal">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-header">
+      <div class="modal-title">📤 Bulk Upload Builder Projects</div>
+      <button class="modal-close" data-testid="upload-modal-close" onclick="closeUploadModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="drop-zone" id="drop-zone" for="file-input" data-testid="drop-zone">
+        <div style="font-size:38px">📁</div>
+        <h3 id="dz-title">Drop CSV / Excel here or click to browse</h3>
+        <p>Columns: Project Name, Builder Name, Location, RERA Number (optional), Status, Unit Type, Unit Count, Carpet Area, Price Min, Price Max, Possession Date · Max 10 MB</p>
+        <input id="file-input" type="file" accept=".csv,.xlsx" data-testid="file-input" />
+      </label>
+      <div id="upload-actions" style="margin-top:12px;display:none;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="doPreview()" data-testid="preview-btn">🔎 Preview</button>
+        <button class="btn btn-accent" onclick="doCommit()" data-testid="commit-btn" disabled id="commit-btn">✅ Import Projects</button>
+        <button class="btn btn-ghost" onclick="resetUpload()">✕ Cancel</button>
+      </div>
+      <div id="preview-card" style="display:none;margin-top:16px">
+        <div class="stat-grid" id="stat-grid"></div>
+        <div style="overflow-x:auto;margin-top:14px"><table id="proj-table"></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<datalist id="dl-surat-areas"></datalist>
+<datalist id="dl-builder-names"></datalist>
+<datalist id="dl-config-types">
+  <option value="1 BHK"></option><option value="1.5 BHK"></option><option value="2 BHK"></option><option value="2.5 BHK"></option>
+  <option value="3 BHK"></option><option value="3.5 BHK"></option><option value="4 BHK"></option><option value="4.5 BHK"></option>
+  <option value="5 BHK"></option><option value="Penthouse"></option><option value="Terrace Flat"></option><option value="Studio"></option><option value="Shop"></option><option value="Office"></option>
+  <option value="Showroom"></option><option value="Godown"></option><option value="Plot"></option>
+</datalist>
+<div class="toast" id="toast"></div>
+
+<script>
+
+  const SURAT_AREAS = ['Adajan','Althan','Anand Mahal Road','Athwa','Bhatar','Bhimrad','Causeway Road','City Light','Dumas Road','Ghod Dod Road','Jahangirpura','Kadodara','Kamrej','Katargam','LP Savani Road','Magdalla','Nanpura','New Textile Market','Nikol','Pal','Palanpur Patiya','Parle Point','Piplod','Puna','Rander','Rustampura','Salabatpura','Sarthana','Singanpore','Tapi Road','Udhna','Umra','Varachha','Vesu','VIP Road'];
+
+  let allProjects = [];
+  let currentStatus = '';
+  let currentCategory = '';
+  let currentBuilder = '';
+  let currentSearch = '';
+  let currentPage = 1;
+  let totalPages = 1;
+  let totalProjects = 0;
+  let groupByBuilder = false;
+  let collapsedGroups = new Set();
+  let editingId = null;
+  let selectedFile = null;
+  let pendingBrochureFile = null;
+  let selectedBrochureCsv = null;
+  let brochureCsvPreview = null;
+  let brochureCsvResult = null;
+  let lastPreview = null;
+  let mediaBusy = false;
+  let brochureStatusRows = [];
+  function applyProjectFilters() { currentPage = 1; loadProjects(); }
+  function clearProjectFilters() {
+    ['filter-location','filter-bhk','filter-carpet-min','filter-carpet-max','filter-built-min','filter-built-max'].forEach(id => document.getElementById(id).value = '');
+    applyProjectFilters();
+  }
+
+  function openBrochureStatus() {
+    document.getElementById('brochure-status-modal').classList.remove('hidden');
+    renderKarmaScrapeErrors(lastKarmaScrapeData);
+    loadBrochureStatus();
+  }
+
+  async function loadBrochureStatus() {
+    document.getElementById('brochure-status-summary').textContent = 'Loading live project records…';
+    try {
+      const response = await fetch('/api/v2/builder-projects/brochure-status', { cache: 'no-store' });
+      const report = await response.json();
+      if (!response.ok || !report.ok) throw new Error(report.error || 'Unable to load brochure log');
+      brochureStatusRows = report.rows;
+      const builderSelect = document.getElementById('brochure-builder-filter');
+      const selectedBuilder = builderSelect.dataset.requestedBuilder || builderSelect.value;
+      delete builderSelect.dataset.requestedBuilder;
+      const builders = [...new Set(brochureStatusRows.map(row => row.builderName || 'Unknown Builder'))].sort((a, b) => a.localeCompare(b));
+      builderSelect.innerHTML = '<option value="">All builders</option>' + builders.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+      if (builders.includes(selectedBuilder)) builderSelect.value = selectedBuilder;
+      const c = report.counts;
+      document.getElementById('brochure-status-summary').textContent = `${c.totalProjects} active projects · ${c.driveLinked} Drive linked projects (${c.linkedFiles} PDFs) · ${c.failed} failed · ${c.storedOutsideDrive} stored elsewhere · ${c.pending} pending · ${c.noBrochureSource} without brochure source · Updated ${new Date(report.generatedAt).toLocaleString()}`;
+      renderBrochureStatus();
+    } catch (error) {
+      document.getElementById('brochure-status-summary').textContent = `Could not load: ${error.message}`;
+    }
+  }
+
+  function renderBrochureStatus() {
+    const filter = document.getElementById('brochure-status-filter').value;
+    const review = document.getElementById('brochure-review-filter').value;
+    const builder = document.getElementById('brochure-builder-filter').value;
+    const category = document.getElementById('brochure-category-filter').value;
+    const query = document.getElementById('brochure-status-search').value.trim().toLowerCase();
+    const rows = brochureStatusRows.filter((row) => (!filter || row.status === filter) &&
+      (!builder || (row.builderName || 'Unknown Builder') === builder) && (!category || row.category === category) &&
+      (!review || review === 'unchecked' && !row.brochureChecked || review === 'incomplete' && !row.formComplete || review === 'unverified' && !row.formVerified) &&
+      (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query)));
+    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}<br><small>${esc(row.category || 'Uncategorized')}</small></td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds || row.failureReason)}</small></td><td><small>${row.formComplete ? 'Fields filled' : 'Missing: ' + esc((row.missingFields || []).join(', '))}</small><br><label><input type="checkbox" ${row.brochureChecked ? 'checked' : ''} ${row.status === 'Drive linked' ? '' : 'disabled title="Verified Drive PDF required"'} onchange="setProjectReview('${esc(row.projectId)}','brochure',this.checked)"> Brochure checked</label><br><label><input type="checkbox" ${row.formVerified ? 'checked' : ''} onchange="setProjectReview('${esc(row.projectId)}','form',this.checked)"> Form verified</label><br><button class="link" onclick="editFromBrochureLog('${esc(row.projectId)}')">Edit Form</button></td></tr>`).join('') || '<tr><td colspan="5">No matching projects</td></tr>';
+  }
+
+  async function setProjectReview(projectId, kind, checked) {
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/review`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, checked })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Review could not be saved');
+      await loadBrochureStatus();
+    } catch (error) { toast(error.message, true); await loadBrochureStatus(); }
+  }
+
+  async function editFromBrochureLog(projectId) {
+    document.getElementById('brochure-status-modal').classList.add('hidden');
+    const project = allProjects.find(p => p.ProjectID === projectId);
+    if (project) { openEditModal(projectId); return; }
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Project not found');
+      allProjects.push(result.data);
+      openEditModal(projectId);
+    } catch (error) { toast(error.message, true); }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('dl-surat-areas').innerHTML = SURAT_AREAS.map(a => `<option value="${a}">`).join('');
+    setupDrop();
+    loadProjects();
+    loadBuilderDirectory();
+    loadHistory();
+    pollKarmaScrape();
+  });
+
+  async function loadProjects() {
+    document.getElementById('grid').innerHTML = '<div class="empty-state">Loading…</div>';
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(currentPage));
+      params.set('limit', '50');
+      if (currentStatus) params.set('status', currentStatus);
+      if (currentCategory) params.set('category', currentCategory);
+      if (currentBuilder) params.set('builder', currentBuilder);
+      if (currentSearch) params.set('q', currentSearch);
+      for (const [id, key] of [['filter-location','location'],['filter-bhk','bhk'],['filter-carpet-min','carpetMin'],['filter-carpet-max','carpetMax'],['filter-built-min','builtUpMin'],['filter-built-max','builtUpMax']]) {
+        const value = document.getElementById(id).value.trim();
+        if (value) params.set(key, value);
+      }
+      const res = await fetch('/api/v2/builder-projects?' + params.toString()).then(r => r.json());
+      if (!res.ok) throw new Error(res.error || 'Builder project load failed');
+      allProjects = res.data || [];
+      totalProjects = Number(res.pagination?.total || allProjects.length);
+      totalPages = Math.max(1, Number(res.pagination?.totalPages || 1));
+      render();
+      updateBuilderNameOptions();
+    } catch (e) {
+      document.getElementById('grid').innerHTML = `<div class="empty-state" style="color:var(--clr-danger)" data-testid="projects-load-error">Failed to load: ${esc(e.message)}<br><button class="btn btn-ghost" style="margin-top:12px" data-testid="projects-retry-btn" onclick="loadProjects()">↻ Retry</button></div>`;
+    }
+  }
+
+  async function loadBuilderDirectory() {
+    const select = document.getElementById('builder-select');
+    try {
+      const response = await fetch('/api/v2/builder-projects/builders');
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Builder list unavailable');
+      select.innerHTML = '<option value="">All builders</option>' + result.data.map(row =>
+        `<option value="${esc(row.name)}">${esc(row.name)} (${Number(row.count) || 0})</option>`).join('');
+      select.value = currentBuilder;
+    } catch (error) {
+      select.innerHTML = '<option value="">All builders</option>';
+      toast('Builder list: ' + error.message, true);
+    }
+  }
+
+  function selectBuilder(name) {
+    currentBuilder = name;
+    currentPage = 1;
+    groupByBuilder = Boolean(name);
+    const toggle = document.querySelector('[data-testid="toggle-group-view"]');
+    toggle.classList.toggle('active', groupByBuilder);
+    toggle.textContent = groupByBuilder ? '▦ Individual View' : '📁 Group by Builder';
+    loadProjects();
+  }
+
+  let karmaScrapePoll = null;
+  let karmaPollErrors = 0;
+  let lastKarmaScrapeData = null;
+  function renderKarmaScrapeErrors(data) {
+    const panel = document.getElementById('karma-scrape-errors');
+    const history = document.getElementById('brochure-scrape-history');
+    const summary = document.getElementById('brochure-scrape-history-title');
+    const result = data?.result || {};
+    const errors = Array.isArray(data?.errors) ? data.errors : (Array.isArray(result.errors) ? result.errors : []);
+    const count = Number(data?.errorCount ?? result.errorCount ?? errors.length);
+    panel.replaceChildren();
+    if (!count && !errors.length) { panel.style.display = 'none'; history.style.display = 'none'; return; }
+    history.style.display = 'block';
+    panel.style.display = 'block';
+    summary.textContent = `Historical scrape errors · ${count} attempt(s) · last ${errors.length} saved`;
+    const list = document.createElement('div');
+    list.style.cssText = 'display:grid;gap:6px;margin-top:8px';
+    errors.slice(-20).reverse().forEach((item) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:7px 9px;background:#fff;border:1px solid #f4ddda;border-radius:6px';
+      row.textContent = `${item.occurredAt || ''} · ${item.stage || 'unknown step'} · ${item.projectName || item.sourceProjectId || 'Project not identified'}${item.mediaType ? ` · ${item.mediaType}` : ''} · ${item.classification || 'ERROR'} · ${item.message || 'Unknown error'}`;
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+  }
+
+  function renderKarmaScrapeStatus(data) {
+    const box = document.getElementById('karma-scrape-status');
+    const button = document.getElementById('karma-scrape-btn');
+    const resumeButton = document.getElementById('karma-scrape-resume-btn');
+    const testButton = document.getElementById('karma-scrape-test-btn');
+    const result = data?.result || {};
+    renderKarmaScrapeErrors(data);
+    const running = data?.status === 'running';
+    const interrupted = data?.status === 'interrupted';
+    const scanned = Math.max(0, Number(data?.scanned) || 0);
+    const discovered = Math.max(scanned, Number(data?.discoveredCandidates) || 0);
+    if (!running && !interrupted && !['completed', 'failed'].includes(data?.status)) {
+      box.style.display = 'none';
+      return;
+    }
+    box.style.display = 'block';
+    button.disabled = running || interrupted;
+    testButton.disabled = running || interrupted;
+    resumeButton.style.display = interrupted ? 'inline-flex' : 'none';
+    resumeButton.disabled = running;
+    resumeButton.textContent = interrupted ? `▶ Resume after ${scanned}/${discovered}` : '▶ Resume saved scrape';
+    button.textContent = running ? '⏳ Scraping Karma Group…' : '🔄 Scrape Karma Group';
+    testButton.textContent = running ? '⏳ Scrape running…' : '🧪 Test 1 project';
+    if (data?.status === 'running') {
+      box.textContent = `Karma Group scrape running · ${data.currentStage || 'starting'}${data.selectedProjectName ? ` · ${data.selectedProjectName}` : ''}`;
+      return;
+    }
+    if (data?.status === 'completed') {
+      const mediaFailureExamples = Array.isArray(result.mediaFailureExamples)
+        ? result.mediaFailureExamples.filter(item => item.mediaType !== 'brochure') : [];
+      const mediaFailureNote = mediaFailureExamples.length
+        ? ` · Media errors: ${mediaFailureExamples.slice(0, 2).map(item => `${item.mediaType || 'file'}: ${String(item.error || 'Unknown error').slice(0, 120)}`).join(' | ')}`
+        : '';
+      box.textContent = `✅ Scrape complete · Projects ${result.scanned || 0}/${result.discoveredCandidates || 0} · Created ${result.created || 0} · Updated ${result.updated || 0} · Media saved ${(result.mediaStored || 0) + (result.mediaReused || 0)}/${result.mediaDiscovered || 0} · Source unavailable ${result.mediaFailed || 0} · Project fetch failed ${result.failed || 0}${mediaFailureNote}. Brochure status and past upload errors are in Brochure Log.`;
+      return;
+    }
+    if (data?.status === 'failed') {
+      box.textContent = `❌ Scrape failed: ${data.error || 'Unknown error'}`;
+      return;
+    }
+    if (interrupted) {
+      box.textContent = `⚠️ Scrape interrupted · Saved checkpoint ${scanned}/${discovered}${data.selectedProjectName ? ` · Last saved project: ${data.selectedProjectName}` : ''}. Resume continues after this checkpoint.`;
+    }
+  }
+
+  async function pollKarmaScrape() {
+    try {
+      const response = await fetch('/api/v2/builder-projects/scrape/status');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      karmaPollErrors = 0;
+      lastKarmaScrapeData = payload.data;
+      renderKarmaScrapeStatus(payload.data);
+      if (payload.data.status === 'running') {
+        karmaScrapePoll = setTimeout(pollKarmaScrape, 1500);
+      } else {
+        karmaScrapePoll = null;
+        if (payload.data.status === 'completed') await loadProjects();
+      }
+    } catch (error) {
+      // A transient scrape-status fetch failure must never break the page or
+      // blank the project grid. Keep the last saved progress on screen and
+      // self-heal with backoff; only surface a manual retry after repeated fails.
+      karmaPollErrors += 1;
+      renderKarmaScrapeStatusUnavailable(error.message);
+      if (karmaPollErrors <= 5) {
+        karmaScrapePoll = setTimeout(pollKarmaScrape, Math.min(1500 * karmaPollErrors, 8000));
+      } else {
+        karmaScrapePoll = null;
+        document.getElementById('karma-scrape-btn').disabled = false;
+        document.getElementById('karma-scrape-test-btn').disabled = false;
+        document.getElementById('karma-scrape-resume-btn').disabled = false;
+      }
+    }
+  }
+
+  let driveLinkOffset = 0;
+  async function linkDriveBrochures() {
+    const button = document.getElementById('link-drive-brochures-btn');
+    button.disabled = true;
+    button.textContent = '⏳ Checking Drive…';
+    try {
+      const request = async (dryRun) => {
+        const response = await fetch('/api/v2/builder-projects/drive-brochures/link', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dryRun, limit: 1, offset: driveLinkOffset })
+        });
+        const responseText = await response.text();
+        let payload;
+        try { payload = JSON.parse(responseText); }
+        catch (_) {
+          throw new Error(`Server returned HTTP ${response.status} instead of JSON. Check the CRM service logs and retry this same project; progress has not advanced.`);
+        }
+        if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        return payload.data;
+      };
+      const preview = await request(true);
+      if (!preview.inspected && driveLinkOffset) {
+        driveLinkOffset = 0;
+        toast('Drive folder check completed. Tap again to recheck from the beginning.');
+        return;
+      }
+      if (!preview.ready) {
+        driveLinkOffset += preview.inspected;
+        toast(`${preview.inspected} checked: ${preview.empty} empty, ${preview.unmatched} number mismatch, ${preview.ambiguous} ambiguous. Tap again for next batch.`);
+        return;
+      }
+      if (!confirm(`${preview.ready} project(s) have a PDF filename matching the CRM brochure URL exactly. Link them now?`)) return;
+      const applied = await request(false);
+      driveLinkOffset += preview.inspected - applied.linked;
+      toast(`${applied.linked} linked. ${applied.unmatched} number mismatches, ${applied.ambiguous} ambiguous. Tap again for next batch.`);
+      await loadProjects();
+    } catch (error) {
+      toast(`Drive linking failed: ${error.message}`, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = '🔗 Link Drive Brochures';
+    }
+  }
+
+  function renderKarmaScrapeStatusUnavailable(message) {
+    const box = document.getElementById('karma-scrape-status');
+    if (!box) return;
+    box.style.display = 'block';
+    const prev = lastKarmaScrapeData;
+    let base = '';
+    if (prev) {
+      const scanned = Math.max(0, Number(prev.scanned) || 0);
+      const discovered = Math.max(scanned, Number(prev.discoveredCandidates) || 0);
+      base = `Last saved progress · ${scanned}/${discovered}${prev.selectedProjectName ? ` · ${esc(prev.selectedProjectName)}` : ''}. `;
+    }
+    box.innerHTML = `⏳ ${base}Scrape status temporarily unavailable — retrying… ` +
+      `<button class="link" data-testid="karma-scrape-status-retry" onclick="karmaPollErrors=0;clearTimeout(karmaScrapePoll);pollKarmaScrape()">Check now</button>`;
+  }
+
+  async function startKarmaScrape(limit = 1000) {
+    const testOnly = Number(limit) === 1;
+    const prompt = testOnly
+      ? 'Sirf Karma Group ki list ka pehla project test hoga. Existing CRM projects hi update honge; koi naya project create nahi hoga. Continue?'
+      : 'Karma Group website se latest Builder Projects scrape karein? Existing projects Source Project ID se update honge; duplicate create nahi honge.';
+    if (!confirm(prompt)) return;
+    const button = document.getElementById(testOnly ? 'karma-scrape-test-btn' : 'karma-scrape-btn');
+    button.disabled = true;
+    button.textContent = '⏳ Starting…';
+    try {
+      const scrapeRequest = fetch('/api/v2/builder-projects/scrape/karma-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: testOnly ? 1 : 1000 })
+      });
+      renderKarmaScrapeStatus({ status: 'running', currentStage: 'discovery' });
+      clearTimeout(karmaScrapePoll);
+      karmaScrapePoll = setTimeout(pollKarmaScrape, 700);
+
+      const response = await scrapeRequest;
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      if (payload.data?.status && payload.data.status !== 'accepted') {
+        renderKarmaScrapeStatus(payload.data);
+        if (payload.data.status === 'completed') await loadProjects();
+      }
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = testOnly ? '🧪 Test 1 project' : '🔄 Scrape Karma Group';
+      toast('Scrape start failed: ' + error.message, true);
+    }
+  }
+
+  async function resumeKarmaScrape() {
+    const button = document.getElementById('karma-scrape-resume-btn');
+    button.disabled = true;
+    try {
+      const statusResponse = await fetch('/api/v2/builder-projects/scrape/status');
+      const statusPayload = await statusResponse.json();
+      if (!statusResponse.ok || !statusPayload.ok) throw new Error(statusPayload.error || `HTTP ${statusResponse.status}`);
+      const status = statusPayload.data || {};
+      if (status.status !== 'interrupted') throw new Error('There is no interrupted scrape to resume. Refresh the page and check its status.');
+      const scanned = Math.max(0, Number(status.scanned) || 0);
+      const discovered = Math.max(scanned, Number(status.discoveredCandidates) || 0);
+      if (!confirm(`Continue from saved checkpoint ${scanned}/${discovered}? The saved projects before this checkpoint will be skipped.`)) {
+        button.disabled = false;
+        return;
+      }
+      button.textContent = '⏳ Resuming…';
+      const resumeRequest = fetch('/api/v2/builder-projects/scrape/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      renderKarmaScrapeStatus({ status: 'running', mode: 'resume', currentStage: 'discovery', scanned, discoveredCandidates: discovered });
+      clearTimeout(karmaScrapePoll);
+      karmaScrapePoll = setTimeout(pollKarmaScrape, 700);
+      const response = await resumeRequest;
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = '▶ Resume saved scrape';
+      toast('Scrape resume failed: ' + error.message, true);
+      pollKarmaScrape();
+    }
+  }
+  function updateBuilderNameOptions() {
+    const names = Array.from(new Set(allProjects.map(p => p.BuilderName).filter(Boolean))).sort();
+    document.getElementById('dl-builder-names').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
+  }
+
+  function render() {
+    const items = allProjects;
+    const grid = document.getElementById('grid');
+    if (!items.length) {
+      grid.innerHTML = `<div class="empty-state" data-testid="empty-state">
+        <div style="font-size:38px;margin-bottom:8px">🏗️</div>
+        <div style="font-size:16px;font-weight:600;color:var(--clr-brown);margin-bottom:6px">No builder projects found</div>
+        <div>Click "＋ Add Project" or bulk upload a CSV to get started.</div>
+      </div>`;
+      return;
+    }
+    if (!groupByBuilder) {
+      grid.className = 'grid';
+      grid.innerHTML = items.map(renderCard).join('');
+      renderPagination();
+      return;
+    }
+    // Group the current page; the exact builder filter is applied before pagination on the server.
+    grid.className = '';
+    const groups = new Map();
+    for (const p of items) {
+      const key = p.BuilderName || 'Unknown Builder';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+    const sortedKeys = Array.from(groups.keys()).sort((a, b) => groups.get(b).length - groups.get(a).length);
+    grid.innerHTML = sortedKeys.map(builder => {
+      const gid = 'grp-' + builder.replace(/[^a-zA-Z0-9]/g, '_');
+      const collapsed = collapsedGroups.has(builder);
+      return `
+      <div class="builder-group" data-testid="builder-group-${esc(builder)}" style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--clr-gold-mid);cursor:pointer" data-testid="group-header-${esc(builder)}" data-builder="${esc(builder)}" onclick="toggleGroupCollapse(this.dataset.builder)">
+          <span style="font-size:13px;color:var(--clr-brown);transition:transform .15s;display:inline-block${collapsed ? '' : ';transform:rotate(90deg)'}">▶</span>
+          <span style="font-size:16px;font-weight:800;color:var(--clr-brown)">🏢 ${esc(builder)}</span>
+          <span style="font-size:12px;background:var(--clr-gold-soft);color:var(--clr-brown-mid);padding:3px 10px;border-radius:12px;font-weight:700">${groups.get(builder).length} on this page</span>
+        </div>
+        <div id="${gid}" style="${collapsed ? 'display:none' : ''}">
+          <button class="btn btn-ghost" data-builder="${esc(builder)}" onclick="openBuilderBrochureStatus(this)" style="margin-bottom:12px">📋 ${esc(builder)} brochure & missing details</button>
+          ${[...new Set(['Residential','Commercial','Industrial','Land','Uncategorized', ...groups.get(builder).map(p => p.Category || 'Uncategorized')])].map(category => {
+            const rows = groups.get(builder).filter(p => (p.Category || 'Uncategorized') === category);
+            return rows.length ? `<div style="margin:16px 0 8px;font-weight:800;color:var(--clr-brown)">${esc(category)} · ${rows.length}</div><div class="grid">${rows.map(renderCard).join('')}</div>` : '';
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    let el = document.getElementById('builder-pagination-controls');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'builder-pagination-controls';
+      el.style.cssText = 'display:flex;justify-content:center;align-items:center;gap:10px;padding:18px 8px;flex-wrap:wrap;';
+      document.getElementById('grid').parentElement.appendChild(el);
+    }
+    el.innerHTML = `<button class="btn btn-ghost" ${currentPage <= 1 ? 'disabled' : ''} onclick="builderPrevPage()">← Previous</button>
+      <span style="font-size:12px;color:var(--clr-text-light);font-weight:700">Page ${currentPage} / ${totalPages} · ${totalProjects} total</span>
+      <button class="btn btn-ghost" ${currentPage >= totalPages ? 'disabled' : ''} onclick="builderNextPage()">Next →</button>`;
+  }
+
+  function builderNextPage() {
+    if (currentPage >= totalPages) return;
+    currentPage += 1;
+    loadProjects();
+  }
+
+  function builderPrevPage() {
+    if (currentPage <= 1) return;
+    currentPage -= 1;
+    loadProjects();
+  }
+
+  function toggleGroupCollapse(builder) {
+    if (collapsedGroups.has(builder)) collapsedGroups.delete(builder);
+    else collapsedGroups.add(builder);
+    render();
+  }
+
+  function fmtPrice(n) {
+    if (n == null || n === '') return null;
+    n = Number(n);
+    if (n >= 1e7) return '₹' + (n/1e7).toFixed(2) + ' Cr';
+    if (n >= 1e5) return '₹' + (n/1e5).toFixed(1) + ' L';
+    return '₹' + n.toLocaleString('en-IN');
+  }
+
+  function hasInternalPath(value, kind) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    if (kind === 'image') return /^\/api\/v2\/builder-projects\/[^/]+\/images\/[^/]+\/?$/i.test(text);
+    if (kind === 'brochure') return /^\/api\/v2\/builder-projects\/[^/]+\/brochure\/?$/i.test(text);
+    return false;
+  }
+
+  function isStoredPhoto(photo) {
+    return Boolean(photo && photo.MediaID && photo.verified === true &&
+      (photo.DriveFileID || photo.StoragePath));
+  }
+
+  function isStoredBrochure(brochure) {
+    return Boolean(brochure && brochure.verified === true &&
+      (brochure.DriveFileId || brochure.DriveFileID || brochure.StoragePath));
+  }
+
+  function preferredPhotoUrl(project, photo) {
+    if (project && isStoredPhoto(photo))
+      return `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/images/${encodeURIComponent(photo.MediaID)}`;
+    return '';
+  }
+
+  function preferredBrochureUrl(project, brochure) {
+    if (project && isStoredBrochure(brochure))
+      return `/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure`;
+    return '';
+  }
+
+  function brochureStatusText(project) {
+    const brochures = Array.isArray(project?.Brochures) ? project.Brochures : [];
+    if (brochures.some(isStoredBrochure)) return '✓ Permanently Stored';
+    if (brochures.some(b => b.downloadStatus === 'failed')) return '⚠ Failed — Retry';
+    if (project?.BrochureUrl || brochures.length) return '⏳ Pending permanent storage';
+    return '— No brochure';
+  }
+
+  function groupedConfigDetails(rows) {
+    const groups = new Map();
+    const fields = ['Type', 'BHK', 'CarpetAreaSqft', 'SuperBuiltUpAreaSqft', 'TerraceAreaSqft', 'BuiltUpAreaSqft', 'AreaSqft', 'ParkingAllotted', 'ServantRoom'];
+    for (const row of rows || []) {
+      const layoutLabel = /[a-z]/i.test(String(row.FlatType || '')) ? String(row.FlatType).trim() : null;
+      const key = JSON.stringify([layoutLabel, ...fields.map(field => row[field] === '' || row[field] == null ? null : row[field])]);
+      if (!groups.has(key)) groups.set(key, { ...row, towers: new Set(), flats: new Set() });
+      const group = groups.get(key);
+      if (row.Tower) group.towers.add(String(row.Tower).trim());
+      if (row.FlatType) group.flats.add(String(row.FlatType).trim());
+    }
+    return Array.from(groups.values(), group => ({ ...group,
+      Tower: Array.from(group.towers).join('/'), FlatType: Array.from(group.flats).join('/')
+    }));
+  }
+
+
+  function amenityIcon(label) {
+    const text = String(label).toLowerCase();
+    for (const [pattern, icon] of [[/gym|fitness/,'🏋'],[/pool|jacuzzi/,'◉'],[/garden|lawn|tree/,'🌿'],[/child|kid|play/,'★'],[/parking/,'P'],[/lift|elevator/,'↕'],[/security|gate/,'◇'],[/game|court|sport/,'⚽'],[/power|generator/,'ϟ']]) if (pattern.test(text)) return icon;
+    return '✓';
+  }
+  function renderProjectDetail(p) {
+    const empty = text => '<div class="pd-empty">' + esc(text) + '</div>';
+    const val = value => value == null || value === '' ? 'Not available' : esc(value);
+    const area = value => value == null || value === '' ? 'Not available' : esc(value) + ' sqft';
+    const photos = (p.Photos || []).filter(isStoredPhoto).map(photo => ({url:preferredPhotoUrl(p,photo),name:photo.FileName || p.ProjectName})).filter(x=>x.url);
+    const brochure = preferredBrochureUrl(p,(p.Brochures || []).find(isStoredBrochure));
+    const configs = groupedConfigDetails(p.ConfigDetails || []);
+    const amenities = [...new Set(p.Amenities || [])];
+    const specs = [...new Set([...(p.Highlights || []),...(p.Specifications || [])])].filter(x=>!/^(youtubevideo|brou?cher|brochure)$/i.test(String(x).trim()));
+    const price = p.PriceRange && (p.PriceRange.min != null || p.PriceRange.max != null) ? [fmtPrice(p.PriceRange.min),fmtPrice(p.PriceRange.max)].filter(Boolean).join(' – ') : p.StartingPrice != null ? fmtPrice(p.StartingPrice) : 'Price on request';
+    const arg = esc(JSON.stringify(p.ProjectID));
+    const nav = [['overview','Overview'],['configurations','Configurations & area'],['amenities','Amenities'],['plans','Floor plans'],['specifications','Specifications'],['location','Location']];
+    return `<div class="pd-hero"><div class="pd-visual">${photos.length ? '<img src="'+esc(photos[0].url)+'" alt="'+esc(p.ProjectName || 'Project photo')+'">' : '<div><div style="font-size:52px;margin-bottom:12px">⌂</div><strong>Project gallery</strong><p class="pd-muted">Photos not available</p></div>'}</div>
+      <div class="pd-intro"><div class="pd-eyebrow">${esc(p.Category || 'Project')} · ${esc(p.ProjectStatus || 'Status not available')}</div><h1 id="pd-title">${esc(p.ProjectName || 'Untitled project')}</h1><p class="pd-muted">By ${esc(p.BuilderName || 'Builder not available')}<br>📍 ${esc(p.Location1 || 'Location not available')}, Surat</p><div class="pd-price">${esc(price)}</div><div class="pd-muted">Contact for current availability and pricing</div>
+      <div class="pd-actions">${brochure ? '<a class="btn btn-primary" href="'+esc(brochure)+'" target="_blank" rel="noopener">View brochure ↗</a>' : ''}<button class="btn btn-secondary" onclick="shareProjectOnWhatsApp(${arg})">Share project</button><button class="btn btn-secondary" onclick="closeProjectDetail();openEditModal(${arg})">Edit project</button></div></div></div>
+      <nav class="pd-nav" aria-label="Project sections">${nav.map(([id,title])=>'<button type="button" onclick="document.getElementById(\'pd-'+id+'\').scrollIntoView({behavior:\'smooth\'})">'+title+'</button>').join('')}</nav>
+      <section id="pd-overview" class="pd-section"><h2>Project overview</h2><p class="pd-muted">${esc(p.Overview || p.Description || 'Overview not available')}</p><div class="pd-stats">${[['Towers',p.TotalTowers],['Total units',p.TotalUnits],['Floors per tower',p.TotalFloors],['Possession',p.PossessionDate ? String(p.PossessionDate).slice(0,10) : null],['Land area',p.ProjectArea],['RERA',p.RERANumber]].map(([label,value])=>'<div><span class="pd-muted">'+label+'</span><strong>'+val(value)+'</strong></div>').join('')}</div></section>
+      <section id="pd-configurations" class="pd-section"><h2>Configurations & area</h2><div class="pd-configs">${configs.length ? configs.map(c=>`<article class="pd-config"><h3>${esc(c.Type || 'Apartment')}${c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK)+' bhk') ? ' · '+esc(c.BHK)+' BHK' : ''}</h3><div class="pd-muted">${esc([c.Tower ? 'Tower '+c.Tower : '', c.FlatType || ''].filter(Boolean).join(' · '))}</div><div class="pd-area-grid"><div><span class="pd-muted">Carpet area</span><strong>${area(c.CarpetAreaSqft)}</strong></div><div><span class="pd-muted">Super built-up / Saleable</span><strong>${area(c.SuperBuiltUpAreaSqft)}</strong></div>${c.TerraceAreaSqft != null ? '<div><span class="pd-muted">Private terrace</span><strong>'+area(c.TerraceAreaSqft)+'</strong></div>' : ''}</div><div class="pd-muted">Parking: ${val(c.ParkingAllotted)} · Servant room: ${c.ServantRoom === true ? 'Yes' : c.ServantRoom === false ? 'No' : 'Not available'}</div></article>`).join('') : empty('Configuration and area details not available')}</div></section>
+      <section id="pd-amenities" class="pd-section"><h2>Amenities</h2>${amenities.length ? '<div class="pd-amenities">'+amenities.map(x=>'<div class="pd-amenity"><span aria-hidden="true">'+amenityIcon(x)+'</span><span>'+esc(x)+'</span></div>').join('')+'</div>' : empty('Amenities not available')}</section>
+      <section id="pd-plans" class="pd-section"><h2>Floor plans & gallery</h2>${photos.length ? '<div class="pd-gallery">'+photos.map(x=>'<a href="'+esc(x.url)+'" target="_blank" rel="noopener"><img loading="lazy" src="'+esc(x.url)+'" alt="'+esc(x.name || 'Project photo')+'"></a>').join('')+'</div>' : empty('Project photos not available')}${brochure ? '<p class="pd-muted">View the brochure for published floor plans.</p><a class="btn btn-secondary" href="'+esc(brochure)+'" target="_blank" rel="noopener">Open floor plans in brochure ↗</a>' : empty('Floor plans and brochure not available')}</section>
+      <section id="pd-specifications" class="pd-section"><h2>Specifications & highlights</h2>${specs.length ? '<ul class="pd-specs">'+specs.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>' : empty('Specifications not available')}</section>
+      <section id="pd-location" class="pd-section"><h2>Location & contact</h2><p>${esc(p.Address || p.Location1 || 'Address not available')}</p>${p.Address || p.Location1 ? '<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent([p.Address || p.Location1,'Surat'].join(', '))+'">View on map ↗</a>' : ''}<p class="pd-muted">Sales contact: ${esc([p.SalesPersonName,p.SalesPersonPhone].filter(Boolean).join(' · ') || 'Not available')}</p><a class="btn btn-secondary" href="/inventory?projectId=${encodeURIComponent(p.ProjectID)}">View linked inventory</a></section>`;
+  }
+  function openProjectDetail(id) {
+    const p = allProjects.find(x=>x.ProjectID===id); if (!p) return;
+    document.getElementById('project-detail-content').innerHTML=renderProjectDetail(p);
+    const dialog=document.getElementById('project-detail'); dialog.showModal(); dialog.scrollTop=0;
+  }
+  function closeProjectDetail() { document.getElementById('project-detail').close(); }
+
+  function renderCard(p) {
+    const statusClass = 'st-' + String(p.ProjectStatus || 'Under Construction').replace(/\s+/g, '-');
+    const catColors = { Residential: '#dbeafe', Commercial: '#fef3c7', Industrial: '#fee2e2', Land: '#dcfce7' };
+    const catColor = catColors[p.Category] || '#f1f5f9';
+    const facts = [];
+    if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
+      groupedConfigDetails(p.ConfigDetails).forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK) + ' bhk') ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : 'Carpet: not provided', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : 'Saleable / super built-up: not provided', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
+    } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
+      facts.push(p.Configurations.join(' / '));
+      if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
+    }
+    if (p.TotalUnits) facts.push(p.TotalUnits + ' units');
+    if (p.TotalTowers) facts.push(p.TotalTowers + ' towers');
+    if (p.TotalFloors) facts.push(p.TotalFloors + ' floors');
+    if (p.PossessionDate) facts.push('🗝 ' + String(p.PossessionDate).slice(0, 10));
+    let priceText = '—';
+    if (p.PriceRange && (p.PriceRange.min != null || p.PriceRange.max != null)) {
+      const min = fmtPrice(p.PriceRange.min), max = fmtPrice(p.PriceRange.max);
+      priceText = min && max ? `${min} – ${max}` : (min || max || '—');
+    }
+    const storedPhotos = (p.Photos || []).filter(isStoredPhoto);
+    const coverPhoto = storedPhotos[0];
+    const coverPhotoUrl = preferredPhotoUrl(p, coverPhoto);
+    const firstBrochure = (p.Brochures || []).find((m) => isStoredBrochure(m)) || (p.Brochures || [])[0];
+    const firstBrochureUrl = preferredBrochureUrl(p, firstBrochure);
+    const brochureDriveLink = firstBrochure && isStoredBrochure(firstBrochure) ? (firstBrochure.DriveWebViewLink || '') : '';
+    return `<div class="card" data-testid="project-card-${esc(p.ProjectID)}">
+      ${coverPhotoUrl ? `<img class="card-cover" src="${esc(coverPhotoUrl)}" alt="${esc(p.ProjectName||'')}" loading="lazy" decoding="async" data-testid="card-cover-${esc(p.ProjectID)}" />` : ''}
+      <div class="card-top">
+        <span class="card-status ${statusClass}">${esc(p.ProjectStatus || '—')}</span>
+        <button class="card-project" style="background:none;border:0;color:inherit;text-align:left;padding:0;cursor:pointer" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">${esc(p.ProjectName || 'Untitled')} ↗</button>
+        <div class="card-builder">${esc(p.BuilderName || '—')}</div>
+        <div class="card-loc">📍 ${esc(p.Location1 || '—')}</div>
+      </div>
+      <div class="card-body">
+        <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(p.Category || 'Residential')}</span>
+        <div class="card-price">${priceText === '—' ? 'Price on request' : priceText}</div><button class="btn btn-secondary" style="width:100%;margin:8px 0 12px" data-testid="detail-${esc(p.ProjectID)}" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">View project details →</button>
+        <div class="card-facts">${facts.map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
+          ${p.SalesPersonName || p.SalesPersonPhone ? `<span class="card-fact">Sales: ${esc([p.SalesPersonName, p.SalesPersonPhone].filter(Boolean).join(' · '))}</span>` : ''}
+          ${storedPhotos.length ? `<span class="card-fact">📷 ${storedPhotos.length}</span>` : ''}
+          ${p.Videos && p.Videos.length ? `<span class="card-fact">🎥 ${p.Videos.length}</span>` : ''}
+          ${firstBrochureUrl ? `<a class="card-fact" href="${esc(firstBrochureUrl)}" target="_blank" rel="noopener" data-testid="brochure-link-${esc(p.ProjectID)}">📄 Brochure</a>` : ''}
+          ${brochureDriveLink ? `<a class="card-fact" href="${esc(brochureDriveLink)}" target="_blank" rel="noopener" data-testid="brochure-drive-link-${esc(p.ProjectID)}">🗂 Drive</a>` : ''}
+          <span class="card-fact">📄 ${esc(brochureStatusText(p))}</span>
+        </div>
+        ${[ ['Amenities', p.Amenities], ['Features', [...(p.Highlights || []), ...(p.Specifications || [])]] ].map(([title, points]) => Array.isArray(points) && points.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">${title} (${points.length})</summary><ul style="padding-left:18px;margin:6px 0">${[...new Set(points)].map(point => `<li style="margin:4px 0">${esc(point)}</li>`).join('')}</ul></details>` : '').join('')}
+        ${p.RERANumber ? `<div class="card-rera">RERA: ${esc(p.RERANumber)}</div>` : ''}
+      </div>
+      <div class="card-footer">
+        <span style="font-size:11px;color:var(--clr-text-light)">${esc(p.ProjectID)}</span>
+        <div>
+          <button class="link" data-testid="wa-share-${esc(p.ProjectID)}" onclick="shareProjectOnWhatsApp('${esc(p.ProjectID)}')" style="color:#128c1e">📱 Share</button>
+          ${firstBrochureUrl ? `<button class="link" onclick="shareBrochurePdf('${esc(p.ProjectID)}')">📄 Share PDF</button><button class="link" onclick="showBrochureTrace('${esc(p.ProjectID)}')">👁 Brochure opens</button>` : ''}
+          <a class="link" data-testid="view-inventory-${esc(p.ProjectID)}" href="/inventory?projectId=${encodeURIComponent(p.ProjectID)}" onclick="event.stopPropagation()">Inventory</a>
+          <a class="link" data-testid="vastu-${esc(p.ProjectID)}" href="/vastu-floor-plan?projectId=${encodeURIComponent(p.ProjectID)}" onclick="event.stopPropagation()">🧭 Vastu plan</a>
+          <button class="link" data-testid="edit-${esc(p.ProjectID)}" onclick="openEditModal('${esc(p.ProjectID)}')">Edit</button>
+          <button class="link danger" data-testid="delete-${esc(p.ProjectID)}" onclick="deleteProject('${esc(p.ProjectID)}')">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function projectShareLines(p) {
+    const lines = [];
+    lines.push(`🏗️ *${p.ProjectName || 'Builder Project'}*`);
+    lines.push(`Builder: ${p.BuilderName || '—'}`);
+    lines.push(`📍 ${p.Location1 || '—'}${p.Address ? ' — ' + p.Address : ''}`);
+    lines.push(`Category: ${p.Category || 'Residential'} · Status: ${p.ProjectStatus || '—'}`);
+    if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
+      groupedConfigDetails(p.ConfigDetails).forEach(c => lines.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null ? c.BHK + ' BHK' : '', c.CarpetAreaSqft != null ? 'Carpet ' + c.CarpetAreaSqft + ' sqft' : '', c.SuperBuiltUpAreaSqft != null ? 'Super Built-up ' + c.SuperBuiltUpAreaSqft + ' sqft' : '', c.TerraceAreaSqft != null ? 'Private Terrace ' + c.TerraceAreaSqft + ' sqft' : ''].filter(Boolean).join(' · ')));
+    } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
+      lines.push(`Configs: ${p.Configurations.join(' / ')}`);
+    }
+    if (p.Amenities?.length) lines.push('Amenities:', ...p.Amenities.map(v => '• ' + v));
+    if (p.Highlights?.length) lines.push('Features:', ...p.Highlights.map(v => '• ' + v));
+    if (p.TotalUnits) lines.push(`Total Units: ${p.TotalUnits}`);
+    if (p.ProjectArea) lines.push(`Project Land Area: ${p.ProjectArea}`);
+    if (p.TotalTowers) lines.push(`Total Towers: ${p.TotalTowers}`);
+    if (p.TotalFloors) lines.push(`Floors per Tower / Building: ${p.TotalFloors}`);
+    if (p.FloorHeightFt) lines.push(`Floor-to-floor Height: ${p.FloorHeightFt} ft`);
+    if (!Array.isArray(p.ConfigDetails) && p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) lines.push(`Carpet Area: ${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
+    if (p.PossessionDate) lines.push(`Possession: ${String(p.PossessionDate).slice(0, 10)}`);
+    if (p.RERANumber) lines.push(`RERA: ${p.RERANumber}`);
+    return lines;
+  }
+
+  async function chooseBrochureLead() {
+    const search = prompt('CRM client ka naam ya mobile search karein:');
+    if (search === null) return null;
+    if (!search.trim()) throw new Error('Client search likhiye.');
+    const response = await fetch('/api/v2/clients?q=' + encodeURIComponent(search.trim()));
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Clients load nahi hue');
+    const leads = (result.data || []).filter(row => row.LeadID).slice(0, 12);
+    if (!leads.length) throw new Error('Is search se koi CRM client nahi mila.');
+    const choice = prompt(leads.map((row, index) =>
+      `${index + 1}. ${row.ClientName || row.Name || 'Client'} · ${row.PrimaryMobile || row.Phone || 'No phone'}`
+    ).join('\n') + '\n\nClient ka number select karein (1-' + leads.length + '):');
+    if (choice === null) return null;
+    const lead = leads[Number(choice) - 1];
+    if (!lead) throw new Error('List mein diya hua number select karein.');
+    const workspaceResponse = await fetch('/api/v2/clients/' + encodeURIComponent(lead.LeadID) + '/workspace');
+    const workspaceResult = await workspaceResponse.json();
+    if (!workspaceResponse.ok || !workspaceResult.ok) throw new Error(workspaceResult.error || 'Client transactions load nahi hui');
+    const transactions = (workspaceResult.data?.transactions || []).filter(row => row.TransactionID);
+    if (!transactions.length) throw new Error('Is client ki transaction/requirement nahi hai. Pehle Client Workspace mein add karein.');
+    let transaction = transactions[0];
+    if (transactions.length > 1) {
+      const txnChoice = prompt(transactions.map((row, index) =>
+        `${index + 1}. ${row.TransactionCode || row.TransactionType || row.TransactionID} · ${row.Category || ''}`
+      ).join('\n') + '\n\nShortlist ke liye transaction select karein:');
+      if (txnChoice === null) return null;
+      transaction = transactions[Number(txnChoice) - 1];
+      if (!transaction) throw new Error('Sahi transaction number select karein.');
+    }
+    const client = workspaceResult.data.lead;
+    const phone = String(client.PrimaryMobile || client.Phone || '').replace(/\D/g, '');
+    const normalizedPhone = phone.length === 10 ? '91' + phone : phone;
+    if (!/^\d{8,15}$/.test(normalizedPhone)) throw new Error('CRM client mein valid WhatsApp number add karein.');
+    return { leadId: client.LeadID, transactionId: transaction.TransactionID,
+      name: client.ClientName || client.Name || 'Client', phone: normalizedPhone };
+  }
+
+  async function createBrochureShare(id, recipient, channel) {
+    const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadId: recipient.leadId, transactionId: recipient.transactionId, channel })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Brochure link could not be created');
+    return result.data.url || new URL(result.data.path, window.location.origin).href;
+  }
+
+  async function shareProjectOnWhatsApp(id) {
+    const p = allProjects.find(x => x.ProjectID === id);
+    if (!p) return;
+    if (!(p.Brochures || []).some(isStoredBrochure)) {
+      alert('Is project ka stored brochure available nahi hai. Pehle brochure upload/store karein.');
+      return;
+    }
+    try {
+      const recipient = await chooseBrochureLead();
+      if (!recipient) return;
+      const lines = projectShareLines(p);
+      lines.push(`📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${await createBrochureShare(id, recipient, 'whatsapp_text')}`);
+      lines.push('', '— Signature Properties');
+      window.location.assign(`https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines.join('\n'))}`);
+    } catch (error) { alert(error.message); }
+  }
+
+  async function shareBrochurePdf(id) {
+    const p = allProjects.find(x => x.ProjectID === id);
+    if (!p) return;
+    let recipient;
+    try {
+      recipient = await chooseBrochureLead();
+      if (!recipient) return;
+      const link = await createBrochureShare(id, recipient, 'pdf_share');
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
+      if (!response.ok) throw new Error('Stored PDF could not be downloaded');
+      const file = new File([await response.blob()], `${(p.ProjectName || 'project').replace(/[^a-z0-9-]/gi, '-')}-brochure.pdf`, { type: 'application/pdf' });
+      const text = [...projectShareLines(p), `📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${link}`, '', '— Signature Properties'].join('\n');
+      let shared = false;
+      if (navigator.canShare?.({ files: [file] }) && navigator.share) {
+        try {
+          await navigator.share({ files: [file], text, title: p.ProjectName || 'Brochure' });
+          shared = true;
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+        }
+      }
+      if (!shared) {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(file);
+        a.download = file.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        alert(`PDF downloaded. ${recipient.name} ko WhatsApp mein attach kijiye; link bhi message mein bhejiye. CRM delivery confirm nahi kar sakta.`);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') alert(error.message);
+    }
+  }
+
+  async function showBrochureTrace(id) {
+    const modal = document.getElementById('brochure-trace-modal');
+    const container = document.getElementById('brochure-trace-rows');
+    modal.classList.remove('hidden');
+    container.textContent = 'Loading…';
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure-shares`);
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Could not load brochure opens');
+      const rows = (result.data || []).slice().reverse();
+      container.innerHTML = rows.length ? rows.map(row => `
+        <div style="border:1px solid var(--clr-border);border-radius:8px;padding:12px;margin-bottom:9px">
+          <strong>${esc(row.RecipientName || 'Unassigned')}</strong> · ${esc(row.RecipientPhone || '—')}
+          <div style="font-size:12px;margin-top:5px">${row.Channel === 'pdf_share' ? 'PDF share' : 'WhatsApp link'} · ${row.ShareStatus === 'sent_confirmed_manually' ? '✓ Sent (manually confirmed)' : 'Draft prepared, send unconfirmed'}</div>
+          <div style="font-size:12px;margin-top:5px">Prepared: ${esc(new Date(row.CreatedAt).toLocaleString())} · Link opens: <strong>${Number(row.OpenCount) || 0}</strong>${row.LastOpenedAt ? ` · Last opened: ${esc(new Date(row.LastOpenedAt).toLocaleString())}` : ''}</div>
+          ${row.ShareStatus !== 'sent_confirmed_manually' ? `<button class="btn btn-ghost" style="margin-top:8px" onclick="markBrochureSent('${esc(id)}','${esc(row.ShareID)}')">✓ Mark sent</button>` : ''}
+        </div>`).join('') : 'No brochure links have been prepared yet.';
+    } catch (error) { container.textContent = error.message; }
+  }
+
+  async function markBrochureSent(projectId, shareId) {
+    if (!confirm('Kya aapne is client ko brochure bhej diya hai?')) return;
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/brochure-shares/${encodeURIComponent(shareId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sent: true })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Could not mark sent');
+      await showBrochureTrace(projectId);
+    } catch (error) { alert(error.message); }
+  }
+
+  function setStatusFilter(el, val) {
+    el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentStatus = val;
+    currentPage = 1;
+    loadProjects();
+  }
+
+  function setCategoryFilter(el, val) {
+    el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentCategory = val;
+    currentPage = 1;
+    loadProjects();
+  }
+
+  function toggleGroupView(el) {
+    groupByBuilder = !groupByBuilder;
+    el.classList.toggle('active', groupByBuilder);
+    el.textContent = groupByBuilder ? '▦ Individual View' : '📁 Group by Builder';
+    render();
+  }
+
+  function openBuilderBrochureStatus(button) {
+    const select = document.getElementById('brochure-builder-filter');
+    select.dataset.requestedBuilder = button.dataset.builder;
+    openBrochureStatus();
+  }
+
+  // ── Builder Name Cleanup ─────────────────────────────────────────────────
+  async function openCleanupModal() {
+    document.getElementById('cleanup-modal').classList.remove('hidden');
+    document.getElementById('cleanup-list').innerHTML = 'Loading…';
+    try {
+      const res = await fetch('/api/v2/builder-projects/duplicate-builders').then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      renderCleanupList(res.data);
+    } catch (e) {
+      document.getElementById('cleanup-list').innerHTML = `<div style="color:var(--clr-danger)">Failed: ${esc(e.message)}</div>`;
+    }
+  }
+
+  function closeCleanupModal() { document.getElementById('cleanup-modal').classList.add('hidden'); }
+
+  function renderCleanupList(groups) {
+    const el = document.getElementById('cleanup-list');
+    if (!groups.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--clr-text-light);padding:20px">✅ No duplicate builder names found.</div>';
+      return;
+    }
+    el.innerHTML = groups.map((g, i) => `
+      <div class="section-card" style="padding:14px;margin-bottom:12px" data-testid="cleanup-group-${i}">
+        <div style="font-size:11px;font-weight:700;color:var(--clr-text-light);text-transform:uppercase;margin-bottom:8px">Merge into:</div>
+        <input type="text" id="cleanup-canonical-${i}" data-testid="cleanup-canonical-${i}" value="${esc(g.suggestedCanonical)}" style="width:100%;padding:7px 10px;border:1px solid var(--clr-border);border-radius:6px;font-weight:700;margin-bottom:10px" />
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+          ${g.variants.map((v, j) => `<label style="display:flex;align-items:center;gap:5px;background:var(--clr-gold-soft);padding:4px 10px;border-radius:12px;font-size:12px">
+            <input type="checkbox" class="cleanup-variant-${i}" value="${esc(v.name)}" checked style="width:auto" />
+            ${esc(v.name)} <span style="color:var(--clr-text-light)">(${v.count})</span>
+          </label>`).join('')}
+        </div>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px" data-testid="cleanup-merge-${i}" onclick="mergeCleanupGroup(${i})">Merge This Group</button>
+      </div>`).join('');
+  }
+
+  async function mergeCleanupGroup(i) {
+    const canonicalName = document.getElementById(`cleanup-canonical-${i}`).value.trim();
+    const variants = Array.from(document.querySelectorAll(`.cleanup-variant-${i}:checked`)).map(cb => cb.value);
+    if (!canonicalName || !variants.length) { alert('Canonical name aur kam se kam ek variant chahiye'); return; }
+    try {
+      const res = await fetch('/api/v2/builder-projects/merge-builders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ canonicalName, variants })
+      }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      toast(`Merged ${res.data.updated} projects into "${canonicalName}"`);
+      await loadProjects();
+      openCleanupModal();
+    } catch (e) {
+      alert('Merge failed: ' + e.message);
+    }
+  }
+
+  let searchTimer = null;
+  function debounceSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      currentSearch = document.getElementById('search-input').value.trim();
+      currentPage = 1;
+      loadProjects();
+    }, 250);
+  }
+
+  // ── Add / Edit ────────────────────────────────────────────────────────
+  function openAddModal() {
+    editingId = null;
+    document.getElementById('read-stored-brochure').style.display = 'none';
+    pendingBrochureFile = null;
+    document.getElementById('modal-title').textContent = 'Add Builder Project';
+    document.getElementById('form-error').textContent = '';
+    document.getElementById('autofill-status').textContent = '';
+    ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-total-units','f-project-area','f-total-towers','f-total-floors','f-floor-height','f-sales-name','f-sales-phone','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes','f-highlights'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('f-status').value = 'Under Construction';
+    document.getElementById('f-category').value = 'Residential';
+    document.getElementById('media-section').style.display = 'none';
+    document.getElementById('media-hint').style.display = 'block';
+    configRows = [];
+    renderConfigRowsUI();
+    document.getElementById('project-modal').classList.remove('hidden');
+  }
+
+  function openEditModal(id) {
+    const p = allProjects.find(x => x.ProjectID === id);
+    if (!p) return;
+    editingId = id;
+    document.getElementById('read-stored-brochure').style.display = (p.Brochures || []).length ? 'inline-flex' : 'none';
+    pendingBrochureFile = null;
+    document.getElementById('modal-title').textContent = 'Edit — ' + p.ProjectName;
+    document.getElementById('form-error').textContent = '';
+    document.getElementById('autofill-status').textContent = '';
+    document.getElementById('f-project-name').value = p.ProjectName || '';
+    document.getElementById('f-builder-name').value = p.BuilderName || '';
+    document.getElementById('f-location1').value = p.Location1 || '';
+    document.getElementById('f-address').value = p.Address || '';
+    document.getElementById('f-rera-number').value = p.RERANumber || '';
+    document.getElementById('f-status').value = p.ProjectStatus || 'Under Construction';
+    document.getElementById('f-category').value = p.Category || 'Residential';
+    document.getElementById('f-total-units').value = p.TotalUnits ?? '';
+    document.getElementById('f-project-area').value = p.ProjectArea || '';
+    document.getElementById('f-total-towers').value = p.TotalTowers ?? '';
+    document.getElementById('f-total-floors').value = p.TotalFloors ?? '';
+    document.getElementById('f-floor-height').value = p.FloorHeightFt ?? '';
+    document.getElementById('f-sales-name').value = p.SalesPersonName || '';
+    document.getElementById('f-sales-phone').value = p.SalesPersonPhone || '';
+    document.getElementById('f-price-min').value = p.PriceRange?.min ?? '';
+    document.getElementById('f-price-max').value = p.PriceRange?.max ?? '';
+    document.getElementById('f-possession').value = (p.PossessionDate || '').slice(0, 10);
+    document.getElementById('f-amenities').value = (p.Amenities || []).join('\n');
+    document.getElementById('f-overview').value = p.Overview || p.Description || '';
+    document.getElementById('f-notes').value = p.Notes || '';
+    document.getElementById('f-highlights').value = [...(p.Highlights || []), ...(p.Specifications || [])].join('\n');
+    configRows = (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length)
+      ? groupedConfigDetails(p.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }))
+      : (p.Configurations || []).map(t => ({ Tower: '', FlatType: '', SuperBuiltUpAreaSqft: '', Type: t, BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }));
+    renderConfigRowsUI();
+    document.getElementById('media-hint').style.display = 'none';
+    document.getElementById('media-section').style.display = 'block';
+    renderMediaSection(p);
+    document.getElementById('project-modal').classList.remove('hidden');
+  }
+
+  // ── Configuration & Size rows ─────────────────────────────────────────
+  let configRows = [];
+  function renderConfigRowsUI() {
+    const el = document.getElementById('config-rows');
+    el.innerHTML = configRows.length ? configRows.map((row, i) => `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" data-testid="config-row-${i}">
+        <input type="text" value="${esc(row.Tower||'')}" placeholder="Tower A / B" aria-label="Tower" data-testid="config-tower-${i}" oninput="updateConfigRow(${i},'Tower',this.value)" style="width:110px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
+        <input type="text" value="${esc(row.FlatType||'')}" placeholder="Flat no. / type" aria-label="Flat number / type" data-testid="config-flat-${i}" oninput="updateConfigRow(${i},'FlatType',this.value)" style="width:120px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
+        <input type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="Apartment / Penthouse / Terrace Flat" aria-label="Unit type" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" style="flex:1;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" max="20" step="1" value="${row.BHK ?? ''}" placeholder="BHK" aria-label="Bedrooms / BHK" data-testid="config-bhk-${i}" oninput="updateConfigRow(${i},'BHK',this.value)" style="width:75px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.CarpetAreaSqft ?? ''}" placeholder="Carpet sqft" aria-label="Carpet area sqft" data-testid="config-carpet-${i}" oninput="updateConfigRow(${i},'CarpetAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.SuperBuiltUpAreaSqft ?? ''}" placeholder="Super built-up sqft" aria-label="Super built-up area sqft" data-testid="config-super-built-up-${i}" oninput="updateConfigRow(${i},'SuperBuiltUpAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" value="${row.TerraceAreaSqft ?? ''}" placeholder="Private terrace sqft" aria-label="Private terrace area sqft" data-testid="config-terrace-${i}" oninput="updateConfigRow(${i},'TerraceAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <input type="number" min="0" step="1" value="${row.ParkingAllotted ?? ''}" placeholder="Parking" aria-label="Allotted parking spaces" data-testid="config-parking-${i}" oninput="updateConfigRow(${i},'ParkingAllotted',this.value)" style="width:95px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
+        <select aria-label="Servant room" data-testid="config-servant-${i}" onchange="updateConfigRow(${i},'ServantRoom',this.value)" style="padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px"><option value="" ${row.ServantRoom == null ? 'selected' : ''}>Servant room?</option><option value="yes" ${row.ServantRoom === true || row.ServantRoom === 'yes' ? 'selected' : ''}>Yes</option><option value="no" ${row.ServantRoom === false || row.ServantRoom === 'no' ? 'selected' : ''}>No</option></select>
+        ${row.CarpetAreaSqft == null || row.CarpetAreaSqft === '' || row.SuperBuiltUpAreaSqft == null || row.SuperBuiltUpAreaSqft === '' ? '<small style="width:100%;color:var(--clr-text-light)">Carpet / super built-up value missing — check PDF source and warnings in Notes; room dimensions are not a total area.</small>' : ''}
+        ${row.AreaSqft !== '' && row.AreaSqft != null ? `<small title="Legacy area without confirmed type">Legacy ${esc(row.AreaSqft)} sqft</small>` : ''}
+        <button type="button" data-testid="config-remove-${i}" onclick="removeConfigRow(${i})" style="background:none;border:none;color:var(--clr-danger);font-size:17px;cursor:pointer">×</button>
+      </div>`).join('') : '<span style="font-size:12px;color:var(--clr-text-light)">No configurations added yet</span>';
+  }
+  function addConfigRow() { configRows.push({ Tower: '', FlatType: '', SuperBuiltUpAreaSqft: '', Type: '', BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }); renderConfigRowsUI(); }
+  function updateConfigRow(i, key, val) { if (configRows[i]) configRows[i][key] = val; }
+  function removeConfigRow(i) { configRows.splice(i, 1); renderConfigRowsUI(); }
+
+  // ── Auto-fill from Brochure (AI) ─────────────────────────────────────
+  async function prepareBrochurePages(fileBase64) {
+    const encoded = String(fileBase64).replace(/^data:[^;]+;base64,/, '');
+    const raw = atob(encoded);
+    if (!raw.startsWith('%PDF')) return null;
+    const pdfjs = await import('/assets/pdfjs/pdf.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/assets/pdfjs/pdf.worker.mjs';
+    const pdf = await pdfjs.getDocument({ data: Uint8Array.from(raw, c => c.charCodeAt(0)),
+      standardFontDataUrl: '/assets/pdfjs/standard_fonts/' }).promise;
+    try {
+      if (pdf.numPages > 30) return null;
+      const pages = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const original = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: 2400 / Math.max(original.width, original.height) });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const text = (await page.getTextContent()).items.map(item => item.str || '').join(' ').slice(0, 20000);
+        pages.push({ data: canvas.toDataURL('image/jpeg', 0.9).split(',')[1], text });
+        canvas.width = canvas.height = 0;
+        page.cleanup();
+      }
+      return pages;
+    } finally { await pdf.destroy(); }
+  }
+
+  async function brochureCache(action, key, value) {
+    if (!window.indexedDB) return null;
+    return new Promise(resolve => {
+      const open = indexedDB.open('signature-brochure-reader-v4', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('results');
+      open.onerror = () => resolve(null);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction('results', action === 'get' ? 'readonly' : 'readwrite');
+        const store = tx.objectStore('results');
+        const request = action === 'get' ? store.get(key) : store.put(value, key);
+        let result = null;
+        request.onsuccess = () => { result = request.result || null; };
+        tx.oncomplete = () => { db.close(); resolve(result); };
+        tx.onerror = tx.onabort = () => { db.close(); resolve(null); };
+      };
+    });
+  }
+
+  async function requestBrochureExtraction(filename, fileBase64) {
+    const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
+    const digest = await crypto.subtle.digest('SHA-256', rawBytes);
+    const cacheKey = 'reader-v7-source-completeness:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cached = await brochureCache('get', cacheKey);
+    if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
+
+    // Render heavy/vector PDFs into readable pages so malformed annotations and
+    // oversized source images do not hold up the AI. Keep the original for saving.
+    // Gemini reads PDF pages with native vision; send the original once instead of
+    // rendering and uploading every page as a separate large JPEG.
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 270000);
+    try {
+      const response = await fetch('/api/v2/builder-projects/extract-brochure', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, fileBase64 }), signal: controller.signal
+      });
+      const text = await response.text();
+      let result;
+      try { result = JSON.parse(text); } catch (_) {
+        throw new Error('AI service could not respond (HTTP ' + response.status + '). Please retry.');
+      }
+      if (!response.ok || !result.ok) throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
+      await brochureCache('put', cacheKey, result);
+      return result;
+    } catch (error) {
+      if (error.name === 'AbortError') throw new Error('AI service did not respond in time. Project data was not changed. The uploaded brochure is retained; retry later.');
+      throw error;
+    } finally { clearTimeout(timer); }
+  }
+
+  let brochureReadInProgress = false;
+  async function readStoredBrochure() {
+    if (!editingId || brochureReadInProgress) return;
+    const id = editingId;
+    const button = document.getElementById('read-stored-brochure');
+    button.disabled = true;
+    document.getElementById('autofill-status').textContent = 'Loading uploaded brochure…';
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
+      if (!response.ok) throw new Error(`Stored brochure unavailable (HTTP ${response.status})`);
+      const blob = await response.blob();
+      const file = new File([blob], 'stored-brochure.pdf', { type: 'application/pdf' });
+      if (editingId !== id) return;
+      await onBrochureAutoFill(file, true);
+    } catch (error) {
+      document.getElementById('autofill-status').textContent = error.message;
+    } finally { button.disabled = false; }
+  }
+
+  async function onBrochureAutoFill(file, stored = false) {
+    if (!file || brochureReadInProgress) return;
+    if (file.size > MEDIA_LIMITS.brochure) {
+      toast(`Brochure too large (max ${Math.round(MEDIA_LIMITS.brochure / 1024 / 1024)} MB)`, true);
+      return;
+    }
+    brochureReadInProgress = true;
+    const readProjectId = editingId;
+    const readProjectName = document.getElementById('f-project-name').value;
+    if (!stored) pendingBrochureFile = file;
+    const statusEl = document.getElementById('autofill-status');
+    statusEl.textContent = '⏳ Uploaded brochure padh raha hai… 4 minute tak lag sakte hain. Dobara click na karein.';
+    try {
+      const fileBase64 = await fileToBase64Full(file);
+      const res = await requestBrochureExtraction(file.name, fileBase64);
+      if (!res.ok) throw new Error(res.error || 'Extraction failed');
+      if (editingId !== readProjectId || document.getElementById('project-modal').classList.contains('hidden')) return;
+      if (readProjectId) {
+        const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/s$/, '');
+        if (!normalize(res.data.ProjectName) || normalize(res.data.ProjectName) !== normalize(readProjectName)) {
+          throw new Error('Review required: brochure project name does not match ' + readProjectName + ' (PDF: ' + (res.data.ProjectName || 'missing') + '). Project fields were not changed.');
+        }
+      }
+      applyAutoFill(res.data);
+      const missing = [['BuilderName', 'builder'], ['Amenities', 'amenities'], ['Highlights', 'features'], ['ConfigDetails', 'configurations'], ['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
+        .filter(([key]) => res.data[key] == null || (Array.isArray(res.data[key]) && !res.data[key].length)).map(([, label]) => label);
+      const areaMissing = (res.data.ConfigDetails || []).some(c => c.CarpetAreaSqft == null || c.SuperBuiltUpAreaSqft == null);
+      if (areaMissing) missing.push('carpet / super built-up area for some configurations');
+      statusEl.textContent = '✅ Brochure fields filled — review before saving.' +
+        (Array.isArray(res.data.ReadingWarnings) && res.data.ReadingWarnings.length ? ' ' + res.data.ReadingWarnings.join(' ') : '') +
+        (missing.length ? ' Not extracted — verify in PDF; existing values retained: ' + missing.join(', ') + '.' : '');
+    } catch (e) {
+      statusEl.textContent = '';
+      toast('Auto-fill failed: ' + e.message, true);
+    } finally { brochureReadInProgress = false; }
+  }
+
+  function applyAutoFill(d) {
+    if (d.ProjectName) document.getElementById('f-project-name').value = d.ProjectName;
+    if (d.BuilderName) document.getElementById('f-builder-name').value = d.BuilderName;
+    if (d.Location1) document.getElementById('f-location1').value = d.Location1;
+    if (d.Address) document.getElementById('f-address').value = d.Address;
+    if (d.Overview || d.Description) document.getElementById('f-overview').value = d.Overview || d.Description;
+    if (d.RERANumber) document.getElementById('f-rera-number').value = d.RERANumber;
+    if (d.Category) document.getElementById('f-category').value = d.Category;
+    if (d.ProjectStatus) document.getElementById('f-status').value = d.ProjectStatus;
+    if (d.TotalUnits != null) document.getElementById('f-total-units').value = d.TotalUnits;
+    if (d.ProjectArea != null) document.getElementById('f-project-area').value = d.ProjectArea;
+    if (d.TotalTowers != null) document.getElementById('f-total-towers').value = d.TotalTowers;
+    if (d.TotalFloors != null) document.getElementById('f-total-floors').value = d.TotalFloors;
+    if (d.FloorHeightFt != null) document.getElementById('f-floor-height').value = d.FloorHeightFt;
+    if (d.SalesPersonName) document.getElementById('f-sales-name').value = d.SalesPersonName;
+    if (d.SalesPersonPhone) document.getElementById('f-sales-phone').value = d.SalesPersonPhone;
+    if (d.PriceMin != null) document.getElementById('f-price-min').value = d.PriceMin;
+    if (d.PriceMax != null) document.getElementById('f-price-max').value = d.PriceMax;
+    if (d.PossessionDate) document.getElementById('f-possession').value = String(d.PossessionDate).slice(0, 10);
+    if (Array.isArray(d.Amenities) && d.Amenities.length) document.getElementById('f-amenities').value = d.Amenities.join('\n');
+    if (Array.isArray(d.Highlights) && d.Highlights.length) document.getElementById('f-highlights').value = d.Highlights.join('\n');
+    const readingNotes = [...(Array.isArray(d.SourceEvidence) ? d.SourceEvidence : []).map(x => 'PDF source: ' + String(x)),
+      ...(Array.isArray(d.ReadingWarnings) ? d.ReadingWarnings : []).map(x => 'Brochure warning: ' + String(x))];
+    if (readingNotes.length) {
+      const notes = document.getElementById('f-notes');
+      notes.value = Array.from(new Set([...String(notes.value || '').split('\n'), ...readingNotes])).filter(Boolean).join('\n');
+    }
+    if (Array.isArray(d.ConfigDetails) && d.ConfigDetails.length) {
+      configRows = (typeof groupedConfigDetails === 'function' ? groupedConfigDetails(d.ConfigDetails) : d.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null }));
+      renderConfigRowsUI();
+    }
+  }
+
+  function closeProjectModal() { document.getElementById('project-modal').classList.add('hidden'); }
+
+  async function saveProject() {
+    if (brochureReadInProgress) { document.getElementById('form-error').textContent = 'Wait for brochure reading to finish before saving'; return; }
+    const projectName = document.getElementById('f-project-name').value.trim();
+    const builderName = document.getElementById('f-builder-name').value.trim();
+    const location1 = document.getElementById('f-location1').value.trim();
+    if (!projectName) { document.getElementById('form-error').textContent = 'Project Name is required'; return; }
+    if (!builderName) { document.getElementById('form-error').textContent = 'Builder Name is required'; return; }
+    if (!location1) { document.getElementById('form-error').textContent = 'Location is required'; return; }
+    const salesPhone = document.getElementById('f-sales-phone').value.trim();
+    if (salesPhone && !/^(?:\+91[\s-]?)?[6-9]\d{9}$/.test(salesPhone.replace(/[\s-]/g, ''))) { document.getElementById('form-error').textContent = 'Enter a valid 10-digit Indian sales mobile number'; return; }
+
+    const payload = {
+      ProjectName: projectName,
+      BuilderName: builderName,
+      Location1: location1,
+      Address: document.getElementById('f-address').value.trim() || null,
+      RERANumber: document.getElementById('f-rera-number').value.trim() || null,
+      ProjectStatus: document.getElementById('f-status').value,
+      Category: document.getElementById('f-category').value,
+      SalesPersonName: document.getElementById('f-sales-name').value.trim() || null,
+      SalesPersonPhone: salesPhone || null,
+      ConfigDetails: configRows.filter(r => r.Type && String(r.Type).trim()).map(r => ({
+        Tower: String(r.Tower || '').trim() || null, FlatType: String(r.FlatType || '').trim() || null,
+        SuperBuiltUpAreaSqft: r.SuperBuiltUpAreaSqft !== '' && r.SuperBuiltUpAreaSqft != null ? Number(r.SuperBuiltUpAreaSqft) : null,
+        Type: String(r.Type).trim(), BHK: r.BHK !== '' && r.BHK != null ? Number(r.BHK) : null,
+        AreaSqft: r.AreaSqft !== '' && r.AreaSqft != null ? Number(r.AreaSqft) : null,
+        CarpetAreaSqft: r.CarpetAreaSqft !== '' && r.CarpetAreaSqft != null ? Number(r.CarpetAreaSqft) : null,
+        BuiltUpAreaSqft: r.BuiltUpAreaSqft !== '' && r.BuiltUpAreaSqft != null ? Number(r.BuiltUpAreaSqft) : null,
+        TerraceAreaSqft: r.TerraceAreaSqft !== '' && r.TerraceAreaSqft != null ? Number(r.TerraceAreaSqft) : null,
+        ParkingAllotted: r.ParkingAllotted !== '' && r.ParkingAllotted != null ? Number(r.ParkingAllotted) : null,
+        ServantRoom: r.ServantRoom === 'yes' || r.ServantRoom === true ? true : r.ServantRoom === 'no' || r.ServantRoom === false ? false : null
+      })),
+      TotalUnits: document.getElementById('f-total-units').value || null,
+      ProjectArea: document.getElementById('f-project-area').value.trim() || null,
+      TotalTowers: document.getElementById('f-total-towers').value || null,
+      TotalFloors: document.getElementById('f-total-floors').value || null,
+      FloorHeightFt: document.getElementById('f-floor-height').value || null,
+      PriceMin: document.getElementById('f-price-min').value || null,
+      PriceMax: document.getElementById('f-price-max').value || null,
+      PossessionDate: document.getElementById('f-possession').value || null,
+      Amenities: document.getElementById('f-amenities').value.split('\n').map(s => s.trim()).filter(Boolean),
+      Highlights: document.getElementById('f-highlights').value.split('\n').map(s => s.trim()).filter(Boolean),
+      // Both legacy lists are displayed in this single editor; its reviewed value
+      // must replace them, otherwise removed old specifications reappear on reopen.
+      Specifications: [],
+      Overview: document.getElementById('f-overview').value.trim() || null,
+      Notes: document.getElementById('f-notes').value.trim() || null
+    };
+
+    const btn = document.getElementById('save-project-btn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    let fieldsSaved = false;
+    try {
+      const url = editingId ? `/api/v2/builder-projects/${encodeURIComponent(editingId)}` : '/api/v2/builder-projects';
+      const method = editingId ? 'PATCH' : 'POST';
+      const res = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error || 'Save failed');
+      const savedProject = res.data;
+      fieldsSaved = true;
+      if (savedProject?.ProjectID) editingId = savedProject.ProjectID;
+      if (pendingBrochureFile && savedProject?.ProjectID) {
+        const fileBase64 = await fileToBase64Full(pendingBrochureFile);
+        const mediaResponse = await fetch(`/api/v2/builder-projects/${encodeURIComponent(savedProject.ProjectID)}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: 'brochure', filename: pendingBrochureFile.name, fileBase64 })
+        }).then(r => r.json());
+        if (!mediaResponse.ok) throw new Error(mediaResponse.error || 'Brochure upload failed');
+      }
+      pendingBrochureFile = null;
+      closeProjectModal();
+      toast(editingId ? 'Project updated' : 'Project added');
+      loadProjects();
+    } catch (e) {
+      document.getElementById('form-error').textContent = fieldsSaved ? 'Project fields saved, but brochure upload failed: ' + e.message + '. Retry Save to upload the PDF; no AI reread is required.' : e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Save Project';
+    }
+  }
+
+  async function deleteProject(id) {
+    if (!confirm('Delete this builder project?')) return;
+    try {
+      const res = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}`, { method: 'DELETE' }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      toast('Project deleted');
+      loadProjects();
+    } catch (e) { toast(e.message, true); }
+  }
+
+  // ── Media (Photos / Videos / Brochure) ──────────────────────────────────
+  function fileToBase64Full(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result));
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  const MEDIA_LIMITS = { photo: 8 * 1024 * 1024, video: 60 * 1024 * 1024, brochure: 15 * 1024 * 1024 };
+
+  function renderMediaSection(p) {
+    const photos = (p.Photos || []).filter(isStoredPhoto), videos = p.Videos || [], brochures = p.Brochures || [];
+    document.getElementById('media-photos').innerHTML = photos.map(m => `
+      <div class="media-thumb" data-testid="media-photo-${esc(m.MediaID)}">
+        <img src="${esc(preferredPhotoUrl(p, m))}" alt="${esc(m.Filename)}" />
+        <button class="media-del" data-testid="media-del-${esc(m.MediaID)}" onclick="deleteMedia('${esc(m.MediaID)}')">×</button>
+      </div>`).join('') || '<span style="font-size:12px;color:var(--clr-text-light)">No stored photos</span>';
+    document.getElementById('media-videos').innerHTML = videos.map(m => `
+      <div class="media-thumb" data-testid="media-video-${esc(m.MediaID)}" style="cursor:pointer" onclick="window.open('${esc(m.Url)}','_blank')">
+        <video src="${esc(m.Url)}" preload="metadata" muted></video>
+        <div class="play-badge">▶</div>
+        <button class="media-del" data-testid="media-del-${esc(m.MediaID)}" onclick="event.stopPropagation();deleteMedia('${esc(m.MediaID)}')">×</button>
+      </div>`).join('') || '<span style="font-size:12px;color:var(--clr-text-light)">No videos yet</span>';
+    document.getElementById('media-brochures').innerHTML = brochures.map(m => {
+      const stored = isStoredBrochure(m);
+      const filename = esc(m.Filename || 'Brochure');
+      const status = esc(m.downloadStatus === 'failed' ? '⚠ Failed' : (stored ? '✓ Stored' : '⏳ Pending permanent storage'));
+      const label = stored
+        ? `<a href="${esc(preferredBrochureUrl(p, m))}" target="_blank" rel="noopener">📄 ${filename}</a>`
+        : `<span>📄 ${filename}</span>`;
+      return `<div class="brochure-row" data-testid="media-brochure-${esc(m.MediaID)}">
+        ${label}
+        <span style="color:var(--clr-text-light)">${status}</span>
+        <button data-testid="media-del-${esc(m.MediaID)}" onclick="deleteMedia('${esc(m.MediaID)}')">×</button>
+      </div>`;
+    }).join('') || '<span style="font-size:12px;color:var(--clr-text-light)">No brochure yet</span>';
+  }
+
+  async function onMediaFilesPicked(kind, fileList) {
+    if (!editingId || !fileList || !fileList.length) return;
+    const files = Array.from(fileList);
+    const statusEl = document.getElementById('media-status');
+    mediaBusy = true;
+    for (const f of files) {
+      if (f.size > MEDIA_LIMITS[kind]) {
+        toast(`${f.name} too large (max ${Math.round(MEDIA_LIMITS[kind]/1024/1024)} MB)`, true);
+        continue;
+      }
+      statusEl.textContent = `⏳ Uploading ${f.name}…`;
+      try {
+        const fileBase64 = await fileToBase64Full(f);
+        const res = await fetch(`/api/v2/builder-projects/${encodeURIComponent(editingId)}/media`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, filename: f.name, fileBase64 })
+        }).then(r => r.json());
+        if (!res.ok) throw new Error(res.error || 'Upload failed');
+        const idx = allProjects.findIndex(x => x.ProjectID === editingId);
+        if (idx !== -1) allProjects[idx] = res.data;
+        renderMediaSection(res.data);
+        render();
+      } catch (e) {
+        toast(`Upload failed for ${f.name}: ${e.message}`, true);
+      }
+    }
+    statusEl.textContent = '';
+    mediaBusy = false;
+    ['media-photo-input','media-video-input','media-brochure-input'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  }
+
+  async function deleteMedia(mediaId) {
+    if (!editingId || !confirm('Remove this file?')) return;
+    try {
+      const res = await fetch(`/api/v2/builder-projects/${encodeURIComponent(editingId)}/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      const idx = allProjects.findIndex(x => x.ProjectID === editingId);
+      if (idx !== -1) allProjects[idx] = res.data;
+      renderMediaSection(res.data);
+      render();
+    } catch (e) { toast('Delete failed: ' + e.message, true); }
+  }
+
+  async function importMediaFromUrl() {
+    if (!editingId) return;
+    const kind = document.getElementById('media-url-kind').value;
+    const sourceUrl = document.getElementById('media-url-input').value.trim();
+    const statusEl = document.getElementById('media-status');
+    const button = document.querySelector('[data-testid="media-url-import-btn"]');
+    if (!sourceUrl) { toast('Enter a legitimate public URL', true); return; }
+    if (!/^https?:\/\//i.test(sourceUrl)) { toast('Only http(s) URLs are allowed', true); return; }
+    button.disabled = true;
+    statusEl.textContent = '⏳ Downloading, validating and verifying in permanent storage…';
+    try {
+      const isBrochure = kind === 'brochure';
+      const endpoint = isBrochure
+        ? '/api/v2/admin/brochure-import'
+        : `/api/v2/builder-projects/${encodeURIComponent(editingId)}/media/import-url`;
+      const payload = isBrochure
+        ? { ProjectID: editingId, BrochureURL: sourceUrl }
+        : { kind, sourceUrl };
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const res = await response.json();
+      if (!response.ok || !res.ok) throw new Error(res.error || `HTTP ${response.status}`);
+      const idx = allProjects.findIndex(x => x.ProjectID === editingId);
+      if (idx !== -1) allProjects[idx] = res.data;
+      document.getElementById('media-url-input').value = '';
+      statusEl.textContent = '✅ Stored and verified in GridFS. The project now uses its internal asset URL.';
+      renderMediaSection(res.data);
+      render();
+    } catch (e) {
+      statusEl.textContent = '';
+      toast('URL import failed: ' + e.message, true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  // ── Fix Unknown Builders ─────────────────────────────────────────────────
+  let unknownSelectedIds = new Set();
+  async function openUnknownModal() {
+    document.getElementById('unknown-modal').classList.remove('hidden');
+    document.getElementById('unknown-body').innerHTML = 'Loading…';
+    try {
+      const res = await fetch('/api/v2/builder-projects/unknown-builders').then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      renderUnknownList(res.data);
+    } catch (e) {
+      document.getElementById('unknown-body').innerHTML = `<div style="color:var(--clr-danger)">Failed: ${esc(e.message)}</div>`;
+    }
+  }
+  function closeUnknownModal() { document.getElementById('unknown-modal').classList.add('hidden'); }
+
+  function renderUnknownList(rows) {
+    unknownSelectedIds = new Set(rows.map(r => r.ProjectID));
+    const el = document.getElementById('unknown-body');
+    if (!rows.length) {
+      el.innerHTML = '<div style="text-align:center;color:var(--clr-text-light);padding:20px">✅ No projects with an unknown builder.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div style="font-size:12.5px;color:var(--clr-text-light);margin-bottom:10px">${rows.length} project(s) with missing/unknown builder. Select the ones to fix, type the correct builder name, and assign.</div>
+      <div style="max-height:280px;overflow-y:auto;border:1px solid var(--clr-border);border-radius:8px;margin-bottom:12px">
+        ${rows.map(r => `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--clr-border);font-size:12.5px">
+          <input type="checkbox" class="unknown-row-cb" value="${esc(r.ProjectID)}" checked onchange="toggleUnknownRow('${esc(r.ProjectID)}', this.checked)" style="width:auto" />
+          <span style="flex:1"><b>${esc(r.ProjectName)}</b> <span style="color:var(--clr-text-light)">· 📍 ${esc(r.Location1||'—')} · ${esc(r.Category||'—')}</span></span>
+        </label>`).join('')}
+      </div>
+      <div class="form-group full">
+        <label>Assign Builder Name</label>
+        <input type="text" id="unknown-builder-name" data-testid="unknown-builder-name" list="dl-builder-names" placeholder="e.g. Ratnakar Group" style="padding:8px 10px;border:1px solid var(--clr-border);border-radius:6px" />
+      </div>
+      <button class="btn btn-primary" data-testid="unknown-assign-btn" onclick="assignUnknownBuilder()">Assign to Selected</button>`;
+  }
+
+  function toggleUnknownRow(id, checked) {
+    if (checked) unknownSelectedIds.add(id); else unknownSelectedIds.delete(id);
+  }
+
+  async function assignUnknownBuilder() {
+    const builderName = document.getElementById('unknown-builder-name').value.trim();
+    const projectIds = Array.from(unknownSelectedIds);
+    if (!builderName) { alert('Builder name daalo'); return; }
+    if (!projectIds.length) { alert('Kam se kam ek project select karo'); return; }
+    try {
+      const res = await fetch('/api/v2/builder-projects/bulk-assign-builder', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectIds, builderName })
+      }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      toast(`Assigned "${builderName}" to ${res.data.updated} project(s)`);
+      await loadProjects();
+      openUnknownModal();
+    } catch (e) { alert('Assign failed: ' + e.message); }
+  }
+
+
+  let uploadedBatch = null, uploadedBatchRunning = false, uploadedBatchPaused = false;
+  function renderUploadedBrochureBatch() {
+    const job = uploadedBatch;
+    const summary = document.getElementById('uploaded-batch-summary');
+    if (!job) { summary.textContent = 'No batch loaded.'; return; }
+    summary.textContent = job.Projects + ' projects · ' + job.Total + ' stored PDFs · Saved ' + job.Saved + ' · Checks passed ' + (job.ChecksPassed || 0) + ' · Failed / needs review ' + job.Failed + ' · Remaining ' + job.Pending + ' · Without stored PDF ' + job.WithoutStoredBrochure + (uploadedBatchRunning ? ' · Processing…' : job.Status === 'cooldown' ? ' · Paused — AI unavailable' : job.Pending ? ' · Paused — resume to continue' : ' · Complete');
+    if (job.Status === 'cooldown') summary.textContent += ' · AI paused — retry after ' + new Date(job.NextRetryAt).toLocaleString() + '. ' + (job.PauseReason || '');
+    document.getElementById('uploaded-batch-results').innerHTML = '<thead><tr><th>Project</th><th>PDF</th><th>Status</th><th>Details</th></tr></thead><tbody>' +
+      job.Items.map(item => '<tr><td>' + esc(item.ProjectName) + '</td><td>' + esc(item.Filename) + '</td><td>' + esc(item.Status) + '</td><td>' + esc(item.Error || (item.Warnings || []).join('; ') || '') + '</td></tr>').join('') + '</tbody>';
+  }
+  async function refreshUploadedBrochureBatch() {
+    try {
+      const response = await fetch('/api/v2/builder-projects/uploaded-brochure-batch');
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Batch progress unavailable');
+      uploadedBatch = result.data; renderUploadedBrochureBatch();
+    } catch (error) { document.getElementById('uploaded-batch-summary').textContent = error.message; }
+  }
+  async function startUploadedBrochureBatch() {
+    if (uploadedBatchRunning) return;
+    uploadedBatchRunning = true; uploadedBatchPaused = false;
+    document.getElementById('uploaded-batch-summary').textContent = 'Loading saved brochure queue…';
+    document.getElementById('uploaded-batch-start').disabled = true;
+    document.getElementById('uploaded-batch-pause').disabled = false;
+    try {
+      // Resume a durable queue; do not reread a completed queue on another click.
+      if (!uploadedBatch) {
+        const result = await fetch('/api/v2/builder-projects/uploaded-brochure-batch').then(r => r.json());
+        if (!result.ok) throw new Error(result.error || 'Batch lookup failed');
+        uploadedBatch = result.data;
+      }
+      if (!uploadedBatch) {
+        const result = await fetch('/api/v2/builder-projects/uploaded-brochure-batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json());
+        if (!result.ok) throw new Error(result.error || 'Could not create batch');
+        uploadedBatch = result.data;
+      }
+      renderUploadedBrochureBatch();
+      while (uploadedBatch.Pending > 0 && !uploadedBatchPaused) {
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 930000);
+        try {
+          const response = await fetch('/api/v2/builder-projects/uploaded-brochure-batch/' + encodeURIComponent(uploadedBatch.JobID) + '/step', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: controller.signal
+          });
+          const text = await response.text(); let result;
+          try { result = JSON.parse(text); } catch (_) { throw new Error('Server response unavailable (HTTP ' + response.status + '). Saved progress retained.'); }
+          if (!response.ok || !result.ok) throw new Error(result.error || 'Batch stopped');
+          uploadedBatch = result.data; renderUploadedBrochureBatch();
+          if (uploadedBatch.Status === 'cooldown') { uploadedBatchPaused = true; break; }
+        } finally { clearTimeout(timer); }
+      }
+      await loadProjects();
+    } catch (error) {
+      uploadedBatchPaused = true;
+      document.getElementById('uploaded-batch-summary').textContent = 'Paused: ' + (error.name === 'AbortError' ? 'Server request timed out. Refresh progress before resuming.' : error.message);
+    } finally {
+      uploadedBatchRunning = false;
+      document.getElementById('uploaded-batch-start').disabled = false;
+      document.getElementById('uploaded-batch-pause').disabled = true;
+      if (!uploadedBatchPaused || uploadedBatch?.Status === 'cooldown') renderUploadedBrochureBatch();
+    }
+  }
+
+  async function retryUploadedBrochureBatch() {
+    if (uploadedBatchRunning) { toast('Pause after the current PDF before retrying failures', true); return; }
+    try {
+      await refreshUploadedBrochureBatch();
+      if (!uploadedBatch || (!uploadedBatch.Failed && uploadedBatch.Saved === uploadedBatch.ChecksPassed)) return;
+      const response = await fetch('/api/v2/builder-projects/uploaded-brochure-batch/' + encodeURIComponent(uploadedBatch.JobID) + '/retry', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Retry could not be queued');
+      uploadedBatch = result.data; renderUploadedBrochureBatch();
+      await startUploadedBrochureBatch();
+    } catch (error) { toast(error.message, true); }
+  }
+
+  // ── Bulk Brochure Extraction (AI) ─────────────────────────────────────
+  let bulkBrochureFiles = [];
+  const BULK_STATUS_LABEL = { pending: '⏳ Waiting', extracting: '🤖 Reading…', done: '✅ Extracted', failed: '❌ Failed' };
+
+  function openBulkBrochureModal() {
+    bulkBrochureFiles = [];
+    document.getElementById('bulk-brochure-input').value = '';
+    renderBulkBrochureRows();
+    document.getElementById('bulk-brochure-actions').style.display = 'none';
+    document.getElementById('bulk-brochure-create-btn').style.display = 'none';
+    document.getElementById('bulk-brochure-modal').classList.remove('hidden');
+  }
+  function closeBulkBrochureModal() { document.getElementById('bulk-brochure-modal').classList.add('hidden'); }
+
+  // ── CSV Permanent Brochure Import ────────────────────────────────────────
+  function openCsvBrochureModal() {
+    selectedBrochureCsv = null;
+    brochureCsvPreview = null;
+    brochureCsvResult = null;
+    document.getElementById('csv-brochure-file-input').value = '';
+    document.getElementById('csv-brochure-file-title').textContent = 'Choose a brochure CSV';
+    document.getElementById('csv-brochure-file-status').textContent = '';
+    document.getElementById('csv-brochure-preview-btn').disabled = true;
+    document.getElementById('csv-brochure-preview').style.display = 'none';
+    document.getElementById('csv-brochure-confirm').checked = false;
+    document.getElementById('csv-brochure-start-btn').disabled = true;
+    document.getElementById('csv-brochure-report-btn').style.display = 'none';
+    document.getElementById('csv-brochure-result').textContent = '';
+    document.getElementById('csv-brochure-modal').classList.remove('hidden');
+  }
+
+  function closeCsvBrochureModal() {
+    document.getElementById('csv-brochure-modal').classList.add('hidden');
+  }
+
+  function onCsvBrochureFilePicked(file) {
+    if (!file) return;
+    if (!/\.csv$/i.test(file.name)) {
+      toast('Only a .csv file is allowed', true);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast('CSV too large (max 5 MB)', true);
+      return;
+    }
+    selectedBrochureCsv = file;
+    brochureCsvPreview = null;
+    brochureCsvResult = null;
+    document.getElementById('csv-brochure-file-title').textContent = `📄 ${file.name} — ${Math.round(file.size / 1024)} KB`;
+    document.getElementById('csv-brochure-file-status').textContent = 'Ready. Click Validate / Preview; upload alone does not start an import.';
+    document.getElementById('csv-brochure-preview-btn').disabled = false;
+    document.getElementById('csv-brochure-preview').style.display = 'none';
+    document.getElementById('csv-brochure-confirm').checked = false;
+    updateCsvBrochureCommitState();
+  }
+
+  function renderCsvBrochureRows(rows) {
+    const table = document.getElementById('csv-brochure-table');
+    const statusColor = { VALID: 'var(--clr-success)', SUCCESS: 'var(--clr-success)', IDEMPOTENT: 'var(--clr-brown)', INVALID: 'var(--clr-danger)', FAILED: 'var(--clr-danger)' };
+    table.innerHTML = `
+      <thead><tr><th>Row</th><th>ProjectID</th><th>Project</th><th>Brochure URL</th><th>Status</th><th>Error</th></tr></thead>
+      <tbody>${(rows || []).map(row => `
+        <tr data-testid="csv-brochure-row-${row.rowNumber}">
+          <td>${esc(row.rowNumber)}</td>
+          <td>${esc(row.ProjectID || '—')}</td>
+          <td>${esc(row.ProjectName || '—')}</td>
+          <td style="max-width:280px;overflow-wrap:anywhere">${esc(row.BrochureURL || '—')}</td>
+          <td style="font-weight:700;color:${statusColor[row.status] || 'inherit'}">${esc(row.status)}</td>
+          <td style="color:var(--clr-danger)">${esc((row.errors || []).join('; ') || row.error || '—')}</td>
+        </tr>`).join('')}</tbody>`;
+  }
+
+  function renderCsvBrochurePreview(data) {
+    document.getElementById('csv-brochure-preview').style.display = 'block';
+    document.getElementById('csv-brochure-stats').innerHTML = `
+      <div class="stat"><div class="stat-label">Total Rows</div><div class="stat-value">${data.totalRows}</div></div>
+      <div class="stat"><div class="stat-label">Valid</div><div class="stat-value" style="color:var(--clr-success)">${data.validCount}</div></div>
+      <div class="stat"><div class="stat-label">Invalid</div><div class="stat-value" style="color:var(--clr-danger)">${data.invalidCount}</div></div>`;
+    renderCsvBrochureRows(data.rows);
+    document.getElementById('csv-brochure-report-btn').style.display = data.invalidCount ? 'inline-block' : 'none';
+    updateCsvBrochureCommitState();
+  }
+
+  async function previewCsvBrochures() {
+    if (!selectedBrochureCsv) return;
+    const button = document.getElementById('csv-brochure-preview-btn');
+    button.disabled = true;
+    button.textContent = '⏳ Validating…';
+    try {
+      const fileBase64 = await fileToBase64(selectedBrochureCsv);
+      const response = await fetch('/api/v2/admin/brochure-import/csv/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: selectedBrochureCsv.name, fileBase64 })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+      brochureCsvPreview = result.data;
+      brochureCsvResult = null;
+      document.getElementById('csv-brochure-result').textContent = '';
+      document.getElementById('csv-brochure-report-btn').style.display = 'none';
+      renderCsvBrochurePreview(result.data);
+    } catch (error) {
+      toast('CSV preview failed: ' + error.message, true);
+    } finally {
+      button.disabled = !selectedBrochureCsv;
+      button.textContent = '🔎 Validate / Preview';
+    }
+  }
+
+  function updateCsvBrochureCommitState() {
+    const confirmed = document.getElementById('csv-brochure-confirm')?.checked;
+    const canStart = Boolean(brochureCsvPreview && brochureCsvPreview.validCount > 0 && confirmed);
+    const button = document.getElementById('csv-brochure-start-btn');
+    if (button) button.disabled = !canStart;
+  }
+
+  async function startCsvBrochureImport() {
+    if (!selectedBrochureCsv || !brochureCsvPreview || !document.getElementById('csv-brochure-confirm').checked) return;
+    if (!confirm(`Start permanent brochure import for ${brochureCsvPreview.validCount} valid row(s)?`)) return;
+    const button = document.getElementById('csv-brochure-start-btn');
+    button.disabled = true;
+    button.textContent = '⏳ Importing…';
+    try {
+      const fileBase64 = await fileToBase64(selectedBrochureCsv);
+      const response = await fetch('/api/v2/admin/brochure-import/csv/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: selectedBrochureCsv.name,
+          fileBase64,
+          confirmed: true
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+      brochureCsvResult = result.data;
+      renderCsvBrochureRows(result.data.rows);
+      document.getElementById('csv-brochure-result').textContent =
+        `Processed ${result.data.processedRows}/${result.data.totalRows} · Success ${result.data.successCount} · Idempotent ${result.data.idempotentCount} · Failed ${result.data.failedCount} · Invalid ${result.data.invalidCount}`;
+      document.getElementById('csv-brochure-report-btn').style.display =
+        result.data.failedCount || result.data.invalidCount ? 'inline-block' : 'none';
+      await loadProjects();
+    } catch (error) {
+      toast('CSV import failed: ' + error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = '▶ Start Import';
+      updateCsvBrochureCommitState();
+    }
+  }
+
+  function downloadCsvBrochureReport() {
+    const report = brochureCsvResult?.errorReport || brochureCsvPreview?.errorReport;
+    if (!report) return;
+    const blob = new Blob([report], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'brochure-import-errors.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function onBulkBrochureFilesPicked(fileList) {
+    if (!fileList || !fileList.length) return;
+    bulkBrochureFiles = Array.from(fileList).map(f => ({ file: f, status: 'pending', data: null, error: null, selected: true }));
+    renderBulkBrochureRows();
+    document.getElementById('bulk-brochure-actions').style.display = 'flex';
+    document.getElementById('bulk-brochure-create-btn').style.display = 'none';
+  }
+
+  function renderBulkBrochureRows() {
+    const el = document.getElementById('bulk-brochure-rows');
+    if (!bulkBrochureFiles.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<table><thead><tr><th></th><th>File</th><th>Status</th><th>Project</th><th>Builder</th></tr></thead><tbody>${bulkBrochureFiles.map((row, i) => `
+      <tr data-testid="bulk-row-${i}">
+        <td><input type="checkbox" ${row.selected ? 'checked' : ''} ${row.status !== 'done' ? 'disabled' : ''} onchange="bulkBrochureFiles[${i}].selected=this.checked" data-testid="bulk-row-check-${i}" /></td>
+        <td>${esc(row.file.name)}</td>
+        <td data-testid="bulk-row-status-${i}">${row.status === 'failed' ? `❌ ${esc(row.error || 'Failed')}` : esc(BULK_STATUS_LABEL[row.status])}</td>
+        <td>${esc(row.data?.ProjectName || '—')}</td>
+        <td>${esc(row.data?.BuilderName || '—')}</td>
+      </tr>`).join('')}</tbody>`;
+  }
+
+  async function startBulkExtraction() {
+    const btn = document.getElementById('bulk-brochure-start-btn');
+    btn.disabled = true; btn.textContent = '⏳ Processing…';
+    for (let i = 0; i < bulkBrochureFiles.length; i++) {
+      bulkBrochureFiles[i].status = 'extracting';
+      renderBulkBrochureRows();
+      try {
+        const fileBase64 = await fileToBase64Full(bulkBrochureFiles[i].file);
+        const res = await requestBrochureExtraction(bulkBrochureFiles[i].file.name, fileBase64);
+        if (!res.ok) throw new Error(res.error || 'Extraction failed');
+        bulkBrochureFiles[i].status = 'done';
+        bulkBrochureFiles[i].data = res.data;
+      } catch (e) {
+        bulkBrochureFiles[i].status = 'failed';
+        bulkBrochureFiles[i].error = e.message;
+        bulkBrochureFiles[i].selected = false;
+      }
+      renderBulkBrochureRows();
+    }
+    btn.disabled = false; btn.textContent = '🤖 Start AI Extraction';
+    document.getElementById('bulk-brochure-create-btn').style.display = bulkBrochureFiles.some(r => r.status === 'done') ? 'inline-block' : 'none';
+  }
+
+  async function createBulkProjects() {
+    const rows = bulkBrochureFiles.filter(r => r.selected && r.status === 'done');
+    if (!rows.length) { alert('Koi project select nahi hai'); return; }
+    const btn = document.getElementById('bulk-brochure-create-btn');
+    btn.disabled = true;
+    let created = 0, failed = 0;
+    for (const row of rows) {
+      const d = row.data;
+      btn.textContent = `Creating… (${created + failed + 1}/${rows.length})`;
+      const payload = {
+        ProjectName: d.ProjectName || 'Untitled Project',
+        BuilderName: d.BuilderName || 'Unknown Builder',
+        Location1: d.Location1 || 'Surat',
+        Address: d.Address || null,
+        RERANumber: d.RERANumber || null,
+        Category: d.Category || 'Residential',
+        ProjectStatus: d.ProjectStatus || 'Under Construction',
+        ConfigDetails: Array.isArray(d.ConfigDetails) ? d.ConfigDetails : [],
+        TotalUnits: d.TotalUnits || null,
+        PriceMin: d.PriceMin || null,
+        PriceMax: d.PriceMax || null,
+        PossessionDate: d.PossessionDate || null,
+        Highlights: Array.isArray(d.Highlights) ? d.Highlights : [],
+        Amenities: Array.isArray(d.Amenities) ? d.Amenities : []
+      };
+      try {
+        const res = await fetch('/api/v2/builder-projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json());
+        if (!res.ok) throw new Error(res.error);
+        created += 1;
+      } catch (e) { failed += 1; }
+    }
+    btn.disabled = false; btn.textContent = '✅ Create Projects';
+    toast(`Created ${created} project(s)${failed ? `, ${failed} failed` : ''}`);
+    closeBulkBrochureModal();
+    loadProjects();
+  }
+
+  // ── Bulk upload ──────────────────────────────────────────────────────
+  function openUploadModal() { document.getElementById('upload-modal').classList.remove('hidden'); }
+  function closeUploadModal() { document.getElementById('upload-modal').classList.add('hidden'); resetUpload(); }
+
+  function setupDrop() {
+    const dz = document.getElementById('drop-zone');
+    const fi = document.getElementById('file-input');
+    ['dragenter', 'dragover'].forEach(evt => dz.addEventListener(evt, e => { e.preventDefault(); dz.classList.add('hover'); }));
+    ['dragleave', 'drop'].forEach(evt => dz.addEventListener(evt, e => { e.preventDefault(); dz.classList.remove('hover'); }));
+    dz.addEventListener('drop', e => { if (e.dataTransfer.files.length) onFilePicked(e.dataTransfer.files[0]); });
+    fi.addEventListener('change', e => { if (e.target.files.length) onFilePicked(e.target.files[0]); });
+  }
+
+  function onFilePicked(f) {
+    if (f.size > 10 * 1024 * 1024) { alert('File too large (max 10 MB)'); return; }
+    selectedFile = f;
+    document.getElementById('dz-title').textContent = `📄 ${f.name} — ${Math.round(f.size / 1024)} KB`;
+    document.getElementById('upload-actions').style.display = 'flex';
+    document.getElementById('commit-btn').disabled = true;
+    document.getElementById('preview-card').style.display = 'none';
+    lastPreview = null;
+  }
+
+  function resetUpload() {
+    selectedFile = null; lastPreview = null;
+    document.getElementById('file-input').value = '';
+    document.getElementById('dz-title').textContent = 'Drop CSV / Excel here or click to browse';
+    document.getElementById('upload-actions').style.display = 'none';
+    document.getElementById('preview-card').style.display = 'none';
+  }
+
+  async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).replace(/^data:[^;]+;base64,/, ''));
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
+  }
+
+  async function doPreview() {
+    if (!selectedFile) return;
+    const btn = document.querySelector('[data-testid="preview-btn"]');
+    btn.disabled = true; btn.textContent = '⏳ Parsing...';
+    try {
+      const fileBase64 = await fileToBase64(selectedFile);
+      const res = await fetch('/api/v2/builder-projects/import/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: selectedFile.name, fileBase64 })
+      }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      lastPreview = res.data;
+      renderPreview(res.data);
+      document.getElementById('commit-btn').disabled = res.data.summary.projects === 0;
+    } catch (e) {
+      alert('Preview failed: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = '🔎 Preview';
+    }
+  }
+
+  function renderPreview(d) {
+    document.getElementById('preview-card').style.display = 'block';
+    document.getElementById('stat-grid').innerHTML = `
+      <div class="stat"><div class="stat-label">Total Rows</div><div class="stat-value">${d.totalRows}</div></div>
+      <div class="stat"><div class="stat-label">Projects</div><div class="stat-value">${d.summary.projects}</div></div>
+      <div class="stat"><div class="stat-label">Missing Name</div><div class="stat-value">${d.summary.missingName}</div></div>`;
+    const rows = d.samples?.projects || [];
+    document.getElementById('proj-table').innerHTML = rows.length ? `
+      <thead><tr><th>Project</th><th>Builder</th><th>Location</th><th>Status</th><th>Config</th><th>Units</th></tr></thead>
+      <tbody>${rows.map(p => `<tr>
+        <td><b>${esc(p.ProjectName || '—')}</b></td>
+        <td>${esc(p.BuilderName || '—')}</td>
+        <td>${esc(p.Location1 || '—')}</td>
+        <td>${esc(p.ProjectStatus || '—')}</td>
+        <td>${(p.Configurations || []).join(' / ') || '—'}</td>
+        <td>${p.TotalUnits || '—'}</td>
+      </tr>`).join('')}</tbody>` : '';
+  }
+
+  async function doCommit() {
+    if (!selectedFile) return;
+    if (!confirm(`Import ${lastPreview?.summary?.projects || '?'} projects?`)) return;
+    const btn = document.getElementById('commit-btn');
+    btn.disabled = true; btn.textContent = '⏳ Importing...';
+    try {
+      const fileBase64 = await fileToBase64(selectedFile);
+      const res = await fetch('/api/v2/builder-projects/import/commit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: selectedFile.name, fileBase64 })
+      }).then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      toast(`Imported — Inserted ${res.data.Inserted}, Updated ${res.data.Updated}`);
+      closeUploadModal();
+      loadProjects();
+      loadHistory();
+    } catch (e) {
+      alert('Import failed: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = '✅ Import Projects';
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/api/v2/builder-projects/import/history?limit=20').then(r => r.json());
+      if (!res.ok) throw new Error(res.error);
+      const rows = res.data || [];
+      const tbl = document.getElementById('history-table');
+      if (!rows.length) {
+        tbl.innerHTML = '<tbody><tr><td style="text-align:center;color:var(--clr-text-light);padding:20px">No imports yet.</td></tr></tbody>';
+        return;
+      }
+      tbl.innerHTML = `
+        <thead><tr><th>Import ID</th><th>Filename</th><th>Run At</th><th>Inserted</th><th>Updated</th></tr></thead>
+        <tbody data-testid="history-tbody">${rows.map(h => `<tr>
+          <td style="font-family:'Courier New',monospace;font-size:11px">${esc(h.ImportID)}</td>
+          <td>${esc(h.Filename || '—')}</td>
+          <td>${esc((h.RunAt || '').replace('T', ' ').slice(0, 16))}</td>
+          <td><b style="color:var(--clr-success)">${h.Inserted}</b></td>
+          <td><b style="color:#0369a1">${h.Updated}</b></td>
+        </tr>`).join('')}</tbody>`;
+    } catch (e) {
+      document.getElementById('history-table').innerHTML = `<tbody><tr><td style="color:var(--clr-danger)">Load failed: ${esc(e.message)}</td></tr></tbody>`;
+    }
+  }
+
+  function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function toast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isError ? ' error' : '');
+    setTimeout(() => { t.className = 'toast'; }, 2500);
+  }
+</script>
+</body>
+</html>
+
+
