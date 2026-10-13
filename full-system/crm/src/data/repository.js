@@ -5655,6 +5655,8 @@ class JsonRepository {
         ? 'UNAVAILABLE'
         : mongoStats.lastError
           ? 'FAILED'
+          : Number(mongoStats.pendingWrites || 0) > 0
+            ? 'PENDING'
           : Number(mongoStats.successes || 0) > 0
             ? 'HEALTHY'
             : 'UNKNOWN';
@@ -5686,7 +5688,8 @@ class JsonRepository {
       ...warnings,
       ...(mongoWriteStatus === 'FAILED' ? ['Mongo snapshot writes are failing'] : []),
       ...(mongoWriteStatus === 'UNAVAILABLE' ? ['MongoDB is not initialized'] : []),
-      ...(mongoWriteStatus === 'UNKNOWN' ? ['Mongo write readiness is not established yet'] : [])
+      ...(mongoWriteStatus === 'UNKNOWN' ? ['Mongo write readiness is not established yet'] : []),
+      ...(mongoWriteStatus === 'PENDING' ? ['Mongo writes are awaiting durable confirmation'] : [])
     ];
 
     return {

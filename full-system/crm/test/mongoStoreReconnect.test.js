@@ -206,3 +206,39 @@ test('reconnect failure keeps the old cache and records the attempt', async () =
     await cleanupStore(store);
   }
 });
+
+test('older snapshot completion and polling cannot erase newer queued local changes', async () => {
+  let snapshot={payload:{Leads:[]},updatedAt:new Date(1)};
+  const gates=[];
+  const started=[];
+  const resolvers=[];
+  for(let i=0;i<2;i++) started[i]=new Promise(resolve=>resolvers[i]=resolve);
+  let writes=0;
+  class Client {
+    async connect(){} async close(){}
+    db(){return {collection:name=>name==='distributed_locks'?{
+      findOneAndUpdate:async (_filter,update)=>update.$set,
+      deleteOne:async()=>{}
+    }:{findOne:async()=>snapshot,replaceOne:async (_filter,next)=>{
+      const i=writes++;
+      const gate=new Promise(resolve=>gates[i]=resolve);
+      resolvers[i](); await gate; snapshot=next;
+    }}};}
+  }
+  const store=loadStore({MongoClient:Client});
+  try {
+    await store.initMongo();
+    const first=store.write({Leads:[{LeadID:'new-client',Notes:'initial'}]});
+    await started[0];
+    const second=store.write({Leads:[{LeadID:'new-client',Notes:'updated'},{LeadID:'second-client'}]});
+    await store.__pollOnceForTests();
+    assert.equal(store.read().Leads.length,2);
+    gates[0](); await first; await started[1];
+    assert.equal(store.read().Leads.length,2);
+    assert.equal(store.read().Leads[0].Notes,'updated');
+    assert.equal(store.stats().pendingWrites,1);
+    gates[1](); await second;
+    assert.equal(snapshot.payload.Leads.length,2);
+    assert.equal(store.stats().pendingWrites,0);
+  } finally { for(const gate of gates)gate?.(); await cleanupStore(store); }
+});

@@ -34,6 +34,12 @@ function normalizePhone(raw) {
   return digits;
 }
 
+function isValidPhone(raw) {
+  if (!/^[+\d\s().-]+$/.test(String(raw || '').trim())) return false;
+  const digits = normalizePhone(raw);
+  return Boolean(digits && digits.length >= 10 && digits.length <= 15 && !/^0+$/.test(digits));
+}
+
 function normalizeEmail(raw) {
   if (!raw) return null;
   return String(raw).trim().toLowerCase();
@@ -136,6 +142,8 @@ class V2LeadService {
    * @param {object} options - { allowPossibleDuplicate: boolean }
    */
   createLead(payload, actor = {}, options = {}) {
+    const primary = payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone;
+    if (!isValidPhone(primary)) return { ok: false, error: 'A valid primary mobile number is required' };
     const now = new Date().toISOString();
 
     // Second duplicate check immediately before creation
@@ -256,6 +264,10 @@ class V2LeadService {
       return key === undefined ? fallback : normalize(payload[key]);
     };
     const primaryMobile = contact(['PrimaryMobile', 'primaryMobile', 'Phone', 'phone'], existing.PrimaryMobile || existing.Phone, normalizePhone);
+    const primaryKey = ['PrimaryMobile', 'primaryMobile', 'Phone', 'phone'].find(key => Object.prototype.hasOwnProperty.call(payload, key));
+    if (primaryKey !== undefined && !isValidPhone(payload[primaryKey])) {
+      return { ok: false, error: 'A valid primary mobile number is required' };
+    }
     const alternateMobile = contact(['AlternateMobile', 'alternateMobile'], existing.AlternateMobile, normalizePhone);
     const whatsapp = contact(['WhatsApp', 'whatsapp'], existing.WhatsApp, normalizePhone);
     const email = contact(['Email', 'email'], existing.Email, normalizeEmail);
@@ -609,4 +621,4 @@ class V2LeadService {
   }
 }
 
-module.exports = { V2LeadService, normalizePhone, normalizeEmail };
+module.exports = { V2LeadService, normalizePhone, normalizeEmail, isValidPhone };
