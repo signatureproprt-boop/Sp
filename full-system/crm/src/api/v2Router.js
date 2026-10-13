@@ -1233,6 +1233,20 @@ class V2Router {
         if (!this._reqMatchesFilters(req, filters, txns)) continue;
         if (req.LeadID) matchingLeadIds.add(req.LeadID);
       }
+      // Incoming Sheet needs and captured client preferences are searchable
+      // before a confirmed requirement or deal exists. Never create records here.
+      for (const lead of leads) {
+        const profile = { ...lead, ...(lead.RequirementProfile || {}) };
+        const basics = Array.isArray(lead.SheetBasicRequirements) ? lead.SheetBasicRequirements : [];
+        const captured = {
+          ...profile,
+          TransactionType: profile.RequirementType || profile.TransactionType,
+          SubCategory: profile.SubCategory || profile.PropertyType
+        };
+        if ([captured, ...basics].some(need => this._reqMatchesFilters(need, filters, txns))) {
+          matchingLeadIds.add(lead.LeadID);
+        }
+      }
     }
 
     let result = hasNeedFilters ? leads.filter(l => matchingLeadIds.has(l.LeadID)) : [...leads];
@@ -1341,7 +1355,11 @@ class V2Router {
     }
     if (filters.txnType) {
       const reqTxnType = req.TransactionType || (txns.find(t => t.TransactionID === req.TransactionID) || {}).TransactionType;
-      if (!reqTxnType || reqTxnType.toLowerCase() !== String(filters.txnType).toLowerCase()) return false;
+      const canonicalType = value => {
+        const type = String(value || '').trim().toLowerCase();
+        return type === 'sell' ? 'sale' : type;
+      };
+      if (!reqTxnType || canonicalType(reqTxnType) !== canonicalType(filters.txnType)) return false;
     }
     if (filters.category && (!req.Category || req.Category.toLowerCase() !== String(filters.category).toLowerCase())) return false;
     if (filters.subCategory && (!req.SubCategory || req.SubCategory.toLowerCase() !== String(filters.subCategory).toLowerCase())) return false;
