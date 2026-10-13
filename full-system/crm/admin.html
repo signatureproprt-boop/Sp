@@ -192,6 +192,7 @@ $('cloudRefresh').onclick=async()=>{
    'Current revision: '+(c.currentRevision||'Unknown'),
    'Latest ready revision: '+(c.service?.revision||'Unavailable'),
    'Runtime account: '+(c.service?.serviceAccount||'Unavailable'),
+   'CPU allocation: '+(c.service?.cpuIdle === true ? 'During requests only' : c.service?.cpuIdle === false ? 'Always allocated' : 'Not reported'),
    'Mongo: '+(m.initialized?'initialized':'unavailable')+' · Pending saves '+(m.pendingWrites||0)+' · Confirmed '+(m.successes||0)+' · Failed '+(m.failures||0),
    'Snapshot: '+((m.snapshotBytes||0)/1048576).toFixed(2)+' MB · Last failure: '+(m.lastFailure||'None'),
    'Management Sheet: '+(r.state||'Unknown')+' · '+(r.stage||'')+' · '+(r.reason||''),r.message||'',
