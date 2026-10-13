@@ -153,7 +153,7 @@ function buildProjection(db, snapshotAt) {
       : current ? [current] : (lead.SheetBasicRequirements || []).map(r => `Unconfirmed: ${describe(r)}`);
     const work = {};
     for (const collection of ['Transactions', 'FollowUps', 'Shortlists', 'SiteVisits', 'Activities']) {
-      work[collection] = (db[collection] || []).filter(r => id(r.LeadID || r.ClientID) === key);
+      work[collection] = (db[collection] || []).filter(r => !r.IdentityMappingReview && id(r.LeadID || r.ClientID) === key);
     }
     out.Clients.push([key, lead.ClientName || lead.Name, lead.PrimaryMobile || lead.Phone, lead.Email,
       lead.ClientStatus || lead.LeadStatus, lead.AssignedAgentID, lead.NextFollowUpAt || lead.NextFollowUp, lead.LeadSource || lead.Source || lead._source,
