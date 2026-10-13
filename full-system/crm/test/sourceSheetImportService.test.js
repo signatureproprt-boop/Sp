@@ -73,3 +73,21 @@ test('repair with duplicate IDs refuses to overwrite a concurrent change',()=>{
  assert.deepEqual(merge(base,desired,base),desired);
  assert.throws(()=>merge(base,desired,{Leads:[{...base.Leads[0],Notes:'Concurrent update'},base.Leads[1]]}),/changed concurrently/);
 });
+
+test('incoming sync remains enabled with a separate reporting workbook and repeat runs do not duplicate clients',async()=>{
+ const previous=process.env.CRM_REPORT_SHEET_ID;
+ process.env.CRM_REPORT_SHEET_ID='separate-report';
+ try {
+  let db={Leads:[],Users:[{UserID:'admin',Role:'ADMIN',Status:'Active'}],SourceSheetImport:{enabled:true,sourceId:SOURCE_ID,actor}};
+  let writes=0;
+  const svc=new (require('../src/services/googleSheetSyncService').GoogleSheetSyncService)({read:()=>structuredClone(db),write:next=>{db=next;writes++;}});
+  const readIds=[];
+  svc.downloadPublicSheetCsv=async(id,tab)=>{readIds.push(id);return header+'\n'+tab+'-1,'+tab+' Person,'+({Comm:'9167658880',Sale:'9876543210',Rent:'9157060560'}[tab])+',30000,,original';};
+  const first=await svc.syncPublicSheet();
+  assert.equal(first.ok,true);assert.equal(first.created,3);
+  const second=await svc.syncPublicSheet();
+  assert.equal(second.created,0);assert.equal(second.updated,0);assert.equal(writes,1);
+  assert.ok(readIds.every(id=>id===SOURCE_ID));
+  assert.equal(db.Leads.length,3);
+ } finally {if(previous===undefined)delete process.env.CRM_REPORT_SHEET_ID;else process.env.CRM_REPORT_SHEET_ID=previous;}
+});
