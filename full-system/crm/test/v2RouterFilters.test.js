@@ -80,3 +80,16 @@ test('Sale list includes Sheet basics and captured purpose before a deal, withou
   assert.equal(db.Transactions.length,0);
   assert.equal(router._queryClientsByNeed({txnType:'Sale',category:'Residential'}).totalCount,0);
 });
+
+
+test('Sale Sheet filter keeps imported Purchase purpose and includes only that source group', () => {
+  const router=routerForFilters();
+  router.repo={read:()=>({Leads:[
+    {LeadID:'sale',SheetBasicRequirements:[{SourceTab:'Sale',TransactionType:'Purchase'}]},
+    {LeadID:'rent',SheetBasicRequirements:[{SourceTab:'Rent',TransactionType:'Rent'}]},
+    {LeadID:'manual',RequirementType:'Sale'}
+  ]})};
+  router._enrichClientsForList=rows=>rows;
+  assert.deepEqual(router._queryClientsByNeed({sourceTab:'Sale'}).data.map(l=>l.LeadID),['sale']);
+  assert.deepEqual(router._queryClientsByNeed({sourceTab:'Sale',txnType:'Purchase'}).data.map(l=>l.LeadID),['sale']);
+});
