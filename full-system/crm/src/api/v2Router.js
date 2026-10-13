@@ -105,6 +105,17 @@ class V2Router {
     const pathname = url.pathname;
     const method   = req.method;
 
+    const clientRoute = pathname.match(/^\/api\/v2\/(?:clients|leads)\/([^/]+)/);
+    if (clientRoute && !['query', 'check-duplicate'].includes(clientRoute[1])) {
+      const matches = (this.repo.list('Leads') || []).filter(lead => lead.LeadID === clientRoute[1]);
+      if (matches.length > 1) {
+        const auth = this._requireActor(req, url);
+        if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+        return this._json(409, { ok: false, code: 'AMBIGUOUS_CLIENT_ID',
+          error: 'Client ID matches multiple client records. Resolve the identity mapping before opening or changing this client.' });
+      }
+    }
+
     // ── NEW: Duplicate check (always active) ─────────────────────────────────
     if (pathname === '/api/leads/check-duplicate' && method === 'POST') {
       const auth = this._requireActor(req, url);

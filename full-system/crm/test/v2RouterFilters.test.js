@@ -116,3 +116,14 @@ test('merged aliases stay off operational lists and investor filtering matches d
  assert.deepEqual(router._queryClientsByNeed({clientType:'normal'}).data.map(l=>l.LeadID),['normal']);
  assert.deepEqual(router._queryClientsByNeed({q:'alias'}).data.map(l=>l.LeadID),['master']);
 });
+
+test('canonical V2 workspace and mutation routes block colliding client IDs',async()=>{
+ const router=routerForFilters();
+ router.repo={list:()=>[{LeadID:'COMM-0057'},{LeadID:'COMM-0057'}]};
+ router.actorResolver=()=>({userId:'admin',role:'ADMIN'});
+ for(const [method,path] of [['GET','/api/v2/clients/COMM-0057/workspace'],['PATCH','/api/v2/clients/COMM-0057'],['POST','/api/v2/clients/COMM-0057/requirements'],['POST','/api/v2/clients/COMM-0057/start-deal']]){
+  const response=await router.handle({method,headers:{}},null,new URL(path,'https://crm.test'),{});
+  assert.equal(response.statusCode,409);
+  assert.equal(response.body.code,'AMBIGUOUS_CLIENT_ID');
+ }
+});
