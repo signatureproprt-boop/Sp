@@ -1109,6 +1109,17 @@ table td,table th{border-color:var(--v2-line)!important}
     }
   }
 
+  function syncRenderedBudgetAliases(values, keys, clearMissing) {
+    for (const canonical of ['BudgetMin', 'BudgetMax']) {
+      const key = keys.find(k => String(k).toLowerCase() === canonical.toLowerCase());
+      if (!key) continue;
+      if (Object.prototype.hasOwnProperty.call(values, key)) values[canonical] = values[key];
+      else if (clearMissing) delete values[canonical];
+      else if (Object.prototype.hasOwnProperty.call(values, canonical)) values[key] = values[canonical];
+    }
+    return values;
+  }
+
   function collectDynamicValues(mode) {
     const state = dynamicFormState[mode];
     if (!state) return {};
@@ -1140,6 +1151,7 @@ table td,table th{border-color:var(--v2-line)!important}
       if (el.value) values[`__priority__${key}`] = el.value;
       else delete values[`__priority__${key}`];
     });
+    syncRenderedBudgetAliases(values, Array.from(root.querySelectorAll('[data-field-key]')).map(el => el.dataset.fieldKey), true);
     state.values = values;
     return values;
   }
@@ -1261,6 +1273,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const state = dynamicFormState[mode];
     if (!state?.config) return;
     const values = savedValues || collectDynamicValues(mode);
+    syncRenderedBudgetAliases(values, asArray(state.config.fields).map(f => f?.FieldKey).filter(Boolean), false);
     const visibleStates = evaluateFieldVisibility(state.config, state.rules, values);
     const fields = asArray(state.config.fields).filter(f => {
       if (!f) return false;
