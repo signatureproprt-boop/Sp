@@ -1211,6 +1211,7 @@ class V2Router {
     return this._queryClientsByNeed({
       txnType, category, subCategory: subCat, budgetMin, budgetMax, location, bhk, q,
       needSource: source,
+      sourceTab: url.searchParams.get('sourceTab') || undefined,
       clientStatus, lifecycle, source, tag, agentId, clientType, page, limit
     }, actor);
   }
@@ -1250,6 +1251,12 @@ class V2Router {
     }
 
     let result = hasNeedFilters ? leads.filter(l => matchingLeadIds.has(l.LeadID)) : [...leads];
+
+    if (filters.sourceTab) {
+      const tab = String(filters.sourceTab).trim().toLowerCase();
+      result = result.filter(lead => (Array.isArray(lead.SheetBasicRequirements) ? lead.SheetBasicRequirements : [])
+        .some(need => String(need.SourceTab || '').trim().toLowerCase() === tab));
+    }
 
     if (filters.clientStatus) {
       const statusMap = {

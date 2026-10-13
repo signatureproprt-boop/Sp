@@ -12,6 +12,7 @@ function fmtBudget(r){if(!r)return '—';const f=n=>n==null?'':n>=1e7?'₹'+(n/1
 function budgetRange(v){return ({under50:[null,4999999],"50to100":[5000000,9999999],"100to200":[10000000,19999999],over200:[20000000,null]})[v]||[null,null]}
 function buildQuery(){
  const p=new URLSearchParams();
+ const sourceTab=document.getElementById('sourceTab').value; if(sourceTab)p.set('sourceTab',sourceTab);
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
  const cat=document.getElementById('category').value, txn=FILTER_TXN, bud=document.getElementById('budget').value;
  const loc=document.getElementById('location').value.trim(), source=document.getElementById('source').value, type=document.getElementById('clientType').value;
