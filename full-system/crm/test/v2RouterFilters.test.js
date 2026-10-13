@@ -63,3 +63,20 @@ test('client workspace rejects duplicate LeadIDs instead of opening the wrong cl
   assert.equal(response.body.code, 'AMBIGUOUS_CLIENT_ID');
   assert.match(response.body.error, /multiple client records/i);
 });
+
+test('Sale list includes Sheet basics and captured purpose before a deal, without duplicates', () => {
+  const router=routerForFilters();
+  const db={Leads:[
+    {LeadID:'sheet',SheetBasicRequirements:[{TransactionType:'Sale'},{TransactionType:'Sale'}]},
+    {LeadID:'captured',RequirementType:'Sale'},
+    {LeadID:'confirmed'},
+    {LeadID:'rent',SheetBasicRequirements:[{TransactionType:'Rent'}]},
+    {LeadID:'unknown'}
+  ],Requirements:[{LeadID:'confirmed',TransactionType:'Sell'}],Transactions:[]};
+  router.repo={read:()=>db};
+  router._enrichClientsForList=rows=>rows;
+  assert.deepEqual(router._queryClientsByNeed({txnType:'Sale'}).data.map(l=>l.LeadID),['sheet','captured','confirmed']);
+  assert.equal(db.Requirements.length,1);
+  assert.equal(db.Transactions.length,0);
+  assert.equal(router._queryClientsByNeed({txnType:'Sale',category:'Residential'}).totalCount,0);
+});
