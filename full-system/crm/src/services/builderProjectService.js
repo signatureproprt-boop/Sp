@@ -102,7 +102,13 @@ const STATUS_MAP = {
 
 function normalizeStatus(raw) {
   const key = String(raw || '').trim().toLowerCase();
-  return STATUS_MAP[key] || (key ? 'Under Construction' : 'Under Construction');
+  return STATUS_MAP[key] || null;
+}
+
+function parseBHK(raw) {
+  const match = String(raw ?? '').trim().match(/^(\d+(?:\.\d+)?)\s*(?:BHK)?$/i);
+  const value = match ? Number(match[1]) : NaN;
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function normalizeConfig(raw) {
@@ -318,7 +324,7 @@ class BuilderProjectService {
       const minCarpet = parseNum(carpetMin), maxCarpet = parseNum(carpetMax);
       const minBuiltUp = parseNum(builtUpMin), maxBuiltUp = parseNum(builtUpMax);
       rows = rows.filter((p) => (p.ConfigDetails || []).some((c) => {
-        if (bhk && String(c.Type || '').toLowerCase() !== String(bhk).toLowerCase()) return false;
+        if (bhk && (parseBHK(bhk) == null || (c.BHK != null && c.BHK !== '' ? parseBHK(c.BHK) : parseBHK(c.Type)) !== parseBHK(bhk))) return false;
         const carpet = parseNum(c.CarpetAreaSqft), builtUp = parseNum(c.SuperBuiltUpAreaSqft);
         return (minCarpet == null || carpet != null && carpet >= minCarpet) &&
           (maxCarpet == null || carpet != null && carpet <= maxCarpet) &&
@@ -455,7 +461,7 @@ class BuilderProjectService {
             FlatType: String(c.FlatType || "").trim() || null,
             SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft != null && c.SuperBuiltUpAreaSqft !== "" ? parseNum(c.SuperBuiltUpAreaSqft) : null,
             Type: String(c.Type).trim(),
-            BHK: c.BHK != null && c.BHK !== '' ? parseIntSafe(c.BHK) : null,
+            BHK: c.BHK != null && c.BHK !== '' ? parseBHK(c.BHK) : null,
             AreaSqft: c.AreaSqft != null && c.AreaSqft !== '' ? parseNum(c.AreaSqft) : null,
             CarpetAreaSqft: c.CarpetAreaSqft != null && c.CarpetAreaSqft !== '' ? parseNum(c.CarpetAreaSqft) : null,
             BuiltUpAreaSqft: c.BuiltUpAreaSqft != null && c.BuiltUpAreaSqft !== '' ? parseNum(c.BuiltUpAreaSqft) : null,
