@@ -32,7 +32,7 @@
 
 'use strict';
 
-const { V2LeadService }          = require('../services/v2LeadService');
+const { V2LeadService, normalizePhone }          = require('../services/v2LeadService');
 const { V2TransactionService }   = require('../services/v2TransactionService');
 const { V2RequirementService }   = require('../services/v2RequirementService');
 const { V2ConfigService }        = require('../services/v2ConfigService');
@@ -1263,18 +1263,18 @@ class V2Router {
     }
     if (filters.q) {
       const q = String(filters.q).toLowerCase();
-      const qDigits = q.replace(/\\D/g, '');
+      const qDigits = normalizePhone(q);
       result = result.filter(l => {
         const name = String(l.ClientName || l.Name || '').toLowerCase();
-        const mobile = String(l.PrimaryMobile || l.Phone || '').replace(/\\D/g, '').slice(-10);
+        const mobile = normalizePhone(l.PrimaryMobile || l.Phone);
         const alternateMobiles = [
           l.AlternateMobile,
           ...(Array.isArray(l.AlternateMobiles) ? l.AlternateMobiles : [])
-        ].map(v => String(v || '').replace(/\\D/g, '').slice(-10)).filter(Boolean);
+        ].map(v => normalizePhone(v)).filter(Boolean);
         const email = String(l.Email || '').toLowerCase();
         const lid = String(l.LeadID || '').toLowerCase();
         const mergedInto = String(l.MergedIntoClientID || '').toLowerCase();
-        const phoneHit = qDigits && ([mobile, ...alternateMobiles].some(v => v && v.includes(qDigits.slice(-10))));
+        const phoneHit = qDigits && ([mobile, ...alternateMobiles].some(v => v && v.includes(qDigits)));
         return name.includes(q) || phoneHit || email.includes(q) || lid.includes(q) || mergedInto.includes(q);
       });
       // Old IDs/mobiles remain searchable, but operational navigation resolves
@@ -1341,17 +1341,17 @@ class V2Router {
     }
     if (filters.txnType) {
       const reqTxnType = req.TransactionType || (txns.find(t => t.TransactionID === req.TransactionID) || {}).TransactionType;
-      if (reqTxnType && reqTxnType.toLowerCase() !== String(filters.txnType).toLowerCase()) return false;
+      if (!reqTxnType || reqTxnType.toLowerCase() !== String(filters.txnType).toLowerCase()) return false;
     }
-    if (filters.category && req.Category && req.Category.toLowerCase() !== String(filters.category).toLowerCase()) return false;
-    if (filters.subCategory && req.SubCategory && req.SubCategory.toLowerCase() !== String(filters.subCategory).toLowerCase()) return false;
+    if (filters.category && (!req.Category || req.Category.toLowerCase() !== String(filters.category).toLowerCase())) return false;
+    if (filters.subCategory && (!req.SubCategory || req.SubCategory.toLowerCase() !== String(filters.subCategory).toLowerCase())) return false;
 
     // Budget filters (Fields.BudgetMax or flat)
     if (filters.budgetMin != null || filters.budgetMax != null) {
       const bMax = req.Fields?.BudgetMax?.value ?? req.BudgetMax;
       const bMin = req.Fields?.BudgetMin?.value ?? req.BudgetMin;
-      if (filters.budgetMax != null && bMin != null && bMin > filters.budgetMax) return false;
-      if (filters.budgetMin != null && bMax != null && bMax < filters.budgetMin) return false;
+      if (filters.budgetMax != null && (bMin == null || bMin === '' || !Number.isFinite(Number(bMin)) || Number(bMin) > filters.budgetMax)) return false;
+      if (filters.budgetMin != null && (bMax == null || bMax === '' || !Number.isFinite(Number(bMax)) || Number(bMax) < filters.budgetMin)) return false;
     }
 
     // Location
@@ -1367,8 +1367,8 @@ class V2Router {
 
     // BHK
     if (filters.bhk != null) {
-      const bhkMin = req.Fields?.BHKMin?.value ?? req.BHKMin;
-      if (bhkMin != null && Number(bhkMin) < Number(filters.bhk)) return false;
+      const bhkMin = req.Fields?.BHKMin?.value ?? req.BHKMin ?? req.BHK;
+      if (bhkMin == null || bhkMin === '' || !Number.isFinite(Number(bhkMin)) || Number(bhkMin) < Number(filters.bhk)) return false;
     }
 
     return true;

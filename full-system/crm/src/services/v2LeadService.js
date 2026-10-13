@@ -251,6 +251,21 @@ class V2LeadService {
       return { ok: false, error: 'LeadID is immutable' };
     }
 
+    const contact = (keys, fallback, normalize) => {
+      const key = keys.find(key => Object.prototype.hasOwnProperty.call(payload, key));
+      return key === undefined ? fallback : normalize(payload[key]);
+    };
+    const primaryMobile = contact(['PrimaryMobile', 'primaryMobile', 'Phone', 'phone'], existing.PrimaryMobile || existing.Phone, normalizePhone);
+    const alternateMobile = contact(['AlternateMobile', 'alternateMobile'], existing.AlternateMobile, normalizePhone);
+    const whatsapp = contact(['WhatsApp', 'whatsapp'], existing.WhatsApp, normalizePhone);
+    const email = contact(['Email', 'email'], existing.Email, normalizeEmail);
+    if (normalizePhone(primaryMobile) !== normalizePhone(existing.PrimaryMobile || existing.Phone) && primaryMobile) {
+      const duplicate = db.Leads.find(lead => lead.LeadID !== leadId &&
+        [lead.PrimaryMobile || lead.Phone, lead.AlternateMobile, ...(lead.AlternateMobiles || [])]
+          .map(normalizePhone).includes(primaryMobile));
+      if (duplicate) return { ok: false, error: 'Mobile already belongs to another client', duplicateResult: 'EXACT_MATCH', candidates: [this._maskCandidate(duplicate, 'EXACT_MATCH')] };
+    }
+
     const now = new Date().toISOString();
 
     // Status transitions
@@ -277,16 +292,16 @@ class V2LeadService {
     const updated = {
       ...existing,
       ClientName:      payload.ClientName || payload.clientName || existing.ClientName,
-      PrimaryMobile:   payload.PrimaryMobile || payload.primaryMobile || payload.Phone || payload.phone || existing.PrimaryMobile,
-      AlternateMobile: payload.AlternateMobile || payload.alternateMobile || existing.AlternateMobile,
-      WhatsApp:        payload.WhatsApp || payload.whatsapp || existing.WhatsApp,
-      Email:           payload.Email || payload.email || existing.Email,
+      PrimaryMobile:   primaryMobile,
+      AlternateMobile: alternateMobile,
+      WhatsApp:        whatsapp,
+      Email:           email,
       ClientStatus:    clientStatus,
       ClientLifecycle: clientLifecycle,
       Source:          source,
       LeadSource:      source,
       LeadStatus:      clientStatus,
-      Phone:           payload.Phone || payload.phone || payload.PrimaryMobile || payload.primaryMobile || existing.Phone,
+      Phone:           primaryMobile,
       City:            payload.City || payload.city || existing.City,
       Area:            payload.Area ?? payload.area ?? existing.Area ?? null,
       PreferredLanguage: payload.PreferredLanguage ?? payload.preferredLanguage ?? existing.PreferredLanguage ?? null,
