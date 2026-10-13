@@ -156,3 +156,28 @@ test('reporting tolerates a slow saved-snapshot read inside its lease and identi
  const timed=createReportRunner({mongoStore,env:{CRM_REPORT_SHEET_ID:'report'},now:()=>tick,serviceFactory:()=>({sync:async()=>{throw Error('Must not write');}})});
  const result=await timed.run();assert.equal(result.reason,'CRM_SNAPSHOT');assert.equal(result.stage,'CRM_SNAPSHOT');
 });
+
+
+test('distinct source rows in one tab preserve needs and retain a proven legacy report slot',()=>{
+ const legacy={SourceTab:'Comm',TransactionType:'Rent',Category:'Commercial',BudgetMax:40000,UpdatedAt:'old'};
+ const db={Leads:[{LeadID:'C1',ClientName:'Client',PrimaryMobile:'9876543210',BudgetMax:80000,SheetBasicRequirements:[legacy,{...legacy,SourceRow:85,SourceLegacyID:'COMM-0084',DuplicateNumber:true,UpdatedAt:'new'},{...legacy,SourceRow:96,SourceLegacyID:'COMM-0095',BudgetMax:80000}]}]};
+ const p=buildProjection(db,'now');assert.equal(p['Sync Issues'].length,0);assert.equal(p.Clients.length,1);assert.equal(p.Work.length,2);
+ assert.deepEqual(p.Work.map(r=>[r[0],r[12-1]]),[['BASIC:C1:Comm',40000],['BASIC:C1:Comm:ROW:96',80000]]);
+ const reversed=buildProjection({...db,Leads:[{...db.Leads[0],SheetBasicRequirements:[...db.Leads[0].SheetBasicRequirements].reverse()}]},'now');assert.deepEqual(reversed.Work,p.Work);
+ assert.equal(reconcileRows(HEADERS.Work,p.Work,[HEADERS.Work,...p.Work,...p.Work]).filter(r=>r[0]).length,3);
+});
+test('source row conflicts and missing provenance still require review',()=>{
+ const p=buildProjection({Leads:[{LeadID:'C1',SheetBasicRequirements:[{SourceTab:'Sale',SourceRow:8,BudgetMax:100},{SourceTab:'Sale',SourceRow:8,BudgetMax:200},{SourceRow:9}]}]},'now');
+ assert.ok(p['Sync Issues'].some(r=>r[3].includes('Conflicting')));assert.ok(p['Sync Issues'].some(r=>r[3].includes('Missing SourceTab')));
+ assert.ok(!p.Work.some(r=>r[0].includes(':ROW:8')));
+});
+
+test('verified source-error archive is retained without blocking reports when no shared history remains',()=>{
+ const detail=(tab,row,legacy,name,phone)=>({SpreadsheetID:SOURCE_SHEET_ID,SourceTab:tab,SourceRow:row,Columns:{'Lead ID':legacy,Name:name,Phone:phone}});
+ const archive={ArtifactID:'SOURCE-ERROR:COMM-0057:RENT-0006',ArchivedAt:'2026-10-13',SourceTab:'Rent',SourceRow:7,OriginalLead:{LeadID:'COMM-0057',LegacyID:'RENT-0006',ClientName:'Dr Arohi',PrimaryMobile:'#ERROR!',CreatedBy:'GoogleSheetSync',_source:'GoogleSheet:Rent'},IdentityMappingReview:{PreviousLeadID:'COMM-0057',SeparateLeadID:'RENT-0006'}};
+ const db={Leads:[{LeadID:'COMM-0057',ClientName:'Kenil Shah',PrimaryMobile:'9167658880',ImportedSheetDetails:[detail('Comm',58,'COMM-0057','Kenil Shah','9167658880')],SheetBasicRequirements:[{SourceTab:'Comm',TransactionType:'Rent',Category:'Commercial'}]},{LeadID:'RENT-0006',LegacyID:'RENT-0006',ClientName:'Dr Arohi',PrimaryMobile:'9157060560',ImportedSheetDetails:[detail('Rent',7,'RENT-0006','Dr Arohi','9157060560')],SheetBasicRequirements:[{SourceTab:'Rent',TransactionType:'Rent',Category:'Residential'}]}],SourceSheetArtifacts:[archive]};
+ const before=JSON.stringify(db),p=buildProjection(db,'now');assert.equal(p['Sync Issues'].length,0);assert.equal(p.Clients.length,2);assert.equal(JSON.stringify(db),before);
+ const withHistory={...db,Activities:[{ActivityID:'A1',LeadID:'COMM-0057',IdentityMappingReview:archive.IdentityMappingReview}]};
+ assert.ok(buildProjection(withHistory,'now')['Sync Issues'].some(r=>r[1]==='SourceSheetArtifacts'));
+ const wrongSource=JSON.parse(before);wrongSource.Leads[1].ImportedSheetDetails[0].Columns.Phone='9999999999';assert.ok(buildProjection(wrongSource,'now')['Sync Issues'].some(r=>r[1]==='SourceSheetArtifacts'));
+});

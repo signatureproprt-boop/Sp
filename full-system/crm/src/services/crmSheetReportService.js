@@ -21,13 +21,36 @@ function field(row, key) {
   if (f && typeof f === 'object' && f.state) return f.state === 'KNOWN' ? f.value ?? '' : '';
   return row[key] ?? '';
 }
+function verifiedArchivedSourceError(db, artifact) {
+  const original = artifact?.OriginalLead, review = artifact?.IdentityMappingReview;
+  if (!artifact?.ArchivedAt || !original || !review || original.PrimaryMobile !== '#ERROR!' ||
+      original.CreatedBy !== 'GoogleSheetSync' || original._source !== `GoogleSheet:${artifact.SourceTab}` ||
+      original.LeadID !== review.PreviousLeadID || original.LegacyID !== review.SeparateLeadID ||
+      artifact.ArtifactID !== `SOURCE-ERROR:${review.PreviousLeadID}:${review.SeparateLeadID}`) return false;
+  const phone = value => String(value || '').replace(/\D/g,'').replace(/^91(?=\d{10}$)/,'');
+  const name = value => String(value || '').trim().toLowerCase();
+  const oldOwners = (db.Leads || []).filter(l=>l.LeadID===review.PreviousLeadID);
+  const separate = (db.Leads || []).filter(l=>l.LeadID===review.SeparateLeadID);
+  if (oldOwners.length!==1 || separate.length!==1) return false;
+  const old=oldOwners[0], real=separate[0];
+  if (old.IdentityMappingReview || real.IdentityMappingReview || real.LegacyID!==review.SeparateLeadID || name(real.ClientName)!==name(original.ClientName) ||
+      !/^\d{10}$/.test(phone(old.PrimaryMobile)) || !/^\d{10}$/.test(phone(real.PrimaryMobile)) || phone(old.PrimaryMobile)===phone(real.PrimaryMobile)) return false;
+  const matches = (lead,tab,legacyId) => (lead.ImportedSheetDetails || []).filter(d=>d.SpreadsheetID===SOURCE_SHEET_ID && d.SourceTab===tab &&
+    String(d.Columns?.['Lead ID'] || '')===legacyId && name(d.Columns?.Name)===name(lead.ClientName) && phone(d.Columns?.Phone)===phone(lead.PrimaryMobile));
+  const oldSource=matches(old,'Comm',review.PreviousLeadID), realSource=matches(real,artifact.SourceTab,review.SeparateLeadID);
+  if (oldSource.length!==1 || realSource.length!==1 || realSource[0].SourceRow!==artifact.SourceRow) return false;
+  // Do not call the archive resolved while any live shared-ID history remains.
+  return !Object.values(db).some(rows=>Array.isArray(rows) && rows.some(r=>r!==artifact && r?.IdentityMappingReview &&
+    (r.IdentityMappingReview.PreviousLeadID===review.PreviousLeadID || r.IdentityMappingReview.SeparateLeadID===review.SeparateLeadID ||
+     [review.PreviousLeadID,review.SeparateLeadID].includes(r.LeadID))));
+}
 function buildProjection(db, snapshotAt) {
   const out = Object.fromEntries(TABS.map(t => [t, []]));
   const issue = (collection, key, reason) => out['Sync Issues'].push([`${collection}:${key}:${reason}`, collection, key, reason]);
   for (const [collection, rows] of Object.entries(db)) {
     if (!Array.isArray(rows)) continue;
     rows.forEach((row, i) => {
-      if (row?.IdentityMappingReview) issue(collection, id(row.TransactionID || row.RequirementID || row.FollowUpID || row.DocumentID || row.ActivityID || row.ArtifactID) || `source-row-${i + 1}`, 'Shared client identity requires ownership review; excluded from client reporting');
+      if (row?.IdentityMappingReview && !(collection === 'SourceSheetArtifacts' && verifiedArchivedSourceError(db,row))) issue(collection, id(row.TransactionID || row.RequirementID || row.FollowUpID || row.DocumentID || row.ActivityID || row.ArtifactID) || `source-row-${i + 1}`, 'Shared client identity requires ownership review; excluded from client reporting');
     });
   }
   function unique(collection, key) {
@@ -106,11 +129,8 @@ function buildProjection(db, snapshotAt) {
   }
   for (const [leadKey, lead] of leads) {
     const basics = Array.isArray(lead.SheetBasicRequirements) ? lead.SheetBasicRequirements : [];
-    const seen = new Set();
-    for (const basic of basics) {
-      const tab = id(basic.SourceTab);
-      if (!tab || seen.has(tab)) { issue('SheetBasicRequirements', leadKey, 'Missing or duplicate SourceTab; review required'); continue; }
-      seen.add(tab);
+    const sourceNeeds = reportSourceNeeds(basics,leadKey,issue);
+    for (const {basic,tab,key} of sourceNeeds) {
       // An imported transaction already represents this same source tab.
       const represented = [...validTx.values()].some(txn => id(txn.LeadID) === leadKey &&
         (txn._source === `GoogleSheet:${tab}` ||
@@ -119,11 +139,11 @@ function buildProjection(db, snapshotAt) {
       if (represented) continue;
       const clientStatus = str(lead.ClientStatus || lead.LeadStatus).toLowerCase();
       const currentBasic = { ...basic };
-      if (lead.RequirementType) currentBasic.TransactionType = lead.RequirementType;
+      if (sourceNeeds.length === 1 && lead.RequirementType) currentBasic.TransactionType = lead.RequirementType;
       for (const k of ['TransactionType', 'Category', 'BudgetMin', 'BudgetMax', 'Location1', 'BHK', 'PropertyType', 'SubCategory', 'Notes']) {
-        if (field(lead, k) !== '') currentBasic[k] = field(lead, k);
+        if (sourceNeeds.length === 1 && field(lead, k) !== '') currentBasic[k] = field(lead, k);
       }
-      addWork(`BASIC:${leadKey}:${tab}`, leadKey, '', 'Unconfirmed Sheet need',
+      addWork(key, leadKey, '', 'Unconfirmed Sheet need',
         ['lost', 'closed', 'won'].includes(clientStatus) ? { ...currentBasic, Status: lead.ClientStatus || lead.LeadStatus } : currentBasic);
     }
     if (!out.Work.some(row => row[1] === leadKey)) {
@@ -170,6 +190,55 @@ function buildProjection(db, snapshotAt) {
   ];
   for (const tab of TABS) out[tab] = out[tab].map(row => row.map(scalar));
   return out;
+}
+
+// A source tab may legitimately contain several rows for the same mobile.
+// Row provenance distinguishes those needs; an identical legacy copy retains
+// the old report ID so repeated projections do not manufacture new clients.
+function sourceNeedSignature(need) {
+  const metadata = new Set(['SourceTab','SourceRow','SourceLegacyID','Source','CreatedAt','UpdatedAt','CreatedBy','ConfirmationStatus','DuplicateNumber']);
+  const normalize = value => {
+    if (Array.isArray(value)) return value.map(normalize);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().filter(k => value[k] != null && value[k] !== '').map(k => [k,normalize(value[k])]));
+    return value == null ? '' : String(value).trim();
+  };
+  return JSON.stringify(Object.fromEntries(Object.keys(need).sort().filter(k => !metadata.has(k) && need[k] != null && need[k] !== '').map(k => [k,normalize(need[k])])));
+}
+function reportSourceNeeds(basics, leadKey, issue) {
+  const groups = new Map(), output = [];
+  for (const basic of basics) {
+    const tab = id(basic?.SourceTab);
+    if (!tab) { issue('SheetBasicRequirements',leadKey,'Missing SourceTab; review required'); continue; }
+    const group = groups.get(tab) || []; group.push(basic); groups.set(tab,group);
+  }
+  for (const [tab,group] of groups) {
+    const rows = new Map(), legacy = new Map(), conflicted = new Set();
+    for (const need of group) {
+      const signature = sourceNeedSignature(need), value = need.SourceRow;
+      if (value == null || value === '') { legacy.set(signature,need); continue; }
+      const row = Number(value);
+      if (!Number.isSafeInteger(row) || row < 2) { issue('SheetBasicRequirements',leadKey,'Invalid SourceRow; review required'); continue; }
+      if (rows.has(row) && sourceNeedSignature(rows.get(row)) !== signature) {
+        conflicted.add(row); issue('SheetBasicRequirements',leadKey,'Conflicting basic needs for source row '+row+'; review required');
+      } else rows.set(row,need);
+    }
+    let legacySlotUsed = false;
+    // Exact legacy copies share the old tab ID with a proven row, preserving
+    // existing Sheet slots. All distinct row needs keep their own immutable key.
+    for (const [row,need] of [...rows].sort((a,b)=>a[0]-b[0])) {
+      if (conflicted.has(row)) continue;
+      const signature = sourceNeedSignature(need), matchesLegacy = legacy.has(signature);
+      const oldSlot = matchesLegacy && !legacySlotUsed;
+      if (matchesLegacy) legacy.delete(signature);
+      if (oldSlot) legacySlotUsed = true;
+      output.push({basic:need,tab,key:oldSlot ? `BASIC:${leadKey}:${tab}` : `BASIC:${leadKey}:${tab}:ROW:${row}`});
+    }
+    for (const need of legacy.values()) {
+      if (legacySlotUsed) { issue('SheetBasicRequirements',leadKey,'Multiple unanchored legacy needs in source tab '+tab+'; review required'); continue; }
+      legacySlotUsed = true; output.push({basic:need,tab,key:`BASIC:${leadKey}:${tab}`});
+    }
+  }
+  return output;
 }
 
 function cell(value) {
@@ -260,3 +329,4 @@ class CrmSheetReportService {
 }
 
 module.exports = { CrmSheetReportService, buildProjection, reconcileRows, cell, HEADERS, TABS, SOURCE_SHEET_ID };
+
