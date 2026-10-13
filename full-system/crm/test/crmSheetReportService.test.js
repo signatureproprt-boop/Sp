@@ -143,3 +143,16 @@ test('report errors expose safe diagnostic categories without upstream payloads'
   assert.equal(secret.reason, 'UNKNOWN');
   assert.doesNotMatch(JSON.stringify(secret), /upstream secret/);
 });
+
+test('reporting tolerates a slow saved-snapshot read inside its lease and identifies the failing stage',async()=>{
+ let tick=0,lease;
+ const mongoStore={isInitialized:()=>true,withDistributedLock:async(_,fn,options)=>{lease=options.leaseMs;return {acquired:true,result:await fn()};},getDb:()=>({collection:()=>({findOne:async()=>{tick=50000;return {payload:fixture()};}})})};
+ const runner=createReportRunner({mongoStore,env:{CRM_REPORT_SHEET_ID:'report'},now:()=>tick,serviceFactory:()=>({sync:async()=>({ok:true,complete:true})})});
+ assert.equal((await runner.run()).state,'SYNCED');assert.equal(lease,600000);
+ const fake=fakeSheets(),stages=[];
+ await new CrmSheetReportService({sheets:fake.api,spreadsheetId:'report',onStage:s=>stages.push(s)}).sync(fixture(),'v1');
+ assert.deepEqual(stages,['WORKBOOK_METADATA','WORKBOOK_READ','WORKBOOK_WRITE']);
+ tick=0;mongoStore.getDb=()=>({collection:()=>({findOne:async()=>{tick=200000;return {payload:fixture()};}})});
+ const timed=createReportRunner({mongoStore,env:{CRM_REPORT_SHEET_ID:'report'},now:()=>tick,serviceFactory:()=>({sync:async()=>{throw Error('Must not write');}})});
+ const result=await timed.run();assert.equal(result.reason,'CRM_SNAPSHOT');assert.equal(result.stage,'CRM_SNAPSHOT');
+});
