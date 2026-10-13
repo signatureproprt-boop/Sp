@@ -91,6 +91,16 @@ table td,table th{border-color:var(--v2-line)!important}
 <button id="driveTest" type="button">Test connection</button>
 <button id="driveReconnect" type="button">Reconnect Google Drive</button>
 </section>
+<section class="card" id="sheet-connections"><h2>Source Sheet → CRM → Management Sheet</h2>
+<p class="muted">Source Sheet is read-only. Incoming details stay preliminary; client work and status are managed in CRM. The separate Management Sheet reports the same saved IDs.</p>
+<p id="sheetState" class="status" role="status">Checking Sheet connections…</p>
+<label><input id="repairComm57" type="checkbox" checked> Repair verified COMM-0057 collision: Dr Arohi → RENT-0006; retain shared work for ownership review.</label>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px">
+<button id="sourcePreview" type="button">Preview source import</button>
+<button id="sourceApply" type="button" disabled>Apply preview & enable incoming sync</button>
+<button id="reportSync" type="button">Sync Management Sheet</button>
+<button id="sheetRefresh" type="button">Refresh Sheet status</button></div>
+<pre id="sourceResult" style="white-space:pre-wrap;overflow-wrap:anywhere" role="status"></pre></section>
 <section class="card"><h2>Admin Modules</h2><div class="links">
 <a href="#users">👥 Users & Roles</a><a href="#settings">⚙️ System Settings</a><a href="#health">🩺 System Health</a>
 </div></section>
@@ -140,6 +150,32 @@ if(new URLSearchParams(location.search).get('drive')==='connected') {
   $('driveStatus').textContent='Google Drive reconnected. Use Test connection to verify.';
   history.replaceState(null,'','/admin');
 }
+let sourcePreviewToken=null;
+async function sheetStatus(){
+ try {const {d}=await api('/api/sync/source-sheet/status');if(!d.ok)throw new Error(d.error||'Sheet status unavailable');
+ const v=d.data||{}; $('sheetState').textContent='Source import: '+(v.sourceEnabled?'enabled (read-only)':'setup pending')+' | Management: '+(v.report?.state||'UNKNOWN')+(v.report?.code?' (Google error '+v.report.code+')':'');
+ }catch(e){$('sheetState').textContent=e.message;}
+}
+$('repairComm57').onchange=()=>{sourcePreviewToken=null;$('sourceApply').disabled=true;};
+$('sheetRefresh').onclick=sheetStatus;
+$('sourcePreview').onclick=async()=>{
+ $('sourcePreview').disabled=true;$('sourceApply').disabled=true;sourcePreviewToken=null;$('sourceResult').textContent='Reading source rows and checking CRM identities…';
+ try{const {d}=await api('/api/sync/source-sheet/preview',{method:'POST',body:JSON.stringify({repairComm57:$('repairComm57').checked})});if(!d.ok)throw new Error(d.error||'Preview failed');
+ sourcePreviewToken=d.data.token;$('sourceResult').textContent=JSON.stringify({...d.data,token:undefined},null,2);$('sourceApply').disabled=false;
+ }catch(e){$('sourceResult').textContent=e.message;}finally{$('sourcePreview').disabled=false;}
+};
+$('sourceApply').onclick=async()=>{
+ if(!sourcePreviewToken)return;$('sourceApply').disabled=true;$('sourceResult').textContent='Applying reviewed source plan. Waiting for durable CRM save…';
+ try{const {d}=await api('/api/sync/source-sheet/commit',{method:'POST',body:JSON.stringify({token:sourcePreviewToken,repairComm57:$('repairComm57').checked})});if(!d.ok)throw new Error(d.error||d.message||'Source apply failed');
+ $('sourceResult').textContent='Source applied. Original Sheet unchanged. '+JSON.stringify({...d.data,token:undefined},null,2);sourcePreviewToken=null;await sheetStatus();
+ }catch(e){$('sourceResult').textContent=e.message+' Check persisted state before retrying.';sourcePreviewToken=null;}
+};
+$('reportSync').onclick=async()=>{
+ $('reportSync').disabled=true;$('sheetState').textContent='Updating Management Sheet from saved CRM…';
+ try{const {d}=await api('/api/sync/crm-report',{method:'POST'});if(!d.ok)throw new Error(d.message||d.error||d.state||'Report sync failed');await sheetStatus();}
+ catch(e){$('sheetState').textContent=e.message;}finally{$('reportSync').disabled=false;}
+};
+sheetStatus();
 boot();
 </script>
 </body>

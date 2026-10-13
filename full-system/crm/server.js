@@ -3130,6 +3130,35 @@ async function handleApi(req, res, url) {
       sendJson(res,{ok:true,data:plan.report}); return;
     }
 
+    // Read-only source import and separate reporting remain independently enabled.
+    if (/^\/api\/sync\/source-sheet\/(status|preview|commit)\/?$/i.test(pathname)) {
+      const operation = pathname.match(/\/(status|preview|commit)\/?$/i)[1];
+      if (!ensureAdminPermissionOrRespond(req, res, url, operation === 'status' ? 'ADMIN_READ' : 'ADMIN_UPDATE')) return;
+      if ((operation === 'status' && req.method !== 'GET') || (operation !== 'status' && req.method !== 'POST')) { sendJson(res,{ok:false,error:'Method not allowed'},405);return; }
+      const { readSourceRecords, buildSourcePlan, enabledImportActor, SOURCE_ID } = require('./src/services/sourceSheetImportService');
+      const db = runtime.repository.read();
+      if (operation === 'status') {
+        sendJson(res,{ok:true,data:{sourceId:SOURCE_ID,sourceReadOnly:true,sourceEnabled:!!enabledImportActor(db),report:crmSheetReportRunner.status()}});return;
+      }
+      try {
+        const { GoogleSheetSyncService } = require('./src/services/googleSheetSyncService');
+        const svc = new GoogleSheetSyncService(runtime.repository);
+        const source = await readSourceRecords((id,tab,gid)=>svc.downloadPublicSheetCsv(id,tab,gid));
+        const current = runtime.repository.read();
+        const session = getAuthenticatedActor(req,url);
+        const actor = {userId:session.userId,role:'ADMIN',companyId:session.companyId||null,brokerageId:session.brokerageId||null};
+        const body = bodyForV2 || {};
+        const plan = buildSourcePlan(current,source,actor,{repairComm57:body.repairComm57===true});
+        if (operation === 'commit') {
+          if (body.token !== plan.report.token) { sendJson(res,{ok:false,error:'CRM/source changed. Preview again.'},409);return; }
+          plan.next.SourceSheetImport={enabled:true,sourceId:SOURCE_ID,actor,enabledAt:new Date().toISOString(),lastApplied:plan.report};
+          runtime.repository.write(plan.next);
+        }
+        sendJson(res,{ok:true,data:plan.report});
+      } catch(error) { sendJson(res,{ok:false,error:error.message||'Source import failed'},400); }
+      return;
+    }
+
     // Explicit original-Sheet migration. Preview and commit share a client/source token.
     const sheetMigrationMatch = pathname.match(/^\/api\/sync\/sheet-migration\/(preview|commit)\/?$/i);
     if (sheetMigrationMatch && req.method === 'POST') {
