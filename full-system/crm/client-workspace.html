@@ -624,7 +624,7 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="modal-header">
       <div class="edit-client-heading">
         <span class="modal-title" id="edit-client-title" tabindex="-1">Client Form</span>
-        <span class="client-form-hint">Sheet details are pre-filled. Confirm the client’s property need on the call, then save it.</span>
+        <span class="client-form-hint">Review the Sheet details below. Use a Sheet requirement after confirming it with the client, then save it.</span>
       </div>
       <div class="client-form-page-actions">
         <a class="btn btn-ghost btn-sm" href="/clients">← Clients</a>
@@ -772,7 +772,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="modal-overlay hidden" id="mark-lost-modal">
   <div class="modal" style="width:480px">
     <div class="modal-header">
-      <span class="modal-title" style="color:#991b1b">Mark Transaction Lost</span>
+      <span class="modal-title" style="color:#991b1b">Mark Requirement Lost</span>
       <button class="modal-close" onclick="closeModal('mark-lost-modal')">&times;</button>
     </div>
     <div class="modal-body">
@@ -810,7 +810,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <!-- ── CLOSE / PAUSE REQUIREMENT MODAL ─────────────────────────────────── -->
 <div class="modal-overlay hidden" id="requirement-status-modal">
   <div class="modal" style="width:500px">
-    <div class="modal-header"><span class="modal-title" id="requirement-status-title">Update Transaction Status</span><button class="modal-close" onclick="closeModal('requirement-status-modal')">&times;</button></div>
+    <div class="modal-header"><span class="modal-title" id="requirement-status-title">Update Requirement Status</span><button class="modal-close" onclick="closeModal('requirement-status-modal')">&times;</button></div>
     <div class="modal-body">
       <div id="requirement-status-label" style="background:#faf7f2;border:1px solid var(--clr-border);border-radius:7px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px"></div>
       <div class="form-group"><label id="requirement-status-reason-label">Reason</label>
@@ -1927,7 +1927,7 @@ table td,table th{border-color:var(--v2-line)!important}
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       }).then(r => r.json());
       if (!res.ok) {
-        document.getElementById('requirement-status-error').textContent = res.error || 'Failed to update transaction';
+        document.getElementById('requirement-status-error').textContent = res.error || 'Failed to update requirement';
         return;
       }
       closeModal('requirement-status-modal');
@@ -2418,7 +2418,7 @@ table td,table th{border-color:var(--v2-line)!important}
       const status = editNeedText(transaction.RequirementStatus || transaction.Status) || 'Open';
       const budget = editNeedBudget(transaction);
       const dynamicSpecs = [
-        ['BHK', 'BHK'], ['Bedrooms', 'Bedrooms'], ['Area', 'Area'],
+        ['BHKMin', 'BHK'], ['Bedrooms', 'Bedrooms'], ['Area', 'Area'],
         ['CarpetArea', 'Carpet area'], ['BuiltUpArea', 'Built-up area'],
         ['Furnishing', 'Furnishing'], ['BusinessUse', 'Business use'],
         ['Frontage', 'Frontage']
@@ -2440,6 +2440,7 @@ table td,table th{border-color:var(--v2-line)!important}
         </div>
         ${dynamicSpecs.length ? `<p class="client-edit-need-specs">${dynamicSpecs.map(esc).join(' · ')}</p>` : ''}
         <button class="btn btn-ghost" type="button" data-edit-transaction="${escAttr(id)}">✏️ Edit Property Details</button>
+        ${requirementLifecycleActions(transaction)}
       </article>`;
     }).join('');
     root.querySelectorAll('[data-edit-transaction]').forEach(button => {
@@ -2447,10 +2448,54 @@ table td,table th{border-color:var(--v2-line)!important}
     });
   }
 
+  function requirementLifecycleActions(req) {
+    const id = escAttr(req.RequirementID);
+    const status = String(req.RequirementStatus || req.Status || 'Active').toLowerCase();
+    if (['lost', 'paused'].includes(status)) return `<button class="btn btn-ghost" type="button" onclick="reopenRequirement('${id}')">Reopen Requirement</button>`;
+    if (['closed','archived','draft'].includes(status)) return '';
+    return `<button class="btn btn-ghost" type="button" onclick="openRequirementStatusModal('${id}','Paused')">Hold</button>
+      <button class="btn btn-ghost" type="button" onclick="openRequirementStatusModal('${id}','Closed')">Close Requirement</button>
+      <button class="btn btn-ghost" type="button" onclick="markLostReq('${id}')">Lost Requirement</button>`;
+  }
+
+  async function reopenRequirement(reqId) {
+    try {
+      const result = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ RequirementStatus: 'Active' })
+      }).then(r => r.json());
+      if (!result.ok) throw new Error(result.error || 'Could not reopen requirement');
+      await loadWorkspace();
+    } catch (error) { alert(error.message); }
+  }
+
   function isSheetImportedTransaction(transaction) {
     const source = String(transaction?._source || transaction?.Source || '').toLowerCase();
     const creator = String(transaction?.CreatedBy || transaction?.CreatedByName || '').toLowerCase();
     return source.startsWith('googlesheet:') || creator.includes('googlesheetsync');
+  }
+
+  let sheetRequirementRows = [];
+  async function useSheetRequirement(index) {
+    const source = sheetRequirementRows[index];
+    if (!source) return;
+    await openAddNeedModal();
+    const type = source.TransactionType === 'Sale' ? 'Sell' : source.TransactionType;
+    document.getElementById('need-txn-type').value = type || '';
+    document.getElementById('need-category').value = source.Category || '';
+    await onNeedScopeChange();
+    const sub = source.SubCategory;
+    const input = document.getElementById('need-subcategory');
+    if (sub && Array.from(input.options).some(o => o.value === sub)) {
+      input.value = sub;
+      await needLoadDynamicForm();
+    }
+    const values = {};
+    for (const field of asArray(dynamicFormState.need.config?.fields)) {
+      const value = getRequirementValue(source, field.FieldKey);
+      if (value !== null && value !== undefined && value !== '') values[field.FieldKey] = value;
+    }
+    dynamicFormState.need.values = { ...dynamicFormState.need.values, ...values };
+    rerenderDynamicForm('need', dynamicFormState.need.values);
   }
 
   function renderSheetBasicRequirements(sheetTransactions = []) {
@@ -2466,6 +2511,7 @@ table td,table th{border-color:var(--v2-line)!important}
     // The lead's latest sync snapshot takes precedence over legacy imported rows.
     leadItems.forEach((item, index) => rowsBySource.set(sourceKey(item, index), item));
     const rows = Array.from(rowsBySource.values());
+    sheetRequirementRows = rows;
     if (!rows.length) {
       root.innerHTML = '<div class="sheet-basic-item"><strong>No Sheet requirement found</strong><span>Client ki call ke dauran basic need confirm karke requirement record karein.</span></div>';
       return;
@@ -2483,6 +2529,7 @@ table td,table th{border-color:var(--v2-line)!important}
       return `<div class="sheet-basic-item">
         <strong>${esc(type)} · ${esc(category)}</strong>
         <span>${esc(label)} · Confirm this with the client${details ? `<br>${esc(details)}` : ''}</span>
+        <button class="btn btn-ghost" type="button" onclick="useSheetRequirement(${index})">Use Sheet Details</button>
       </div>`;
     }).join('');
     const originalRows = asArray(workspace?.lead?.ImportedSheetDetails);

@@ -138,6 +138,7 @@ let _initPromise = null;
 let _initAttempts = 0;
 let _clientCreations = 0;
 let _writeQueue = Promise.resolve();
+let _pendingWrites = 0;
 let _lastWriteError = null;
 let _writeStats = { successes: 0, failures: 0, conflicts: 0, lastWriteAt: null };
 let _lastLocalWriteAt = 0;
@@ -287,7 +288,7 @@ function startPolling() {
 }
 
 async function pollOnce() {
-  if (!_initialized || !_db) return;
+  if (!_initialized || !_db || _pendingWrites > 0) return;
   const activeDb = _db;
   try {
     const snap = await activeDb.collection(SNAP_COLL).findOne(
@@ -295,6 +296,7 @@ async function pollOnce() {
       { projection: { payload: 1, updatedAt: 1 }, maxTimeMS: POLL_QUERY_MAX_TIME_MS }
     );
     _pollFailureCount = 0;
+    if (_pendingWrites > 0) return;
     if (snap && snap.payload && snap.updatedAt) {
       const snapTime = new Date(snap.updatedAt).getTime();
       if (Number.isFinite(snapTime)) {
@@ -341,6 +343,7 @@ function write(db) {
   const desired = JSON.parse(JSON.stringify(db || {}));
   _cache = desired;
   _lastLocalWriteAt = Date.now();
+  _pendingWrites += 1;
 
   const persist = async () => {
     const activeDb = _db;
@@ -368,7 +371,9 @@ function write(db) {
             { upsert: true }
           );
 
-          _cache = merged;
+          // A newer local mutation may have queued while this snapshot persisted.
+          // Keep its changes instead of reverting the live replica to an older save.
+          _cache = threeWayMerge(desired, _cache, merged);
           return { merged, hadRemoteDivergence: !deepEqual(base, remote) };
         }, { leaseMs: SNAPSHOT_WRITE_LEASE_MS });
 
@@ -433,7 +438,7 @@ function write(db) {
       cause: diagnostic.cause || null
     }));
     throw error;
-  });
+  }).finally(() => { _pendingWrites -= 1; });
 
   // Preserve the existing synchronous repository contract while exposing a
   // Promise for future callers that want request-level durability.
@@ -618,6 +623,7 @@ function stats() {
     pollFailureCount: _pollFailureCount,
     reconnectInProgress: !!_reconnectPromise,
     reconnectAttempts: _reconnectAttempts,
+    pendingWrites: _pendingWrites,
     cacheSize: _cache ? JSON.stringify(_cache).length : 0,
     ..._writeStats,
     lastError: _lastWriteError ? _lastWriteError.message : null

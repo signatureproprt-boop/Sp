@@ -1373,10 +1373,16 @@ class V2Router {
 
     // Budget filters (Fields.BudgetMax or flat)
     if (filters.budgetMin != null || filters.budgetMax != null) {
-      const bMax = req.Fields?.BudgetMax?.value ?? req.BudgetMax;
-      const bMin = req.Fields?.BudgetMin?.value ?? req.BudgetMin;
-      if (filters.budgetMax != null && (bMin == null || bMin === '' || !Number.isFinite(Number(bMin)) || Number(bMin) > filters.budgetMax)) return false;
-      if (filters.budgetMin != null && (bMax == null || bMax === '' || !Number.isFinite(Number(bMax)) || Number(bMax) < filters.budgetMin)) return false;
+      const numeric = value => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+      const bMax = numeric(req.Fields?.BudgetMax?.value ?? req.BudgetMax);
+      const bMin = numeric(req.Fields?.BudgetMin?.value ?? req.BudgetMin);
+      if (bMin == null && bMax == null) return false;
+      // A single quoted budget/rent is a known value, not an unknown range.
+      const lower = bMin ?? bMax;
+      const upper = bMax ?? bMin;
+      if (lower > upper) return false;
+      if (filters.budgetMax != null && lower > filters.budgetMax) return false;
+      if (filters.budgetMin != null && upper < filters.budgetMin) return false;
     }
 
     // Location

@@ -2,6 +2,7 @@
 let clients=[];
 let queryState={page:1,limit:24,total:0,totalPages:1,loading:false};
 let searchTimer=null;
+let clientLoadVersion=0;
 const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const enc=s=>encodeURIComponent(s||'');
 function safePhone(v){const raw=String(v??'').trim();if(!raw||/^(#|error|n\/a|na|null|undefined|-+)$/i.test(raw)||raw.includes('#ERROR'))return '';const digits=raw.replace(/\D/g,'');return digits.length>=7?digits:'';}
@@ -38,6 +39,7 @@ async function fetchJsonWithTimeout(url, options={}, timeoutMs=12000){
  }finally{clearTimeout(timer)}
 }
 async function load(resetPage=false){
+ const version=++clientLoadVersion;
  if(resetPage)queryState.page=1;
  queryState.loading=true;
  const grid=document.getElementById('grid');
@@ -76,21 +78,31 @@ async function load(resetPage=false){
        hasNext:start+pageRows.length<rows.length,hasPrev:queryState.page>1
      }};
    }
+   if(version!==clientLoadVersion)return;
    clients=Array.isArray(j.data)?j.data:[];
    queryState=Object.assign(queryState,j.pagination||{});
    updateStats(j.totalCount,j.summary||{});
    render();
    renderPager();
  }catch(e){
+   if(version!==clientLoadVersion)return;
    grid.innerHTML='<div class="empty" style="grid-column:1/-1">Unable to load clients: '+esc(e.message)+'<br><button class="btn" style="margin-top:12px;background:#fdf8ec;color:var(--brown)" onclick="load()">Retry</button></div>';
    document.getElementById('pager').innerHTML='';
- }finally{queryState.loading=false}
+ }finally{if(version===clientLoadVersion)queryState.loading=false}
 }
 function updateStats(total,summary={}){document.getElementById('s-total').textContent=Number(summary.totalClients??total??queryState.total??0);document.getElementById('s-req').textContent=Number(summary.activeNeeds??0);document.getElementById('s-txn').textContent=Number(summary.openTransactions??0);document.getElementById('s-hot').textContent=Number(summary.hotCount??0)}
 let FILTER_TXN='';
 function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
 function scheduleLoad(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>load(true),300)}
-function firstNeed(c){return (c._needSummaries||[])[0]||{}}
+function firstNeed(c){
+ const confirmed=(c._needSummaries||[]).filter(n=>!['LOST','CLOSED','ARCHIVED'].includes(String(n.RequirementStatus||'').toUpperCase()));
+ if(confirmed.length)return confirmed[0];
+ const basics=Array.isArray(c.SheetBasicRequirements)?c.SheetBasicRequirements:[];
+ const tab=document.getElementById('sourceTab').value;
+ const basic=basics.find(n=>!tab||n.SourceTab===tab);
+ if(basic)return {...basic,Unconfirmed:true};
+ return {...c,...(c.RequirementProfile||{}),TransactionType:c.RequirementType,Unconfirmed:true};
+}
 function needValue(n,keys){for(const k of keys){const v=n?.[k];if(v!==undefined&&v!==null&&String(v).trim()!=='')return v}return ''}
 function budgetNumber(n){return Number(needValue(n,['BudgetMax','Budget','BudgetTo','MaxBudget'])||0)}
 function investorFlag(c){return c.ClientIntent==='Investor'||c.ClientIntent==='Both'||(Array.isArray(c.Tags)&&c.Tags.includes('Investor'))}
@@ -108,17 +120,17 @@ function render(){
  grid.innerHTML=rows.map(c=>{
   const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
   const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'',cat=needValue(r,['Category','category'])||'';
-  const stamp=c._lastContact||c.UpdatedAt||c.CreatedAt;
+  const stamp=c._lastContact;
   return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(status)+'</span></div>'+
   '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source" style="background:#f3e8ff;color:#6b21a8">Investor</span>':'')+'</div>'+
   '<div class="phone">📞 '+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</div>'+
-  '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc(needDigest(c,r)||'Transaction details pending')+'</div>'+
+  '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</div>'+
   '<div style="font-size:10px;color:var(--muted);margin-bottom:7px">'+
     (c.Priority?('Priority: '+esc(c.Priority)):'')+
     (c.NextActionType?(' · Next: '+esc(c.NextActionType)):'')+
     (c.NextFollowUpAt?(' · '+esc(new Date(c.NextFollowUpAt).toLocaleString('en-IN'))):'')+
   '</div>'+
-  '<div class="meta"><div><span>Transactions</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
+  '<div class="meta"><div><span>Active needs</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open deals</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
   '<div style="font-size:10px;color:var(--muted);margin-top:9px">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
   '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="tel:'+enc(safePhone(c.PrimaryMobile||c.Phone))+'">☎ Call</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
  }).join('')
@@ -151,7 +163,7 @@ async function createClient(){
  const loc=document.getElementById('nc-location').value.trim();if(loc){requirement.Location1=loc;requirement.locations=[loc]}
  try{
   creatingClient=true;
-  const res=await fetch('/api/v2/quick-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  const j=await fetchJsonWithTimeout('/api/v2/quick-capture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    client:{
      name,primaryMobile:mobile,
      city:'Surat',
@@ -159,10 +171,9 @@ async function createClient(){
    },
    transaction:{transactionType:txn},requirement
   })});
-  const j=await res.json();
   if(!j.ok){err.textContent=j.requiresConfirmation?'Possible duplicate found. Existing client should be opened instead.':(j.error||'Unable to create client.');return}
   closeNewClient();window.location.href='/client-workspace?id='+encodeURIComponent(j.client?.leadId||j.leadId||'');
- }catch(e){err.textContent='Network error: '+e.message}
+ }catch(e){err.textContent='Save could not be confirmed: '+e.message+'. Search this mobile before retrying; the request may still complete.'}
  finally{creatingClient=false}
 }
 window.__signatureClientsBooted = true;
