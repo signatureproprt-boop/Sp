@@ -249,6 +249,7 @@ class V2LeadService {
   updateLead(leadId, payload, actor = {}) {
     const db = this.repository.read();
     db.Leads  = db.Leads || [];
+    if (db.Leads.filter(l => l.LeadID === leadId).length > 1) return { ok: false, statusCode: 409, code: 'AMBIGUOUS_CLIENT_ID', error: 'Client ID matches multiple client records' };
     const idx = db.Leads.findIndex((l) => l.LeadID === leadId);
     if (idx === -1) return { ok: false, error: 'Lead not found' };
 

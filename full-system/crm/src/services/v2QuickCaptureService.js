@@ -63,6 +63,9 @@ class V2QuickCaptureService {
         || (duplicate.result === 'POSSIBLE_MATCH' && duplicateAction === 'USE_EXISTING');
       if (useExisting) {
         const candidateId = duplicate.candidates?.[0]?.LeadID;
+        if ((snapshot.Leads || []).filter(row => row.LeadID === candidateId).length > 1) {
+          return { ok: false, statusCode: 409, code: 'AMBIGUOUS_CLIENT_ID', error: 'Client ID matches multiple client records. Resolve identity mapping before reusing this client.' };
+        }
         lead = candidateId ? this.repository.readLead(candidateId) : null;
         if (!lead) return { ok: false, error: 'Duplicate client could not be loaded' };
         const access = this.accessSvc
