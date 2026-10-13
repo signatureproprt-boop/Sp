@@ -115,3 +115,16 @@ test('profile details and current follow-up are included alongside confirmed nee
  const db=fixture();Object.assign(db.Leads[0],{RequirementType:'Rent',NextFollowUpAt:'2026-10-12',RequirementProfile:{Location2:'Vesu'}});
  const p=buildProjection(db);assert.equal(p.Clients[0][6],'2026-10-12');assert.match(p.Clients[0][10],/Vesu/);assert.match(p.Clients[0][10],/R1:/);
 });
+
+test('shared identity work is preserved but excluded from reports until reviewed', () => {
+  const db = fixture();
+  db.Transactions[0].IdentityMappingReview = { PreviousLeadID: 'L1' };
+  db.Documents = [{ DocumentID: 'D1', LeadID: 'L1', IdentityMappingReview: {} }];
+  const before = JSON.stringify(db);
+  const p = buildProjection(db, 'review');
+  assert.equal(p.Work.length, 0);
+  assert.equal(p.Requirements.length, 0);
+  assert.ok(p['Sync Issues'].some(row => row[1] === 'Documents' && row[2] === 'D1'));
+  assert.ok(p['Sync Issues'].some(row => row[1] === 'Transactions' && row[2] === 'T1'));
+  assert.equal(JSON.stringify(db), before);
+});

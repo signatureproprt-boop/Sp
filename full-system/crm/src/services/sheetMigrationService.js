@@ -43,17 +43,18 @@ function planMigration(db, input, actor = {}) {
     if (target.length !== 1 || next.Leads.filter(l => l.LeadID === repair.oldLeadId).length < 2 || next.Leads.some(l => l.LeadID === repair.legacyId)) throw new Error('Identity repair no longer matches the duplicate ID; preview stopped');
     const lead = target[0];
     if (phone(lead.PrimaryMobile || lead.Phone) && phone(lead.PrimaryMobile || lead.Phone) !== phone(item.row.Phone)) throw new Error('Identity repair phone conflicts with current CRM client');
-    const before = { LeadID: lead.LeadID, LegacyID: lead.LegacyID, PrimaryMobile: lead.PrimaryMobile, SheetBasicRequirements: copy(lead.SheetBasicRequirements || []), SheetSourceTabs: copy(lead.SheetSourceTabs || []) };
+    const before = { LeadID: lead.LeadID, LegacyID: lead.LegacyID, PrimaryMobile: lead.PrimaryMobile, Phone: lead.Phone, SheetBasicRequirements: copy(lead.SheetBasicRequirements || []), SheetSourceTabs: copy(lead.SheetSourceTabs || []) };
     lead.IdentityRepairHistory = [...(lead.IdentityRepairHistory || []), { Before: before, RepairedAt: new Date().toISOString(), RepairedBy: actor.userId, SourceTab: item.tab, SourceRow: item.sourceRow }];
     lead.LeadID = repair.legacyId;
     lead.PrimaryMobile = phone(item.row.Phone);
+    lead.Phone = lead.PrimaryMobile;
     lead.SheetBasicRequirements = (lead.SheetBasicRequirements || []).filter(n => n.SourceTab === item.tab);
     lead.SheetSourceTabs = [item.tab];
     lead.UpdatedAt = new Date().toISOString();
     // Shared-ID work has no reliable per-client identity. Preserve it and flag it;
     // never guess that an existing call/transaction belongs to the renamed client.
-    for (const collection of ['Transactions','Requirements','Activities','FollowUps']) {
-      for (const record of next[collection] || []) if (record.LeadID === repair.oldLeadId && !record.IdentityMappingReview) record.IdentityMappingReview = { Reason: 'Previously shared client ID; verify owner', PreviousLeadID: repair.oldLeadId, SeparateLeadID: repair.legacyId };
+    for (const collection of Object.keys(next).filter(key => key !== 'Leads' && key !== 'Audit' && Array.isArray(next[key]))) {
+      for (const record of next[collection] || []) if (record?.LeadID === repair.oldLeadId && !record.IdentityMappingReview) record.IdentityMappingReview = { Reason: 'Previously shared client ID; verify owner', PreviousLeadID: repair.oldLeadId, SeparateLeadID: repair.legacyId };
     }
     changes.push({ tab: item.tab, row: item.sourceRow, legacyId: repair.legacyId, leadId: lead.LeadID, action: 'IDENTITY_REPAIRED', fields: ['LeadID','PrimaryMobile','SheetBasicRequirements','SheetSourceTabs','IdentityRepairHistory'] });
   }
@@ -149,7 +150,7 @@ function planMigration(db, input, actor = {}) {
     if (fields.length || created) { lead.UpdatedAt = now; changes.push({ ...ref, leadId: lead.LeadID, action: created ? 'CREATED' : 'FILLED_MISSING', fields }); }
   }
   // Ignore generated timestamps in the preview token, but bind all client data and source rows.
-  const token = digest({ source: input, clients: db.Leads || [], counters: db._V2Counters || {}, actor, ...(repairs.length ? { work: ['Transactions','Requirements','Activities','FollowUps'].map(k => [k, db[k] || []]) } : {}) });
+  const token = digest({ source: input, clients: db.Leads || [], counters: db._V2Counters || {}, actor, ...(repairs.length ? { work: Object.entries(db).filter(([key, rows]) => key !== 'Leads' && key !== 'Audit' && Array.isArray(rows)) } : {}) });
   return { next, report: { token, sourceRows: input.records.length, created: new Set(changes.filter(x=>x.action === 'CREATED').map(x=>x.leadId)).size,
     updated: new Set(changes.filter(x=>x.action !== 'CREATED').map(x=>x.leadId)).size, issues, changes, clientsBefore: (db.Leads || []).length, clientsAfter: next.Leads.length } };
 }

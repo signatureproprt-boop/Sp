@@ -24,10 +24,17 @@ function field(row, key) {
 function buildProjection(db, snapshotAt) {
   const out = Object.fromEntries(TABS.map(t => [t, []]));
   const issue = (collection, key, reason) => out['Sync Issues'].push([`${collection}:${key}:${reason}`, collection, key, reason]);
+  for (const [collection, rows] of Object.entries(db)) {
+    if (!Array.isArray(rows)) continue;
+    rows.forEach((row, i) => {
+      if (row?.IdentityMappingReview) issue(collection, id(row.TransactionID || row.RequirementID || row.FollowUpID || row.DocumentID || row.ActivityID) || `source-row-${i + 1}`, 'Shared client identity requires ownership review; excluded from client reporting');
+    });
+  }
   function unique(collection, key) {
     const list = Array.isArray(db[collection]) ? db[collection] : [];
     const grouped = new Map();
     list.forEach((row, i) => {
+      if (row?.IdentityMappingReview) return;
       const k = id(row?.[key]);
       if (!k) { issue(collection, `source-row-${i + 1}`, `Missing ${key}; excluded`); return; }
       grouped.set(k, [...(grouped.get(k) || []), row]);

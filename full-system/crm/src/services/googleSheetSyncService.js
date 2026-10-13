@@ -218,7 +218,18 @@ class GoogleSheetSyncService {
   }
 
   async syncPublicSheet(options = {}) {
-    if (process.env.CRM_REPORT_SHEET_ID) throw new Error('Sheet imports paused: CRM is the source of truth for the reporting workbook');
+    if (process.env.CRM_REPORT_SHEET_ID) {
+      const { readSourceRecords, buildSourcePlan, enabledImportActor } = require('./sourceSheetImportService');
+      const initial = this.repository.read();
+      const actor = enabledImportActor(initial);
+      if (!actor) return { ok: false, state: 'SETUP_PENDING', message: 'Enable read-only source import from Admin', created: 0, updated: 0, failed: 0, total: 0, tabErrors: [] };
+      const source = await readSourceRecords((id, tab, gid) => this.downloadPublicSheetCsv(id, tab, gid));
+      const db = this.repository.read();
+      if (!enabledImportActor(db)) throw new Error('Source import ownership changed; no data written');
+      const plan = buildSourcePlan(db, source, actor);
+      if (plan.report.changes.length) this.repository.write(plan.next);
+      return { ok: true, state: plan.report.issues.length ? 'NEEDS_REVIEW' : 'SYNCED', created: plan.report.created, updated: plan.report.updated, failed: plan.report.issues.length, total: plan.report.sourceRows, issues: plan.report.issues, skippedSourceRows: source.skipped.length, tabErrors: [] };
+    }
     const sheetId = String(options.sheetId || process.env.GOOGLE_SHEET_ID || DEFAULT_PUBLIC_SHEET_ID).trim();
     const tabs = options.tabs || DEFAULT_PUBLIC_SHEET_TABS;
     if (!sheetId) throw new Error('Google Sheet ID is required');
