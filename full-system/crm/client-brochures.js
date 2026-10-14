@@ -62,6 +62,7 @@ function selectClientBrochure(projectIndex, fileIndex) {
 async function prepareClientBrochure() {
   const button=document.getElementById('client-brochure-prepare'); if(button.disabled)return;
   button.disabled=true;button.textContent='Preparing…';
+  brochureFlowError({message:''});
   try {
     const {project,file}=clientBrochureFlow.selected;
     const result=await brochureApi(`/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure-shares`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leadId:workspace.lead.LeadID,requirementId:clientBrochureFlow.requirementId,brochureFileKey:file.DriveFileID || file.DriveFileId || file.StoragePath,channel:'whatsapp_text',clientRequestId:clientBrochureFlow.requestId})});
@@ -76,6 +77,7 @@ async function prepareClientBrochure() {
 
 async function confirmClientBrochureSent() {
   if(!document.getElementById('client-brochure-sent').checked){brochureFlowError(new Error('Confirm that you sent the brochure first.'));return;}
+  brochureFlowError({message:''});
   const button=document.getElementById('client-brochure-confirm');if(button.disabled)return;button.disabled=true;button.textContent='Saving…';
   try {
     const date=document.getElementById('client-brochure-followup').value;

@@ -20,4 +20,5 @@ test('client requirement prepares the selected brochure, opens a draft and requi
  const draft=await page.getByRole('link',{name:'Open WhatsApp',exact:true}).getAttribute('href');expect(draft).toContain('wa.me/919876543210');expect(decodeURIComponent(draft)).toContain('selected.pdf');expect(confirmed).toBeNull();
  await page.getByRole('button',{name:'Confirm sent & save follow-up',exact:true}).click();expect(confirmed).toBeNull();
  await page.locator('#client-brochure-sent').check();await page.locator('#client-brochure-followup').fill('2099-01-01');await page.getByRole('button',{name:'Confirm sent & save follow-up',exact:true}).click();await expect(page.getByRole('status')).toContainText('Sent confirmation saved');expect(confirmed).toEqual({sent:true,followUpAt:'2099-01-01T10:00:00+05:30'});
+ await expect(page.locator('#client-brochure-error')).toBeEmpty();
 });

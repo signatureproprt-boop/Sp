@@ -12,6 +12,7 @@ const mongoSessionStore = new MongoSessionStore();
 const { PinLoginGuard } = require('./src/services/pinLoginGuard');
 const { confirmMongoPersistence, waitForPostSaveReport } = require('./src/services/durableResponse');
 const { withWriteScope, currentWriteScope, waitForScopeWrites } = require('./src/data/writeScope');
+const { sendStoredPdf } = require('./src/services/storedPdfResponse');
 
 const LOCAL_DEV_PORT = 3000;
 const PUBLIC_HOST = '0.0.0.0';
@@ -1319,13 +1320,11 @@ async function handleApi(req, res, url) {
           });
         } catch (error) { console.error('[brochure-share] tracking write failed', error); }
       }
-      res.writeHead(200, withSecurityHeaders({
+      await sendStoredPdf(res, out.buffer, req.method, withSecurityHeaders({
         'Content-Type': 'application/pdf',
         'Content-Disposition': `inline; filename="${share.ProjectSlug || 'project'}-brochure.pdf"`,
-        'Cache-Control': 'private, no-store',
-        'Content-Length': out.buffer.length
+        'Cache-Control': 'private, no-store'
       }));
-      res.end(req.method === 'HEAD' ? undefined : out.buffer);
       return;
     }
 
@@ -2510,10 +2509,7 @@ async function handleApi(req, res, url) {
         canarySvc.getProjectBrochureFile(decodeURIComponent(brochureByProjectMatch[1])).then((out) => {
           if (!out.ok) { sendJson(res, out, out.statusCode || 404); return; }
           const headers = withSecurityHeaders({ 'Content-Type': 'application/pdf', 'Cache-Control': 'private, max-age=3600' });
-          const contentLength = Number(out.size || out.buffer?.length || 0);
-          if (Number.isFinite(contentLength) && contentLength > 0) headers['Content-Length'] = contentLength;
-          res.writeHead(200, headers);
-          res.end(req.method === 'HEAD' ? undefined : out.buffer);
+          return sendStoredPdf(res, out.buffer, req.method, headers);
         }).catch((e) => sendJson(res, { ok: false, error: e.message }, 500));
         return;
       }
