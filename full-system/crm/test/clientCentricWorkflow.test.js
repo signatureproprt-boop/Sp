@@ -25,6 +25,32 @@ function fixture(t) {
 }
 const need = { TransactionType: 'Purchase', Category: 'Residential', SubCategory: 'Flat', BudgetMax: 8000000, Location1: 'Vesu', BHKMin: 2, RequirementStatus: 'Active', ClientRequestID: 'save-1' };
 
+test('client Lost save preserves labelled BHK and does not change requirement status or identity', async t => {
+  const {repo, request} = fixture(t);
+  const created = await request('POST', '/api/v2/clients/L1/requirements', need);
+  const lost = await request('PATCH', '/api/v2/clients/L1', {ClientStatus:'Lost',LostReason:'Other',LostNote:'QA only',BHK:'3 BHK'});
+  assert.equal(lost.body.ok, true, lost.body.error);
+  assert.equal(repo.readLead('L1').ClientStatus, 'Lost');
+  assert.equal(repo.readLead('L1').BHK, '3 BHK');
+  assert.equal(repo.readLead('L1').PrimaryMobile, '9876543210');
+  assert.equal(repo.read().Requirements[0].RequirementID, created.body.data.RequirementID);
+  assert.equal(repo.read().Requirements[0].RequirementStatus, 'Active');
+});
+
+test('labelled decimal BHK can be confirmed and saved together with requirement Lost status', async t => {
+  const {repo, request} = fixture(t);
+  const created = await request('POST', '/api/v2/clients/L1/requirements', {...need,BHK:'3 BHK'});
+  assert.equal(created.body.ok, true, created.body.error);
+  const id = created.body.data.RequirementID;
+  const lost = await request('PATCH', '/api/v2/requirements/'+id, {RequirementStatus:'Lost',LostReason:'Other',BHK:'3.5 BHK'});
+  assert.equal(lost.body.ok, true, lost.body.error);
+  assert.equal(repo.read().Requirements[0].Fields.BHK.value, 3.5);
+  assert.equal(repo.read().Requirements[0].RequirementStatus, 'Lost');
+  const invalid = await request('PATCH', '/api/v2/requirements/'+id, {BHK:'-3 BHK'});
+  assert.equal(invalid.body.ok, false);
+  assert.equal(repo.read().Requirements[0].Fields.BHK.value, 3.5);
+});
+
 test('name and mobile capture creates only a lead and duplicate capture preserves saved details', async t => {
   const {repo, router} = fixture(t);
   const payload = {client: {name: 'New Person', primaryMobile: '9876543212'}};
