@@ -10,7 +10,7 @@ for (const source of ['manual', 'sheet']) {
     await page.route('**/api/**', async r => {
       const req = r.request(), url = new URL(req.url()); let result = {ok:true,data:[]};
       if (url.pathname.endsWith('/workspace')) result = {ok:true,data:{lead,requirements,transactions:[],timeline:[],activities:[],followUps:[]}};
-      else if (url.pathname.endsWith('/subcategories')) result = {ok:true,data:['Office']};
+      else if (url.pathname.endsWith('/subcategories')) result = {ok:true,data:[{value:'Office',label:'Office'}]};
       else if (url.pathname.endsWith('/form-config')) result = {ok:true,data:{fields:[{FieldKey:'BudgetMax',FieldLabel:'Budget Max',FieldType:'Number',Active:true}]}};
       else if (url.pathname === '/api/v2/clients/L1/requirements') {
         writes.push(req.postDataJSON()); requirements.push({...writes[0],RequirementID:'R1',LeadID:'L1'}); result = {ok:true,data:requirements[0]};
@@ -27,6 +27,7 @@ for (const source of ['manual', 'sheet']) {
     }
     await expect(page.locator('#need-fld-BudgetMax')).toBeVisible();
     await expect(page.locator('#need-txn-type')).toHaveValue('Sale');
+    await expect(page.locator('#need-subcategory')).toHaveValue('Office');
     await page.getByRole('button',{name:'Add Requirement',exact:true}).click();
     await expect(page.locator('#edit-requirements-list')).toContainText('Sale · Commercial');
     expect(writes).toHaveLength(1);
