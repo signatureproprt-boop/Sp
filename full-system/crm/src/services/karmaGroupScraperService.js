@@ -647,6 +647,17 @@ class KarmaGroupScraperService {
     return !!(activeJob && latestStatus.status === 'running');
   }
 
+  static async waitForBrochureProgress(waitMs = 0) {
+    const windowMs = Math.min(25000, Math.max(0, Number(waitMs) || 0));
+    if (!windowMs || !activeJob || latestStatus.mode !== 'brochure-backfill') return;
+    // Keep one bounded progress request open while the worker runs. This
+    // supports request-based Cloud Run CPU without changing service settings.
+    let timer;
+    try {
+      await Promise.race([activeJob, new Promise(resolve => { timer = setTimeout(resolve, windowMs); })]);
+    } finally { clearTimeout(timer); }
+  }
+
   static __resetForTests() {
     activeJob = null;
     latestStatus = makeIdleStatus();
@@ -789,7 +800,7 @@ class KarmaGroupScraperService {
         latestStatus.selectedProjectID = id;
         latestStatus.selectedProjectName = project.ProjectName;
         try {
-          const result = await this._ingestBrochure(project, project.BrochureUrl, latestStatus);
+          const result = await this._ingestBrochure(project, project.BrochureUrl, latestStatus, { allowRecoveryFolder: !!selectedIds });
           if (!result.ok) throw new Error(result.error);
           if (result.reused) counters.brochuresReused += 1;
           else counters.brochuresStored += 1;
@@ -1188,7 +1199,7 @@ class KarmaGroupScraperService {
     };
   }
 
-  async _ingestBrochure(project, brochureUrl, statusRef = latestStatus) {
+  async _ingestBrochure(project, brochureUrl, statusRef = latestStatus, { allowRecoveryFolder = false } = {}) {
     const normalizedBrochure = normalizeUrl(brochureUrl || '');
     if (!normalizedBrochure) return { ok: false, error: 'Invalid brochure URL' };
     try {
@@ -1266,7 +1277,7 @@ class KarmaGroupScraperService {
       try {
         upload = await this.objectStorage.putObjectStream(storageKey, streamResult.stream, 'application/pdf', filename, {
           metadata: { projectId: String(project.ProjectID), projectFolderId: project.DriveFolderID || null,
-            mediaType: 'brochure', originalUrl: normalizedBrochure }
+            mediaType: 'brochure', originalUrl: normalizedBrochure, allowRecoveryFolder }
         });
       } catch (error) {
         // Upload failed: leave any previously stored brochure record untouched.

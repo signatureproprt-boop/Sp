@@ -702,6 +702,7 @@ table td,table th{border-color:var(--v2-line)!important}
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Recovery could not start');
       status.textContent = result.data.selected ? `Recovery started for ${result.data.selected} project(s). Progress is shown below.` : 'No eligible failed projects remain.';
+      if (result.data.selected) lastKarmaScrapeData = { status: 'running', mode: 'brochure-backfill' };
       clearTimeout(karmaScrapePoll);
       await pollKarmaScrape();
     } catch (error) { status.textContent = `Recovery could not start: ${error.message}`; }
@@ -874,7 +875,8 @@ table td,table th{border-color:var(--v2-line)!important}
 
   async function pollKarmaScrape() {
     try {
-      const response = await fetch('/api/v2/builder-projects/scrape/status');
+      const holdProgress = lastKarmaScrapeData?.mode === 'brochure-backfill' && lastKarmaScrapeData?.status === 'running';
+      const response = await fetch('/api/v2/builder-projects/scrape/status' + (holdProgress ? '?waitMs=25000' : ''));
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
       karmaPollErrors = 0;
@@ -884,7 +886,10 @@ table td,table th{border-color:var(--v2-line)!important}
         karmaScrapePoll = setTimeout(pollKarmaScrape, 1500);
       } else {
         karmaScrapePoll = null;
-        if (payload.data.status === 'completed') await loadProjects();
+        if (payload.data.status === 'completed') {
+          await loadProjects();
+          if (payload.data.mode === 'brochure-backfill' && !document.getElementById('brochure-status-modal').classList.contains('hidden')) await loadBrochureStatus();
+        }
       }
     } catch (error) {
       // A transient scrape-status fetch failure must never break the page or
