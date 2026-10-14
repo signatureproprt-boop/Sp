@@ -789,7 +789,7 @@ class KarmaGroupScraperService {
         latestStatus.selectedProjectID = id;
         latestStatus.selectedProjectName = project.ProjectName;
         try {
-          const result = await this._ingestBrochure(project, project.BrochureUrl, latestStatus);
+          const result = await this._ingestBrochure(project, project.BrochureUrl, latestStatus, { allowRecoveryFolder: !!selectedIds });
           if (!result.ok) throw new Error(result.error);
           if (result.reused) counters.brochuresReused += 1;
           else counters.brochuresStored += 1;
@@ -1188,7 +1188,7 @@ class KarmaGroupScraperService {
     };
   }
 
-  async _ingestBrochure(project, brochureUrl, statusRef = latestStatus) {
+  async _ingestBrochure(project, brochureUrl, statusRef = latestStatus, { allowRecoveryFolder = false } = {}) {
     const normalizedBrochure = normalizeUrl(brochureUrl || '');
     if (!normalizedBrochure) return { ok: false, error: 'Invalid brochure URL' };
     try {
@@ -1266,7 +1266,7 @@ class KarmaGroupScraperService {
       try {
         upload = await this.objectStorage.putObjectStream(storageKey, streamResult.stream, 'application/pdf', filename, {
           metadata: { projectId: String(project.ProjectID), projectFolderId: project.DriveFolderID || null,
-            mediaType: 'brochure', originalUrl: normalizedBrochure }
+            mediaType: 'brochure', originalUrl: normalizedBrochure, allowRecoveryFolder }
         });
       } catch (error) {
         // Upload failed: leave any previously stored brochure record untouched.

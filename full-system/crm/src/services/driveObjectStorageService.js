@@ -77,7 +77,7 @@ function projectIdFromKey(key) {
   return match ? match[1] : 'unassigned';
 }
 
-async function resolveProjectFolder(drive, rootId, projectId, savedFolderId) {
+async function resolveProjectFolder(drive, rootId, projectId, savedFolderId, { allowRecoveryFolder = false } = {}) {
   const names = [projectId, `Project-${projectId}`];
   const matchesName = (name) => names.some((prefix) => name === prefix || String(name || '').startsWith(`${prefix} `));
   if (savedFolderId) {
@@ -94,7 +94,20 @@ async function resolveProjectFolder(drive, rootId, projectId, savedFolderId) {
   });
   if (response.data.nextPageToken) throw new Error('Project folder search has more than one page; refusing to guess');
   const matches = (response.data.files || []).filter((file) => matchesName(file.name));
-  if (matches.length > 1) throw new Error('Multiple project folders found; refusing to create or choose a duplicate');
+  if (matches.length > 1) {
+    if (!allowRecoveryFolder) throw new Error('Multiple project folders found; refusing to create or choose a duplicate');
+    // Explicit failed-brochure recovery gets its own destination. Do not
+    // guess which legacy folder is canonical, merge folders or remove files.
+    const recoveryName = `Project-${projectId} Brochure Recovery`;
+    const recoveryFolders = matches.filter(file => file.name === recoveryName);
+    if (recoveryFolders.length > 1) throw new Error('Multiple brochure recovery folders found; explicit folder review required');
+    if (recoveryFolders.length === 1) return recoveryFolders[0].id;
+    const created = await drive.files.create({
+      requestBody: { name: recoveryName, mimeType: FOLDER_MIME, parents: [rootId] }, fields: 'id'
+    });
+    if (!created.data?.id) throw new Error('Brochure recovery folder creation did not return an ID');
+    return created.data.id;
+  }
   return matches[0]?.id || ensureFolder(`Project-${projectId}`, rootId);
 }
 
@@ -106,7 +119,8 @@ async function putObjectStream(key, readable, contentType, filename, options = {
   const drive = getDrive();
   const { folderId } = getConfig();
   const metadata = options.metadata && typeof options.metadata === 'object' ? options.metadata : {};
-  const projectFolder = await resolveProjectFolder(drive, folderId, projectIdFromKey(key), metadata.projectFolderId);
+  const projectFolder = await resolveProjectFolder(drive, folderId, projectIdFromKey(key), metadata.projectFolderId,
+    { allowRecoveryFolder: metadata.allowRecoveryFolder === true && metadata.mediaType === 'brochure' });
   const targetFolder = metadata.mediaType === 'brochure' ? await ensureFolder('Brochures', projectFolder) : projectFolder;
   const existing = await findFilesByKey(key);
   const created = await drive.files.create({

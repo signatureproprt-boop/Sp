@@ -125,6 +125,24 @@ test('Drive upload reuses the exact project folder and rejects ambiguous duplica
   await assert.rejects(resolveProjectFolder(drive, 'root', 'BLDP-1', null), /Multiple project folders/);
 });
 
+test('explicit brochure recovery creates a separate exact-project destination and reuses it safely', async () => {
+  const files=[{id:'old-1',name:'BLDP-1 Alpha'},{id:'old-2',name:'Project-BLDP-1 Alpha'},{id:'unrelated',name:'Project-BLDP-10 Other'}];
+  const created=[];
+  const drive={files:{list:async()=>({data:{files}}),create:async request=>{created.push(request);const folder={id:'recovery-1',name:request.requestBody.name};files.push(folder);return{data:folder};}}};
+  const options={allowRecoveryFolder:true};
+  assert.equal(await resolveProjectFolder(drive,'root','BLDP-1',null,options),'recovery-1');
+  assert.deepEqual(created[0].requestBody,{name:'Project-BLDP-1 Brochure Recovery',mimeType:'application/vnd.google-apps.folder',parents:['root']});
+  assert.equal(await resolveProjectFolder(drive,'root','BLDP-1',null,options),'recovery-1');assert.equal(created.length,1);
+  assert.equal(files[0].id,'old-1');assert.equal(files[1].id,'old-2');
+  files.push({id:'recovery-duplicate',name:'Project-BLDP-1 Brochure Recovery'});
+  await assert.rejects(resolveProjectFolder(drive,'root','BLDP-1',null,options),/explicit folder review/);assert.equal(created.length,1);
+});
+
+test('recovery permission never overrides a mismatched saved folder',async()=>{
+  const drive={files:{get:async()=>({data:{id:'wrong',name:'Project-BLDP-2',mimeType:'application/vnd.google-apps.folder',parents:['root']}})}};
+  await assert.rejects(resolveProjectFolder(drive,'root','BLDP-1','wrong',{allowRecoveryFolder:true}),/does not match/);
+});
+
 test('brochure ingest refuses GridFS fallback when Drive is not the configured provider', async () => {
   let touched = false;
   const svc = new KarmaGroupScraperService(repoWith({ BuilderProjects: [] }), {
