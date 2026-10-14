@@ -181,6 +181,7 @@ class InventoryService {
       if (keepKeys.has(k)) continue;
       if (['Title','Category','SubCategory','ListingFor','ListingStatus','InventorySource','OwnerName','OwnerMobile','OwnerType','ExclusiveWithMe','SocietyName','BuilderName','BuilderID','ProjectID','ProjectName','BrokerName','BrokerMobile','BrokerCommissionShare','Location1','Location2','ProjectStatus','TotalUnits','PossessionDate','LandArea','NeedsReview','RERANumber','RERARegistrationDate','Configurations','AreaRange','Taluka','Village','BHK','CarpetArea','IsReraMaster','ImportedFrom','ImportedAt'].includes(k)) {
         p[k] = v;
+        if (['BHK', 'CarpetArea'].includes(k)) { p.Fields = p.Fields || {}; p.Fields[k] = v; }
       } else {
         p.Fields = p.Fields || {};
         p.Fields[k] = v;

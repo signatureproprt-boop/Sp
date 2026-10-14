@@ -3249,7 +3249,18 @@ class JsonRepository {
 
     const requirementIdSet = new Set(requirements.map((item) => item.RequirementID));
 
-    const inventory = (db.Inventory || []).filter((item) => {
+    const inventory = (db.Inventory || []).filter(item => !item._deleted).map((item) => {
+      const status = String(item.ListingStatus || item.Status || '').toUpperCase();
+      return { ...item,
+        Status: ({ 'OFF-MARKET':'INACTIVE', 'UNDER OFFER':'NEGOTIATION' })[status] || status,
+        TransactionType: item.ListingFor || item.TransactionType,
+        PropertyType: item.SubCategory || item.PropertyType,
+        Location: item.Location1 || item.Location,
+        Project: item.ProjectName || item.Project,
+        Price: item.Fields?.AskingPrice ?? item.AskingPrice ?? item.Price,
+        Area: item.Fields?.CarpetArea ?? item.CarpetArea ?? item.Area
+      };
+    }).filter((item) => {
       if (categoryFilter.length && !this.inFilterList(item.Category, categoryFilter)) return false;
       if (transactionFilter.length && !this.inFilterList(item.TransactionType, transactionFilter)) return false;
       if (locationFilter.length && ![item.Location, item.City].some((value) => this.inFilterList(value, locationFilter))) return false;
