@@ -16,6 +16,17 @@ test('Clients opens active view and Lost is requested explicitly',async({page})=
   await expect(page.locator('#grid')).toContainText('Active QA');
   expect(queries.at(-1).get('excludeLost')).toBe('true');
   await expect(page.locator('#status option:checked')).toHaveText('Active Clients');
+  await page.getByRole('button',{name:'List View',exact:true}).click();
+  await expect(page.getByRole('table',{name:'Clients list'})).toContainText('Active QA');
+  await expect(page.getByRole('button',{name:'List View',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('button',{name:'Follow-up',exact:true}).click();
+  await expect(page.locator('#status')).toHaveValue('Follow-up');
+  await expect.poll(()=>queries.at(-1).get('status')).toBe('Follow-up');
+  await page.getByRole('button',{name:'Site Visit',exact:true}).click();
+  await expect(page.locator('#status')).toHaveValue('Site Visit');
+  await expect.poll(()=>queries.at(-1).get('status')).toBe('Site Visit');
+  await page.getByRole('button',{name:'Card View',exact:true}).click();
+  await expect(page.locator('#grid article')).toContainText('Active QA');
   await page.locator('#status').selectOption('Lost');
   await expect(page.locator('#grid')).toContainText('Lost QA');
   expect(queries.at(-1).get('status')).toBe('Lost');
