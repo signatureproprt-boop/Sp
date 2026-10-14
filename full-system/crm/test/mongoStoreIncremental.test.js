@@ -63,9 +63,12 @@ test('incremental snapshots preserve durability and concurrency on real Mongo', 
     await t.test('expired-lock racing write retries and preserves remote edits and additions', async () => {
       const desired = store.read(); desired.Leads[0].Notes = 'local notes';
       const count = writes.length;
-      beforeCommit = () => snapshots.updateOne({ _id: 'singleton' }, { $set: {
-        'payload.Leads.0.Location': 'Adajan', revision: 'other-writer'
-      }, $push: { 'payload.Leads': { LeadID: 'remote-added', PrimaryMobile: '8999999999', Notes: 'other agent' } } });
+      beforeCommit = async () => {
+        const remote = await snapshots.findOne({ _id: 'singleton' });
+        remote.payload.Leads[0].Location = 'Adajan';
+        remote.payload.Leads.push({ LeadID: 'remote-added', PrimaryMobile: '8999999999', Notes: 'other agent' });
+        await snapshots.updateOne({ _id: 'singleton' }, { $set: { 'payload.Leads': remote.payload.Leads, revision: 'other-writer' } });
+      };
       await store.write(desired);
       const saved = await snapshots.findOne({ _id: 'singleton' });
       assert.ok(writes.length >= count + 2, 'Stale compare-and-set must retry');
