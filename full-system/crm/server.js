@@ -1308,7 +1308,7 @@ async function handleApi(req, res, url) {
         sendJson(res, { ok: false, error: 'Brochure link expired or unavailable' }, 404); return;
       }
       const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
-      const out = await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectBrochureFile(share.ProjectID);
+      const out = await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectBrochureFile(share.ProjectID, share.BrochureMediaID || null, share.BrochureFileKey || null);
       if (!out.ok) { sendJson(res, { ok: false, error: 'Brochure unavailable' }, 404); return; }
       if (req.method === 'GET') {
         try {
@@ -2319,7 +2319,7 @@ async function handleApi(req, res, url) {
         return;
       }
 
-      const builderPermission = req.method === 'GET'
+      const builderPermission = req.method === 'GET' || /\/brochure-shares(?:\/[^/]+)?\/?$/.test(pathname)
         ? 'BUILDER_PROJECTS_READ'
         : req.method === 'PATCH'
           ? 'BUILDER_PROJECTS_UPDATE'
@@ -2377,13 +2377,18 @@ async function handleApi(req, res, url) {
           const { AccessControlService } = require('./src/services/accessControlService');
           if (!new AccessControlService(runtime.repository).authorizeLead(actor,lead,{permissions:['LEADS_VIEW','LEADS_READ'],hideExistence:true}).ok) { sendJson(res,{ok:false,error:'Client unavailable'},403); return; }
         }
+        const requirementId = String(bodyForV2?.requirementId || '');
         const transactionId = String(bodyForV2?.transactionId || '');
-        if (leadId && !transactionId) { sendJson(res, { ok: false, error: 'Client transaction is required for shortlist' }, 400); return; }
-        if (transactionId) {
-          const transaction = runtime.repository.find('Transactions', 'TransactionID', transactionId);
+        if (requirementId && transactionId) { sendJson(res,{ok:false,error:'Choose one client requirement or transaction'},400);return; }
+        const workId = requirementId || transactionId;
+        if (leadId && !workId) { sendJson(res, { ok: false, error: 'Client requirement is required for shortlist' }, 400); return; }
+        if (workId) {
+          const transaction = requirementId ? runtime.repository.find('Requirements', 'RequirementID', requirementId)
+            : runtime.repository.find('Transactions', 'TransactionID', transactionId);
           const { AccessControlService } = require('./src/services/accessControlService');
-          const access = new AccessControlService(runtime.repository).authorizeTransaction(actor, transaction, {
-            permissions: ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE'],
+          const accessControl = new AccessControlService(runtime.repository);
+          const access = accessControl[requirementId ? 'authorizeRequirement' : 'authorizeTransaction'](actor, transaction, {
+            permissions: ['SHORTLIST_CREATE', 'SHORTLIST_UPDATE', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE'],
             hideExistence: true
           });
           if (!access.ok || transaction?.LeadID !== leadId) {
@@ -2392,19 +2397,32 @@ async function handleApi(req, res, url) {
         }
         const recipient = normalizeBrochureRecipient(lead ? {
           recipientName:lead.ClientName || lead.Name,
-          recipientPhone:lead.PrimaryMobile || lead.Phone,
+          recipientPhone:lead.WhatsApp || lead.PrimaryMobile || lead.Phone,
           channel:bodyForV2?.channel
         } : bodyForV2);
         if (!recipient) { sendJson(res, { ok: false, error: 'Recipient name, valid phone and share channel are required' }, 400); return; }
         const brochure = (project.data.Brochures || []).find((row) =>
+          (!bodyForV2?.brochureFileKey || String(row.DriveFileID || row.DriveFileId || row.StoragePath) === String(bodyForV2.brochureFileKey)) &&
           row.verified === true && String(row.downloadStatus || '').toLowerCase() === 'downloaded' &&
           (row.DriveFileID || row.DriveFileId || row.StoragePath));
         if (!brochure) { sendJson(res, { ok: false, error: 'Verified stored brochure unavailable' }, 404); return; }
+        const requestId = String(bodyForV2?.clientRequestId || '').slice(0,100);
+        if (requestId) {
+          const existing = runtime.repository.list('BuilderBrochureShares').find(row => row.ClientRequestID === requestId && row.CreatedBy === actor.userId);
+          if (existing) {
+            if (existing.LeadID !== leadId || existing.ProjectID !== project.data.ProjectID || existing.RequirementID !== (requirementId || null) ||
+              existing.BrochureFileKey !== String(brochure.DriveFileID || brochure.DriveFileId || brochure.StoragePath) || Date.parse(existing.ExpiresAt)<=Date.now()) {
+              sendJson(res,{ok:false,error:'Preparation request changed; select the brochure again'},409);return;
+            }
+            sendJson(res,{ok:true,reused:true,data:{ShareID:existing.ShareID,recipientPhone:existing.RecipientPhone,url:existing.ShareURL}},200);return;
+          }
+        }
         const token = crypto.randomBytes(32).toString('hex');
         const shareId = crypto.randomUUID();
         const createdAt = new Date();
         const shareRecord = {
           ShareID: shareId,
+          ClientRequestID: requestId || null,
           TokenHash: crypto.createHash('sha256').update(token).digest('hex'),
           ProjectID: project.data.ProjectID,
           ProjectSlug: brochureProjectSlug(project.data.ProjectName),
@@ -2412,6 +2430,12 @@ async function handleApi(req, res, url) {
           BrokerageID: project.data.BrokerageID || null,
           CreatedBy: actor.userId,
           LeadID: lead?.LeadID || null,
+          RequirementID: requirementId || null,
+          TransactionID: transactionId || null,
+          BrochureMediaID: brochure.MediaID || null,
+          BrochureFileKey: brochure.DriveFileID || brochure.DriveFileId || brochure.StoragePath,
+          BrochureName: brochure.Name || brochure.name || brochure.FileName || 'Brochure.pdf',
+          ProjectName: project.data.ProjectName,
           RecipientName: recipient.name,
           RecipientPhone: recipient.phone,
           Channel: recipient.channel,
@@ -2421,13 +2445,16 @@ async function handleApi(req, res, url) {
           OpenCount: 0
         };
         const shareUrl = `${String(process.env.BROCHURE_PUBLIC_BASE_URL || 'https://signature-realty-crm-jqunfrmg7a-el.a.run.app').replace(/\/$/, '')}/brochure/${brochureProjectSlug(project.data.ProjectName)}/${token}`;
-        if (transactionId) {
+        shareRecord.ShareURL = shareUrl;
+        if (workId) {
           const { ShortlistServiceV2 } = require('./src/services/shortlistServiceV2');
           const attached = new ShortlistServiceV2(runtime.repository).attachBuilderBrochure(
-            transactionId, project.data, shareRecord, shareUrl, actor.userId
+            workId, project.data, shareRecord, shareUrl, actor.userId
           );
           if (!attached.ok) { sendJson(res, attached, 400); return; }
         } else runtime.repository.create('BuilderBrochureShares', shareRecord);
+        if (leadId) runtime.repository.addTimelineEntry(leadId, 'BuilderBrochureShare', shareId,
+          'BROCHURE_PREPARED', `Brochure prepared: ${project.data.ProjectName}`, { ShareID: shareId, RequirementID: requirementId || null, ProjectID: project.data.ProjectID, BrochureName: shareRecord.BrochureName });
         sendJson(res, { ok: true, data: {
           ShareID: shareId,
           recipientPhone: recipient.phone,
@@ -2446,11 +2473,15 @@ async function handleApi(req, res, url) {
         if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
         const share = runtime.repository.find('BuilderBrochureShares', 'ShareID', brochureSentMatch[2]);
         if (!share || share.ProjectID !== project.data.ProjectID) { sendJson(res, { ok: false, error: 'Share not found' }, 404); return; }
-        const updated = runtime.repository.update('BuilderBrochureShares', 'ShareID', share.ShareID, {
-          ShareStatus: 'sent_confirmed_manually',
-          SentAt: share.SentAt || new Date().toISOString(),
-          SentBy: share.SentBy || actor.userId
-        });
+        if (share.LeadID) {
+          const { AccessControlService } = require('./src/services/accessControlService');
+          if (!new AccessControlService(runtime.repository).authorizeLead(actor, runtime.repository.find('Leads','LeadID',share.LeadID),
+            {permissions:['LEADS_EDIT','LEADS_UPDATE'],hideExistence:true}).ok) { sendJson(res,{ok:false,error:'Client unavailable'},403);return; }
+        }
+        const { confirmBrochureSent } = require('./src/services/clientBrochureWorkflow');
+        const confirmation = confirmBrochureSent(runtime.repository, share, bodyForV2, actor);
+        if (!confirmation.ok) { sendJson(res,confirmation,400);return; }
+        const updated = confirmation.data;
         sendJson(res, { ok: true, data: { ShareID: updated.ShareID, ShareStatus: updated.ShareStatus, SentAt: updated.SentAt } });
         return;
       }

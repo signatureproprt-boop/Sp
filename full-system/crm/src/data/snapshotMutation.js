@@ -1,7 +1,7 @@
 'use strict';
 
 const { modelSchema } = require('./schema');
-const ownIds = { ...Object.fromEntries(Object.entries(modelSchema.entityDefinitions).map(([name, fields]) => [name, fields[0]])), SourceSheetArtifacts: 'ArtifactID' };
+const ownIds = { ...Object.fromEntries(Object.entries(modelSchema.entityDefinitions).map(([name, fields]) => [name, fields[0]])), SourceSheetArtifacts: 'ArtifactID', BuilderBrochureShares: 'ShareID' };
 const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 const literal = value => ({ $literal: value });

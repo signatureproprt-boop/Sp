@@ -88,6 +88,8 @@ class ShortlistServiceV2 {
       UpdatedAt: row.UpdatedAt,
       TransactionCode: transaction?.TransactionCode || row.TransactionID,
       IsManual: !!row.IsManual,
+      BuilderProjectID: row.BuilderProjectID || null,
+      BrochureShareID: row.BrochureShareID || null,
       Property: row.IsManual ? (row.ManualProperty || {}) : this._propertySnapshot(prop)
     };
   }
