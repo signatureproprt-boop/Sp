@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { applyUpdate } = require('./helpers/snapshotMongoFake');
 
 const mongoModulePath = require.resolve('mongodb');
 const storeModulePath = require.resolve('../src/data/mongoStore');
@@ -67,7 +68,7 @@ function makeFakeMongo() {
             }
             return { payload: { Leads: [{ LeadID: this.isReplacement ? 'reconnected' : 'initial' }] }, updatedAt: new Date(Date.now() + 1000) };
           },
-          replaceOne: async () => {}
+          updateOne: async () => ({ matchedCount: 1 })
         })
       };
     }
@@ -219,10 +220,10 @@ test('older snapshot completion and polling cannot erase newer queued local chan
     db(){return {collection:name=>name==='distributed_locks'?{
       findOneAndUpdate:async (_filter,update)=>update.$set,
       deleteOne:async()=>{}
-    }:{findOne:async()=>snapshot,replaceOne:async (_filter,next)=>{
+    }:{findOne:async()=>snapshot,updateOne:async (_filter,pipeline)=>{
       const i=writes++;
       const gate=new Promise(resolve=>gates[i]=resolve);
-      resolvers[i](); await gate; snapshot=next;
+      resolvers[i](); await gate; snapshot=applyUpdate(snapshot,pipeline); return {matchedCount:1};
     }}};}
   }
   const store=loadStore({MongoClient:Client});
@@ -252,8 +253,8 @@ test('Mongo coalesces queued client saves while preserving a concurrent remote c
   db(){return {collection:name=>name==='distributed_locks'?{
    findOneAndUpdate:async(_filter,update)=>update.$set,
    deleteOne:async()=>{if(writes===1&&!snapshot.payload.Leads.some(l=>l.LeadID==='remote-client'))snapshot.payload.Leads.push({LeadID:'remote-client',Notes:'other replica'});}
-  }:{findOne:async()=>snapshot,replaceOne:async(_filter,next)=>{
-   writes++;if(writes===1){signalStart();await new Promise(resolve=>releaseFirst=resolve);}snapshot=structuredClone(next);
+  }:{findOne:async()=>snapshot,updateOne:async(_filter,pipeline)=>{
+   writes++;if(writes===1){signalStart();await new Promise(resolve=>releaseFirst=resolve);}snapshot=applyUpdate(snapshot,pipeline);return {matchedCount:1};
   }}};}
  }
  const store=loadStore({MongoClient:Client});
@@ -272,7 +273,9 @@ test('Mongo coalesces queued client saves while preserving a concurrent remote c
   assert.equal(snapshot.payload.Leads.length,32);
   assert.equal(snapshot.payload.Leads[0].Notes,'updated-29');
   assert.equal(snapshot.payload.Leads.find(l=>l.LeadID==='remote-client').Notes,'other replica');
-  assert.equal(store.read().Leads.length,32);
+  // Unrelated remote rows are refreshed by polling rather than transferred
+  // with every small write.
+  await store.__pollOnceForTests();assert.equal(store.read().Leads.length,32);
   assert.equal(snapshot.payload.SourceSheetArtifacts[0].OriginalLead.LeadID,'original-conflict');
  }finally{releaseFirst?.();await cleanupStore(store);}
 });
@@ -281,7 +284,7 @@ test('rejected concurrent client creation restores the acknowledged snapshot rat
  let snapshot={payload:{Leads:[]},updatedAt:new Date(1)},writes=0;
  class Client {
   async connect(){} async close(){}
-  db(){return {collection:name=>name==='distributed_locks'?{findOneAndUpdate:async(_filter,update)=>update.$set,deleteOne:async()=>{}}:{findOne:async()=>structuredClone(snapshot),replaceOne:async()=>{writes++;}}};}
+  db(){return {collection:name=>name==='distributed_locks'?{findOneAndUpdate:async(_filter,update)=>update.$set,deleteOne:async()=>{}}:{findOne:async()=>structuredClone(snapshot),updateOne:async()=>{writes++;return {matchedCount:1};}}};}
  }
  const store=loadStore({MongoClient:Client});
  try{

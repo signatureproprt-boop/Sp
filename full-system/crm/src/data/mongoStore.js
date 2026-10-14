@@ -25,6 +25,7 @@
 
 const { MongoClient } = require('mongodb');
 const fs = require('fs');
+const { planMutation, mutationProjection, prepareMutation, snapshotFilter, mergeCache } = require('./snapshotMutation');
 
 function getStorageMode() {
   return String(process.env.STORAGE_MODE || 'json').trim().toLowerCase();
@@ -364,6 +365,7 @@ async function persistSnapshot(base, desired) {
   try {
     const activeDb = _db;
     if (!activeDb) throw new Error('Mongo database handle is unavailable');
+    const plan = planMutation(base, desired);
 
     let lastError = null;
     for (let attempt = 1; attempt <= SNAPSHOT_WRITE_RETRIES; attempt += 1) {
@@ -371,10 +373,11 @@ async function persistSnapshot(base, desired) {
         const result = await withDistributedLock('db-snapshot-write', async () => {
           const current = await activeDb.collection(SNAP_COLL).findOne(
             { _id: SNAP_ID },
-            { projection: { payload: 1, updatedAt: 1 }, maxTimeMS: POLL_QUERY_MAX_TIME_MS }
+            { projection: mutationProjection(plan), maxTimeMS: POLL_QUERY_MAX_TIME_MS }
           );
+          if (!current && Object.keys(base).length) throw new Error('Acknowledged Mongo snapshot is missing; reload before saving');
           const remote = current && current.payload ? current.payload : {};
-          const merged = threeWayMerge(base, desired, remote);
+          const { merged, set, unset } = prepareMutation(plan, base, desired, current, threeWayMerge);
           for (const [collection, key] of [['Leads','LeadID'],['Requirements','RequirementID'],['Transactions','TransactionID']]) {
             const counts = rows => (rows || []).reduce((map, row) => {
               const id = row?.[key]; if (id) map.set(id, (map.get(id) || 0) + 1); return map;
@@ -385,23 +388,31 @@ async function persistSnapshot(base, desired) {
               error.code = 'CONCURRENT_CREATE_CONFLICT'; throw error;
             }
           }
-          assertNoNewPrimaryPhoneConflict(remote.Leads || [], merged.Leads || []);
-
-          await activeDb.collection(SNAP_COLL).replaceOne(
-            { _id: SNAP_ID },
-            {
-              _id: SNAP_ID,
-              payload: merged,
-              updatedAt: new Date(),
-              schemaVersion: 2
-            },
-            { upsert: true }
-          );
+          if (plan.some(change => change.name === 'Leads')) {
+            const identities = current?.leadIdentities || remote.Leads || [];
+            const leadChange = plan.find(change => change.name === 'Leads');
+            const nextIdentities = leadChange.key
+              ? [...identities.filter(row => !leadChange.ids.includes(row.LeadID)), ...(merged.Leads || [])]
+              : merged.Leads || [];
+            assertNoNewPrimaryPhoneConflict(identities, nextIdentities);
+          }
+          const updatedAt = new Date(Math.max(Date.now(), new Date(current?.updatedAt || 0).getTime() + 1));
+          const pipeline = [{ $set: { ...set, updatedAt: { $literal: updatedAt },
+            revision: { $literal: cryptoRandomToken() }, schemaVersion: { $literal: 2 } } }];
+          if (unset.length) pipeline.push({ $unset: unset });
+          const saved = await activeDb.collection(SNAP_COLL).updateOne(snapshotFilter(current), pipeline, { upsert: !current });
+          if (!saved.matchedCount && !saved.upsertedCount) {
+            const error = new Error('Snapshot changed while saving; retrying the merge');
+            error.code = 'SNAPSHOT_REVISION_CONFLICT'; throw error;
+          }
 
           // A newer local mutation may have queued while this snapshot persisted.
           // Keep its changes instead of reverting the live replica to an older save.
-          _cache = threeWayMerge(desired, _cache, merged);
-          return { merged, hadRemoteDivergence: !deepEqual(base, remote) };
+          _cache = mergeCache(plan, desired, _cache, merged, threeWayMerge);
+          return { hadRemoteDivergence: plan.some(change => change.key
+            ? !deepEqual([...change.before.values()].filter(row => change.ids.includes(row[change.key])), remote[change.name] || [])
+            : !deepEqual(base[change.name], remote[change.name])),
+            changedCollections: plan.length };
         }, { leaseMs: SNAPSHOT_WRITE_LEASE_MS });
 
         if (result.acquired) {

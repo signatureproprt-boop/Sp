@@ -15,6 +15,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+    env:
+      MONGO_TEST_URL: mongodb://127.0.0.1:27017
     defaults:
       run:
         working-directory: full-system/crm
