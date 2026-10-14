@@ -82,6 +82,9 @@ class BrokerNetworkV2Service {
     const f = transaction.Fields || {};
     const g = (k) => (f[k] && (f[k].value ?? f[k])) || transaction[k] || null;
     return {
+      LeadID: transaction.LeadID || null,
+      RequirementID: transaction.RequirementID || null,
+      RequirementCode: transaction.RequirementCode || transaction.RequirementID || null,
       TransactionCode: transaction.TransactionCode || transaction.TransactionID,
       Category: transaction.Category || null,
       SubCategory: transaction.SubCategory || null,
@@ -151,6 +154,7 @@ class BrokerNetworkV2Service {
     return {
       ok: true,
       data: {
+        Requirement: this._anonymize(transaction),
         Transaction: this._anonymize(transaction),
         BrokerName: share.BrokerName,
         Message: share.Message,
@@ -194,6 +198,7 @@ class BrokerNetworkV2Service {
       SubmittedByBrokerName: share.BrokerName,
       SubmittedByBrokerPhone: share.BrokerPhone,
       NetworkShareID: share.ShareID,
+      LeadID: share.LeadID, RequirementID: share.RequirementID || null,
       NetworkResponseID: this.repo.createId('NRSP'),
       ExpectedCommissionSplit: String(payload.ExpectedSplit || '').trim() || null,
       Availability: String(payload.Availability || '').trim() || null,
