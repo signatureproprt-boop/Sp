@@ -414,3 +414,18 @@ test('targeted brochure recovery preserves other tenants, unselected projects an
   assert.equal(selected.Brochures[0].verified,true);assert.equal(other.Brochures.length,0);assert.equal(tenant.Brochures.length,0);assert.equal(verified.Brochures[0].DriveFileId,'KEEP');
   KarmaGroupScraperService.__resetForTests();
 });
+
+test('a bounded recovery progress request stays open for the worker and returns immediately at completion',async()=>{
+  KarmaGroupScraperService.__resetForTests();
+  const project={ProjectID:'P1',ProjectName:'QA',ImportedFrom:'KarmaGroupScrape',BrochureUrl:'https://karmagroup.co.in/qa.pdf',Brochures:[]};
+  const svc=new KarmaGroupScraperService(repoWith({BuilderProjects:[project],KarmaScrapeRuns:[]}),{isDriveStorageConfigured:()=>true,objectStorage:{}});
+  let release;
+  svc._ingestBrochure=async()=>new Promise(resolve=>{release=resolve;});svc._flushScrapeWrites=async()=>{};
+  await svc.startBrochureBackfill({projectIds:['P1']});
+  let returned=false;const waiting=KarmaGroupScraperService.waitForBrochureProgress(25000).then(()=>{returned=true;});
+  await Promise.resolve();assert.equal(returned,false);
+  release({ok:true,reused:true});await waiting;assert.equal(returned,true);
+  assert.equal(KarmaGroupScraperService.getStatus().data.status,'completed');
+  await KarmaGroupScraperService.waitForBrochureProgress(25000);
+  KarmaGroupScraperService.__resetForTests();
+});

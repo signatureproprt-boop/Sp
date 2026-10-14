@@ -647,6 +647,17 @@ class KarmaGroupScraperService {
     return !!(activeJob && latestStatus.status === 'running');
   }
 
+  static async waitForBrochureProgress(waitMs = 0) {
+    const windowMs = Math.min(25000, Math.max(0, Number(waitMs) || 0));
+    if (!windowMs || !activeJob || latestStatus.mode !== 'brochure-backfill') return;
+    // Keep one bounded progress request open while the worker runs. This
+    // supports request-based Cloud Run CPU without changing service settings.
+    let timer;
+    try {
+      await Promise.race([activeJob, new Promise(resolve => { timer = setTimeout(resolve, windowMs); })]);
+    } finally { clearTimeout(timer); }
+  }
+
   static __resetForTests() {
     activeJob = null;
     latestStatus = makeIdleStatus();

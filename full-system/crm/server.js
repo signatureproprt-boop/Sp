@@ -2232,6 +2232,7 @@ async function handleApi(req, res, url) {
         if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, 'BUILDER_PROJECTS_READ')) return;
         const { KarmaGroupScraperService } = require('./src/services/karmaGroupScraperService');
+        await KarmaGroupScraperService.waitForBrochureProgress(url.searchParams.get('waitMs'));
         sendJson(res, KarmaGroupScraperService.getStatus(runtime.repository));
         return;
       }
