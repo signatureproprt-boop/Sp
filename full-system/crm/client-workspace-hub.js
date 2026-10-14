@@ -92,6 +92,24 @@ async function load(resetPage=false){
  }finally{if(version===clientLoadVersion)queryState.loading=false}
 }
 function updateStats(total,summary={}){document.getElementById('s-total').textContent=Number(summary.totalClients??total??queryState.total??0);document.getElementById('s-req').textContent=Number(summary.activeNeeds??0);document.getElementById('s-txn').textContent=Number(summary.openTransactions??0);document.getElementById('s-hot').textContent=Number(summary.hotCount??0)}
+let CLIENT_VIEW='card';
+function setView(view){
+ CLIENT_VIEW=view==='list'?'list':'card';
+ document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===CLIENT_VIEW;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
+ render();
+}
+function setStatus(status){
+ document.getElementById('status').value=status;
+ document.querySelectorAll('[data-status]').forEach(b=>{const active=b.dataset.status===status;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
+ load(true);
+}
+function renderList(rows){
+ const body=rows.map(c=>{
+  const r=firstNeed(c),phone=c.PrimaryMobile||c.Phone,status=norm(c.ClientStatus||c.LeadStatus);
+  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(status)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="tel:'+enc(safePhone(phone))+'">☎ Call</a>':'')+'</div></td></tr>';
+ }).join('');
+ return '<table class="client-table" aria-label="Clients list"><thead><tr><th scope="col">Client</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col">Property details</th><th scope="col">Next follow-up</th><th scope="col">Actions</th></tr></thead><tbody>'+body+'</tbody></table>';
+}
 let FILTER_TXN='';
 function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
 function scheduleLoad(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>load(true),300)}
@@ -117,7 +135,9 @@ function needDigest(c,r){
 function render(){
  const rows=clients;
  const grid=document.getElementById('grid');
+ grid.classList.toggle('list-view',CLIENT_VIEW==='list');
  if(!rows.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No clients found for the selected filters.</div>';return}
+ if(CLIENT_VIEW==='list'){grid.innerHTML=renderList(rows);return}
  grid.innerHTML=rows.map(c=>{
   const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
   const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'',cat=needValue(r,['Category','category'])||'';

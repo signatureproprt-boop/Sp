@@ -69,6 +69,9 @@ table td,table th{border-color:var(--v2-line)!important}
   .client-header,.hero{border-radius:0!important;border-left:0!important;border-right:0!important}
 }
 </style>
+<style>
+.client-controls{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}.status-tabs{display:flex;gap:7px;overflow-x:auto;max-width:100%;padding-bottom:3px}.view-switch{display:flex;gap:6px}.grid.list-view{display:block;overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:10px}.client-table{width:100%;min-width:820px;border-collapse:collapse;font-size:12px}.client-table th{text-align:left;background:var(--goldbg);padding:12px;white-space:nowrap}.client-table td{padding:12px;border-top:1px solid var(--line);vertical-align:top}.client-table .actions{margin:0;min-width:180px}.client-table .id{margin-top:4px}.client-table .need-cell{max-width:280px}.client-table .status{display:inline-block;white-space:nowrap}
+</style>
 </head>
 <body>
 <header class="topbar">
@@ -81,6 +84,17 @@ table td,table th{border-color:var(--v2-line)!important}
 </header>
 <main class="page">
 <section class="head"><div><h1>Clients</h1><p>One client, one lifetime record — manage every purchase, sale, rent and property relationship from one workspace.</p></div><button class="primary" onclick="openNewClient()">＋ New Client</button></section>
+<section class="client-controls" aria-label="Client views and status">
+<div class="status-tabs" role="group" aria-label="Client status filters">
+<button class="chip active" data-status="" aria-pressed="true" onclick="setStatus('')">Active Clients</button>
+<button class="chip" data-status="Follow-up" aria-pressed="false" onclick="setStatus('Follow-up')">Follow-up</button>
+<button class="chip" data-status="Site Visit" aria-pressed="false" onclick="setStatus('Site Visit')">Site Visit</button>
+<button class="chip" data-status="New" aria-pressed="false" onclick="setStatus('New')">New</button>
+<button class="chip" data-status="Contacted" aria-pressed="false" onclick="setStatus('Contacted')">Contacted</button>
+<button class="chip" data-status="Lost" aria-pressed="false" onclick="setStatus('Lost')">Lost</button>
+</div>
+<div class="view-switch" role="group" aria-label="Display view"><button class="chip active" data-view="card" aria-pressed="true" onclick="setView('card')">Card View</button><button class="chip" data-view="list" aria-pressed="false" onclick="setView('list')">List View</button></div>
+</section>
 <section class="kpis">
 <div class="kpi"><div class="label">Total Clients</div><div class="value" id="s-total">—</div></div>
 <div class="kpi"><div class="label">Active Requirements</div><div class="value" id="s-req">—</div></div>
@@ -98,7 +112,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="filters">
 <div class="filter-wrap"><label>Lead Sheet</label><select id="sourceTab" onchange="load(true)"><option value="">All Sheets</option><option value="Sale">Sale Sheet</option><option value="Comm">Comm Sheet</option><option value="Rent">Rent Sheet</option></select></div>
 <div class="filter-wrap"><label>Property Type</label><select id="category" onchange="load(true)"><option value="">All Types</option><option>Residential</option><option>Commercial</option><option>Industrial</option><option>Land</option><option>Agriculture</option></select></div>
-<div class="filter-wrap"><label>Status</label><select id="status" onchange="load(true)"><option value="">Active Clients</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Won</option><option>Lost</option></select></div>
+<div class="filter-wrap"><label>Status</label><select id="status" onchange="setStatus(this.value)"><option value="">Active Clients</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Site Visit</option><option>Negotiation</option><option>Won</option><option>Lost</option></select></div>
 <div class="filter-wrap"><label>Client Type</label><select id="clientType" onchange="load(true)"><option value="">All Clients</option><option value="investor">Investors</option><option value="normal">Non-Investors</option></select></div>
 <div class="filter-wrap"><label>Budget</label><select id="budget" onchange="load(true)"><option value="">Any Budget</option><option value="under50">Under ₹50L</option><option value="50to100">₹50L–₹1Cr</option><option value="100to200">₹1–2Cr</option><option value="over200">₹2Cr+</option></select></div>
 <div class="filter-wrap"><label>Location</label><input id="location" placeholder="Surat / area" oninput="scheduleLoad()"></div>
