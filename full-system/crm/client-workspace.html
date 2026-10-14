@@ -945,6 +945,7 @@ table td,table th{border-color:var(--v2-line)!important}
   </div>
 </div>
 
+<script src="/client-brochures.js"></script>
 <script>
   const LEAD_ID = new URLSearchParams(location.search).get('id');
   let workspace = null;
@@ -2485,6 +2486,7 @@ table td,table th{border-color:var(--v2-line)!important}
         </div>
         ${dynamicSpecs.length ? `<p class="client-edit-need-specs">${dynamicSpecs.map(esc).join(' · ')}</p>` : ''}
         <button class="btn btn-ghost" type="button" data-edit-transaction="${escAttr(id)}">✏️ Edit Property Details</button>
+        <button class="btn btn-ghost" type="button" onclick="openClientBrochures('${escAttr(id)}')">⭐ Shortlist &amp; Brochures</button>
         ${requirementLifecycleActions(transaction)}
       </article>`;
     }).join('');
