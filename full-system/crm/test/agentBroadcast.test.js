@@ -14,10 +14,11 @@ test('requirement broadcast keeps client private, retries reuse shares and sent 
  const first=svc.share('R1',options);assert.equal(first.ok,true);const share=first.data.shares[0];
  assert.equal(share.DeliveryStatus,'Prepared');assert.equal(share.SentAt,null);
  assert.equal(svc.share('R1',options).data.shares[0].ShareID,share.ShareID);assert.equal(repo.read().TransactionShares.length,1);
- const publicView=svc.getPublicShareByToken(share.Token);assert.equal(publicView.ok,true);assert.equal(publicView.data.Transaction.BHK,3);assert.equal(publicView.data.Transaction.Location1,'Vesu');
+ const publicView=svc.getPublicShareByToken(share.Token);assert.equal(publicView.ok,true);assert.equal(publicView.data.Requirement.LeadID,'L1');assert.equal(publicView.data.Requirement.RequirementID,'R1');assert.equal(publicView.data.Transaction.BHK,3);assert.equal(publicView.data.Transaction.Location1,'Vesu');
  assert.equal(JSON.stringify(publicView).includes('PRIVATE CLIENT'),false);assert.equal(JSON.stringify(publicView).includes('9876543210'),false);
  assert.equal(svc.listSharesByRequirement('R1').length,1);
  const sent=svc.markSent(share.ShareID,'admin');assert.equal(sent.data.DeliveryStatus,'ManuallyConfirmed');assert.ok(sent.data.SentAt);assert.equal(svc.markSent(share.ShareID,'admin').data.SentAt,sent.data.SentAt);
+ const reply=svc.submitResponse(share.Token,{Title:'QA matching flat',LeadID:'FORGED',RequirementID:'FORGED'});assert.equal(reply.ok,true);const property=repo.read().Inventory.find(p=>p.NetworkResponseID===reply.data.NetworkResponseID);assert.equal(property.LeadID,'L1');assert.equal(property.RequirementID,'R1');
  svc.revokeShare(share.ShareID);assert.equal(svc.getPublicShareByToken(share.Token).code,'REVOKED');assert.equal(svc.markSent(share.ShareID,'admin').ok,false);
  assert.equal(repo.read().Transactions.length,transactionCount);
 });

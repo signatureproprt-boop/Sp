@@ -20,14 +20,23 @@ test('broadcast previews only requirement details and prepares selected agent dr
  await page.goto('/client-workspace.html?id=L1');
  await page.getByRole('button',{name:'👥 Broadcast to Agents',exact:true}).click();
  await expect(page.locator('#net-preview')).toContainText('Vesu');
+ await expect(page.locator('#net-preview')).toContainText('Ref: L1 / R1');
  await expect(page.locator('#net-preview')).not.toContainText('PRIVATE CLIENT');
  await expect(page.locator('#net-preview')).not.toContainText('9876543210');
  await expect(page.getByRole('checkbox',{name:'QA Agent',exact:true})).not.toBeChecked();
  await page.getByRole('checkbox',{name:'QA Agent',exact:true}).check();
  await page.getByRole('button',{name:'Prepare WhatsApp Drafts',exact:true}).click();
  const link=page.getByRole('link',{name:'Open WhatsApp Draft',exact:true});await expect(link).toBeVisible();
- const href=await link.getAttribute('href');expect(href).toContain('wa.me/919876543211');expect(decodeURIComponent(href)).toContain('Vesu');expect(decodeURIComponent(href)).not.toContain('PRIVATE CLIENT');expect(decodeURIComponent(href)).not.toContain('9876543210');
+ const href=await link.getAttribute('href');expect(href).toContain('wa.me/919876543211');expect(decodeURIComponent(href)).toContain('Vesu');expect(decodeURIComponent(href)).toContain('Ref: L1 / R1');expect(decodeURIComponent(href)).not.toContain('PRIVATE CLIENT');expect(decodeURIComponent(href)).not.toContain('9876543210');
  expect(writes[0].body.brokerIds).toEqual(['B1']);expect(writes[0].body.clientRequestId).toBeTruthy();expect(page.context().pages()).toHaveLength(1);
  await page.getByRole('button',{name:'I sent this on WhatsApp',exact:true}).click();await expect(page.locator('#net-links-out')).toContainText('Sent — manually confirmed');
  expect(writes.at(-1).path).toBe('/api/v2/network-shares/SH1/sent');
+});
+
+test('broker reply form displays the server-owned lead and requirement reference',async({page})=>{
+ await page.route('**/share/req/*',r=>r.fulfill({path:path.join(__dirname,'../share-req.html'),contentType:'text/html'}));
+ await page.route('**/api/v2/public/req/*',r=>r.fulfill({json:{ok:true,data:{BrokerName:'QA Agent',Requirement:{LeadID:'L1',RequirementID:'R1',Category:'Residential',SubCategory:'Flat',Location1:'Vesu',BudgetMax:7000000}}}}));
+ await page.goto('/share/req/qa-token');
+ await expect(page.getByText('Ref: L1 / R1',{exact:true})).toBeVisible();
+ await expect(page.getByText('Vesu',{exact:true})).toBeVisible();
 });

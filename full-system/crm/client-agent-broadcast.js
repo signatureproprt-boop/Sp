@@ -4,6 +4,7 @@ function agentNeedText(req){
  const fields=req.Fields||{}; const value=k=>fields[k]?.value??req[k];
  const range=(a,b)=>[value(a),value(b)].filter(v=>v!==undefined&&v!==null&&v!=='').join(' – ');
  return ['Signature Properties — Property Requirement',
+  'Ref: '+(req.LeadID||workspace.lead?.LeadID||'—')+' / '+req.RequirementID,
   [req.TransactionType,req.Category,req.SubCategory].filter(Boolean).join(' · '),
   ['Location1','Location2'].map(value).filter(Boolean).join(' / '),
   value('BHK')?'BHK: '+value('BHK'):(range('BHKMin','BHKMax')?'BHK: '+range('BHKMin','BHKMax'):''),

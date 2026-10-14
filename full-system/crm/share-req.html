@@ -80,7 +80,7 @@ function budget(r) {
 }
 
 function mainCard(d) {
-  const r = d.Requirement || {};
+  const r = d.Requirement || d.Transaction || {};
   return `
   <div class="hero">
     <div class="kicker">Signature Properties se</div>
@@ -90,6 +90,7 @@ function mainCard(d) {
   <div class="privacy">🔒 Client ki personal details (naam, phone, email) confidential rakhi gayi hain. Aap sirf property submit kar sakte hain — deal aage badhe to broker A directly contact karega.</div>
   <div class="card">
     <h2>🎯 Requirement Details</h2>
+    <p><b>Ref: ${esc(r.LeadID || '—')} / ${esc(r.RequirementID || r.RequirementCode || r.TransactionCode || '—')}</b></p>
     <div class="spec">
       ${r.Category ? `<div><div class="k">Category</div><div class="v">${esc(r.Category)}${r.SubCategory ? ' · ' + esc(r.SubCategory) : ''}</div></div>` : ''}
       ${r.TransactionType ? `<div><div class="k">Transaction</div><div class="v">${esc(r.TransactionType)}</div></div>` : ''}
