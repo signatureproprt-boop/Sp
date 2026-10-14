@@ -756,7 +756,12 @@ class KarmaGroupScraperService {
     });
   }
 
-  async startBrochureBackfill({ limit = 20, companyId = null, brokerageId = null } = {}) {
+  async startBrochureBackfill({ limit = 20, companyId = null, brokerageId = null, projectIds = null } = {}) {
+    if (projectIds !== null && (!Array.isArray(projectIds) || !projectIds.length || projectIds.length > 100 ||
+      projectIds.some((id) => typeof id !== 'string' || !id.trim()))) {
+      return { ok: false, statusCode: 400, error: 'Select between 1 and 100 existing project IDs.' };
+    }
+    const selectedIds = projectIds === null ? null : new Set(projectIds);
     if (KarmaGroupScraperService.isRunning()) return { ok: false, statusCode: 409, error: 'A scraper job is already running.' };
     if (!this.isDriveStorageConfigured()) return { ok: false, statusCode: 503, error: 'Google Drive storage must be configured before brochure retry.' };
     const oauthKeys = ['SIG_REALTY_GOOGLE_CLIENT_ID', 'SIG_REALTY_GOOGLE_CLIENT_SECRET', 'SIG_REALTY_GOOGLE_REFRESH_TOKEN'];
@@ -767,6 +772,7 @@ class KarmaGroupScraperService {
     const db = this.repo.read();
     const pending = (db.BuilderProjects || []).filter((project) =>
       project.Active !== false && project.ImportedFrom === 'KarmaGroupScrape' && project.BrochureUrl &&
+      (!selectedIds || selectedIds.has(project.ProjectID)) &&
       (!companyId || project.CompanyID === companyId) && (!brokerageId || project.BrokerageID === brokerageId) &&
       !(project.Brochures || []).some((row) => row.verified === true && (row.DriveFileId || row.DriveFileID))
     ).slice(0, safeLimit).map((project) => project.ProjectID);

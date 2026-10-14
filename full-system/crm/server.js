@@ -2265,6 +2265,7 @@ async function handleApi(req, res, url) {
         const scraper = new KarmaGroupScraperService(runtime.repository, { ingestMedia: false });
         const out = await scraper.startBrochureBackfill({
           limit: Number(bodyForV2?.limit) || 20,
+          projectIds: bodyForV2?.projectIds,
           companyId: actor.companyId || null,
           brokerageId: actor.brokerageId || null
         });
@@ -5780,6 +5781,7 @@ appServer = http.createServer((req, res) => withWriteScope(async () => {
     '/requirements-view':   '/requirements-view.html',
     '/duplicates':          '/duplicates.html',
     '/inventory':           '/inventory.html',
+    '/reports':             '/reports.html',
     '/property-workspace':  '/property-workspace.html',
     '/builder-projects':    '/builder-projects.html',
     '/vastu-floor-plan':   '/vastu-floor-plan.html',

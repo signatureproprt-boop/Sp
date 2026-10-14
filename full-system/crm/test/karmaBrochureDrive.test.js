@@ -377,3 +377,22 @@ test('brochure backfill updates only existing pending projects and can retry a f
   assert.equal(KarmaGroupScraperService.getStatus().data.result.brochuresStored, 1);
   KarmaGroupScraperService.__resetForTests();
 });
+
+test('targeted brochure recovery preserves other tenants, unselected projects and verified files', async () => {
+  KarmaGroupScraperService.__resetForTests();
+  const make = (id, company='C1') => ({ ProjectID:id, ProjectName:id, CompanyID:company, BrokerageID:'B1', Active:true,
+    ImportedFrom:'KarmaGroupScrape', BrochureUrl:`https://karmagroup.co.in/${id}.pdf`, Brochures:[] });
+  const selected=make('selected'), other=make('other'), tenant=make('tenant','C2'), verified=make('verified');
+  verified.Brochures=[{verified:true,DriveFileId:'KEEP'}];
+  const db={BuilderProjects:[selected,other,tenant,verified],KarmaScrapeRuns:[]},calls=[];
+  const svc=new KarmaGroupScraperService(repoWith(db),{isDriveStorageConfigured:()=>true,objectStorage:driveStore(calls),openPdfStreamSafely:okPdfStream});
+  svc._flushScrapeWrites=async()=>{};
+  assert.equal((await svc.startBrochureBackfill({projectIds:[]})).statusCode,400);
+  assert.equal((await svc.startBrochureBackfill({projectIds:'selected'})).statusCode,400);
+  const result=await svc.startBrochureBackfill({projectIds:['selected','tenant','verified','missing'],companyId:'C1',brokerageId:'B1'});
+  assert.equal(result.data.selected,1);
+  for(let n=0;n<20 && KarmaGroupScraperService.isRunning();n++) await new Promise(resolve=>setTimeout(resolve,5));
+  assert.equal(calls.length,1);assert.equal(db.BuilderProjects.length,4);
+  assert.equal(selected.Brochures[0].verified,true);assert.equal(other.Brochures.length,0);assert.equal(tenant.Brochures.length,0);assert.equal(verified.Brochures[0].DriveFileId,'KEEP');
+  KarmaGroupScraperService.__resetForTests();
+});
