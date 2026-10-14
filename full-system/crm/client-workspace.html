@@ -946,6 +946,7 @@ table td,table th{border-color:var(--v2-line)!important}
 </div>
 
 <script src="/client-brochures.js"></script>
+<script src="/client-agent-broadcast.js" defer></script>
 <script>
   const LEAD_ID = new URLSearchParams(location.search).get('id');
   let workspace = null;
@@ -2490,6 +2491,7 @@ table td,table th{border-color:var(--v2-line)!important}
         ${dynamicSpecs.length ? `<p class="client-edit-need-specs">${dynamicSpecs.map(esc).join(' · ')}</p>` : ''}
         <button class="btn btn-ghost" type="button" data-edit-transaction="${escAttr(id)}">✏️ Edit Property Details</button>
         <button class="btn btn-ghost" type="button" onclick="openClientBrochures('${escAttr(id)}')">⭐ Shortlist &amp; Brochures</button>
+        <button class="btn btn-ghost" type="button" onclick="openNetworkShareModal('${escAttr(id)}')">👥 Broadcast to Agents</button>
         ${requirementLifecycleActions(transaction)}
       </article>`;
     }).join('');
