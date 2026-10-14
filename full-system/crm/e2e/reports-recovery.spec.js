@@ -1,0 +1,31 @@
+const {test,expect}=require('@playwright/test');
+const path=require('node:path');
+test('Reports displays saved counts, filters exports and clears stale data after an API failure',async({page})=>{
+  await page.route('**/reports',r=>r.fulfill({path:path.join(__dirname,'../reports.html'),contentType:'text/html'}));
+  const requests=[];
+  await page.route('**/api/reports?*',r=>{requests.push(r.request().url());return r.fulfill({json:{ok:true,data:{dashboard:{executive:{totalLeads:257},requirements:{totalRequirements:6},inventory:{totalProperties:0},pipeline:{deal:0},financial:{grossBrokerage:0}},leads:{sourceBreakdown:[{leadSource:'<img src=x onerror=alert(1)>',leads:257,deals:0,conversionPercent:0}]}}}});});
+  await page.goto('/reports');
+  await expect(page.getByRole('heading',{name:'Reports',exact:true})).toBeVisible();
+  await expect(page.locator('#summaries')).toContainText('257');
+  await expect(page.locator('#source-rows img')).toHaveCount(0);
+  await page.getByLabel('Date range').selectOption('last7days');
+  await expect(page.getByRole('link',{name:'Download inventory CSV'})).toHaveAttribute('href',/datePreset=last7days/);
+  expect(requests.some(url=>url.includes('datePreset=last7days'))).toBeTruthy();
+  await page.route('**/api/reports?*',r=>r.fulfill({status:403,json:{ok:false,error:'Access denied'}}));
+  await page.getByRole('button',{name:'Refresh reports'}).click();
+  await expect(page.getByRole('status')).toContainText('Access denied');
+  await expect(page.locator('#content')).toBeHidden();
+});
+test('Brochure recovery submits failed project IDs only and shows storage failures',async({page})=>{
+  await page.route('**/builder-projects',r=>r.fulfill({path:path.join(__dirname,'../builder-projects.html'),contentType:'text/html'}));
+  await page.route('**/api/**',r=>r.fulfill({json:{ok:true,data:[],rows:[]}}));
+  await page.route('**/api/v2/builder-projects/scrape/status',r=>r.fulfill({json:{ok:true,data:{status:'idle'}}}));
+  await page.route('**/api/v2/builder-projects/brochure-status',r=>r.fulfill({json:{ok:true,generatedAt:new Date().toISOString(),counts:{totalProjects:2,driveLinked:1,linkedFiles:1,failed:1,storedOutsideDrive:0,pending:0,noBrochureSource:0},rows:[{projectId:'FAILED',projectName:'Failed project',status:'Failed',missingFields:[]},{projectId:'STORED',projectName:'Verified project',status:'Drive linked',missingFields:[]}]}}));
+  let payload;
+  await page.route('**/api/v2/builder-projects/scrape/brochures/retry',r=>{payload=r.request().postDataJSON();return r.fulfill({status:503,json:{ok:false,error:'Google user OAuth credentials must be configured before brochure retry.'}});});
+  await page.goto('/builder-projects');await page.getByRole('button',{name:'📋 Brochure Log',exact:true}).click();
+  await expect(page.locator('#brochure-status-summary')).toContainText('1 failed');
+  await page.getByRole('button',{name:'Recover failed brochures',exact:true}).click();
+  await expect(page.locator('#brochure-recovery-status')).toContainText('OAuth credentials');
+  expect(payload).toEqual({limit:1,projectIds:['FAILED']});
+});
