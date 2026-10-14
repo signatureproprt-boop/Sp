@@ -178,3 +178,18 @@ test('Lost and Closed update the same requirement and Sheet projection keeps its
   assert.equal(cleared.body.data.requirement.Fields.BHKMin.state, 'UNKNOWN');
   assert.equal(cleared.body.data.requirement.BHKMin, null);
 });
+
+ test('active client view hides Lost before pagination and reopened client returns without a requirement', async t => {
+  const {repo, request} = fixture(t);
+  await request('PATCH', '/api/v2/clients/L1', {ClientStatus:'Lost',LostReason:'Bought Elsewhere'});
+  const active = await request('GET', '/api/v2/clients/query?excludeLost=true&limit=1');
+  assert.deepEqual(active.body.data.map(c=>c.LeadID), ['L2']);
+  assert.equal(active.body.totalCount, 1);
+  const lost = await request('GET', '/api/v2/clients/query?status=Lost');
+  assert.deepEqual(lost.body.data.map(c=>c.LeadID), ['L1']);
+  await request('PATCH', '/api/v2/clients/L1', {ClientStatus:'Contacted'});
+  const reopened = await request('GET', '/api/v2/clients/query?excludeLost=true');
+  assert.equal(reopened.body.data.some(c=>c.LeadID==='L1'), true);
+  assert.equal((await request('GET', '/api/v2/clients/query?status=Lost')).body.data.length, 0);
+  assert.equal(repo.read().Requirements.length, 0);
+});

@@ -17,6 +17,7 @@ function buildQuery(){
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
  const cat=document.getElementById('category').value, txn=FILTER_TXN, bud=document.getElementById('budget').value;
  const loc=document.getElementById('location').value.trim(), source=document.getElementById('source').value, type=document.getElementById('clientType').value;
+ if(!status)p.set('excludeLost','true');
  if(q)p.set('q',q); if(status)p.set('status',status); if(cat)p.set('category',cat); if(txn)p.set('transactionType',txn);
  if(loc)p.set('location',loc); if(source)p.set('source',source); if(type)p.set('clientType',type);
  const [min,max]=budgetRange(bud); if(min!=null)p.set('budgetMin',String(min)); if(max!=null)p.set('budgetMax',String(max));
@@ -64,7 +65,7 @@ async function load(resetPage=false){
      if(source)p.set('source',source);
      p.set('limit','100');
      const fallback=await fetchJsonWithTimeout('/api/v2/clients?'+p.toString(),{credentials:'include'});
-     const rows=Array.isArray(fallback.data)?fallback.data:[];
+     const rows=(Array.isArray(fallback.data)?fallback.data:[]).filter(c=>status||norm(c.ClientStatus||c.LeadStatus)!=='Lost');
      const start=(queryState.page-1)*queryState.limit;
      const pageRows=rows.slice(start,start+queryState.limit);
      j={ok:true,data:pageRows,totalCount:rows.length,summary:{

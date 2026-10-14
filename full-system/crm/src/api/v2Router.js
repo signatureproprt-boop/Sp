@@ -1223,7 +1223,8 @@ class V2Router {
       txnType, category, subCategory: subCat, budgetMin, budgetMax, location, bhk, q,
       needSource: source,
       sourceTab: url.searchParams.get('sourceTab') || undefined,
-      clientStatus, lifecycle, source, tag, agentId, clientType, page, limit
+      clientStatus, lifecycle, source, tag, agentId, clientType, page, limit,
+      excludeLost: url.searchParams.get('excludeLost') === 'true'
     }, actor);
   }
 
@@ -1269,6 +1270,10 @@ class V2Router {
       const tab = String(filters.sourceTab).trim().toLowerCase();
       result = result.filter(lead => (Array.isArray(lead.SheetBasicRequirements) ? lead.SheetBasicRequirements : [])
         .some(need => String(need.SourceTab || '').trim().toLowerCase() === tab));
+    }
+
+    if (filters.excludeLost && !filters.clientStatus) {
+      result = result.filter(l => !['Lost', 'Inactive', 'Blacklisted'].includes(l.ClientStatus || l.LeadStatus));
     }
 
     if (filters.clientStatus) {
