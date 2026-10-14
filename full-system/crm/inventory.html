@@ -303,6 +303,13 @@ table td,table th{border-color:var(--v2-line)!important}
       <!-- Dynamic category-specific fields -->
       <div id="dynamic-fields-wrap"></div>
 
+      <div class="section-title">Listing details</div>
+      <div class="form-grid">
+        <div class="form-group"><label for="f-asking-price">Asking price / monthly rent (₹)</label><input id="f-asking-price" type="number" min="0" /></div>
+        <div class="form-group"><label for="f-listing-bhk">Listing BHK</label><select id="f-listing-bhk"><option value="">—</option><option>1BHK</option><option>2BHK</option><option>3BHK</option><option>4BHK</option><option>5BHK+</option><option>Studio</option></select></div>
+        <div class="form-group"><label for="f-carpet-area">Listing carpet area (sq.ft)</label><input id="f-carpet-area" type="number" min="0" /></div>
+      </div>
+
       <div class="form-error" id="form-error"></div>
     </div>
     <div class="modal-footer">
@@ -428,8 +435,8 @@ table td,table th{border-color:var(--v2-line)!important}
     const firstPhoto = photos[0]?.url;
     const price = p.Fields?.AskingPrice ?? p.AskingPrice;
     const rate  = p.Fields?.AskingRatePerSqFt ?? p.AskingRatePerSqFt;
-    const carpet = p.Fields?.CarpetArea || p.Fields?.CarpetAreaComm || p.Fields?.IndBuiltUpArea;
-    const bhk = p.Fields?.BHK;
+    const carpet = p.Fields?.CarpetArea || p.CarpetArea || p.Fields?.CarpetAreaComm || p.Fields?.IndBuiltUpArea;
+    const bhk = p.Fields?.BHK || p.BHK || (p.Fields?.BHKMin === p.Fields?.BHKMax ? p.Fields?.BHKMin : null);
     const statusClass = 'badge-' + String(p.ListingStatus || 'Available').replace(/[^a-z]/gi, '');
     const src = deriveSource(p);
     const facts = [];
@@ -530,6 +537,7 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('f-subcategory').innerHTML = '<option value="">—</option>';
     document.getElementById('f-listing-for').value = 'Sale';
     document.getElementById('f-status').value = 'Available';
+    ['f-asking-price','f-listing-bhk','f-carpet-area'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('f-inv-source').value = 'Own';
     document.getElementById('f-owner-name').value = '';
     document.getElementById('f-owner-mobile').value = '';
@@ -576,6 +584,9 @@ table td,table th{border-color:var(--v2-line)!important}
       document.getElementById('f-society').value = p.SocietyName || '';
       document.getElementById('f-location1').value = p.Location1 || '';
       document.getElementById('f-exclusive').checked = !!p.ExclusiveWithMe;
+      document.getElementById('f-asking-price').value = p.Fields?.AskingPrice ?? p.AskingPrice ?? p.Price ?? '';
+      document.getElementById('f-listing-bhk').value = p.Fields?.BHK || p.BHK || (p.Fields?.BHKMin === p.Fields?.BHKMax ? p.Fields?.BHKMin : '') || '';
+      document.getElementById('f-carpet-area').value = p.Fields?.CarpetArea ?? p.CarpetArea ?? '';
       document.getElementById('photos-strip').innerHTML = renderPhotoStrip();
       onSourceChange();
       await loadDynamicFields(p.Fields || {});
@@ -753,6 +764,14 @@ table td,table th{border-color:var(--v2-line)!important}
     });
 
     const btn = document.getElementById('save-btn');
+    for (const [key, id] of [['AskingPrice','f-asking-price'],['CarpetArea','f-carpet-area']]) {
+      const raw = document.getElementById(id).value.trim();
+      if (raw && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+        document.getElementById('form-error').textContent = 'Listing price and area must be non-negative numbers'; return;
+      }
+      payload[key] = raw ? Number(raw) : null;
+    }
+    payload.BHK = document.getElementById('f-listing-bhk').value || null;
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       let propertyId = editingId;
