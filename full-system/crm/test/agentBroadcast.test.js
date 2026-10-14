@@ -1,0 +1,23 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {JsonRepository}=require('../src/data/repository');
+const {BrokerNetworkV2Service}=require('../src/services/brokerNetworkV2Service');
+test('requirement broadcast keeps client private, retries reuse shares and sent confirmation is explicit',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'broadcast-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const repo=new JsonRepository(path.join(dir,'db.json'));const db=repo.read();
+ db.Leads=[{LeadID:'L1',ClientName:'PRIVATE CLIENT',Phone:'9876543210'}];
+ db.Requirements=[{RequirementID:'R1',LeadID:'L1',Category:'Residential',SubCategory:'Flat',TransactionType:'Purchase',Location1:'Vesu',BHKMin:3,BudgetMax:7000000,Fields:{ContactMobile:{value:'9876543210'},ContactWhoIsSpeaking:{value:'PRIVATE CLIENT'}}}];
+ db.BrokerNetworkContacts=[{NetworkBrokerID:'B1',Name:'QA Agent',Phone:'447700900123',Active:true}];db.TransactionShares=[];db.Transactions=[];repo.write(db);
+ const transactionCount=repo.read().Transactions.length;
+ const svc=new BrokerNetworkV2Service(repo),options={brokerIds:['B1'],clientRequestId:'retry-1',userId:'admin'};
+ const first=svc.share('R1',options);assert.equal(first.ok,true);const share=first.data.shares[0];
+ assert.equal(share.DeliveryStatus,'Prepared');assert.equal(share.SentAt,null);
+ assert.equal(svc.share('R1',options).data.shares[0].ShareID,share.ShareID);assert.equal(repo.read().TransactionShares.length,1);
+ const publicView=svc.getPublicShareByToken(share.Token);assert.equal(publicView.ok,true);assert.equal(publicView.data.Transaction.BHK,3);assert.equal(publicView.data.Transaction.Location1,'Vesu');
+ assert.equal(JSON.stringify(publicView).includes('PRIVATE CLIENT'),false);assert.equal(JSON.stringify(publicView).includes('9876543210'),false);
+ assert.equal(svc.listSharesByRequirement('R1').length,1);
+ const sent=svc.markSent(share.ShareID,'admin');assert.equal(sent.data.DeliveryStatus,'ManuallyConfirmed');assert.ok(sent.data.SentAt);assert.equal(svc.markSent(share.ShareID,'admin').data.SentAt,sent.data.SentAt);
+ svc.revokeShare(share.ShareID);assert.equal(svc.getPublicShareByToken(share.Token).code,'REVOKED');assert.equal(svc.markSent(share.ShareID,'admin').ok,false);
+ assert.equal(repo.read().Transactions.length,transactionCount);
+});

@@ -1836,7 +1836,7 @@ async function handleApi(req, res, url) {
     // POST   /api/v2/network-shares/:shareId/revoke
     // GET    /api/v2/public/req/:token                       — anonymized (NO auth)
     // POST   /api/v2/public/req/:token/response              — submit property (NO auth)
-    if (/^\/api\/v2\/(broker-network(?:\/[^\/]+)?(?:\/[^\/]+)?|requirements\/[^\/]+\/network-shares?|network-shares\/[^\/]+\/revoke|public\/req\/[^\/]+(?:\/response)?)\/?$/i.test(pathname)) {
+    if (/^\/api\/v2\/(broker-network(?:\/[^\/]+)?(?:\/[^\/]+)?|requirements\/[^\/]+\/network-shares?|network-shares\/[^\/]+\/(?:revoke|sent)|public\/req\/[^\/]+(?:\/response)?)\/?$/i.test(pathname)) {
       const { BrokerNetworkV2Service } = require('./src/services/brokerNetworkV2Service');
       const svc = new BrokerNetworkV2Service(runtime.repository);
       const isPublicTokenPath = /^\/api\/v2\/public\/req\/[^\/]+(?:\/response)?\/?$/i.test(pathname);
@@ -1918,7 +1918,8 @@ async function handleApi(req, res, url) {
           brokerIds: Array.isArray(body.brokerIds) ? body.brokerIds : [],
           message: body.message || '',
           expiresInDays: Number(body.expiresInDays) || 30,
-          userId: actor.userId
+          userId: actor.userId,
+          clientRequestId: String(body.clientRequestId || '').slice(0,100)
         });
         sendJson(res, out, out.ok ? 201 : 400);
         return;
@@ -1937,11 +1938,20 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      const shareSent = pathname.match(/^\/api\/v2\/network-shares\/([^\/]+)\/sent\/?$/i);
+      if (shareSent && req.method === 'POST') {
+        const share = (runtime.repository.read().TransactionShares || []).find(row => row.ShareID === shareSent[1]);
+        const access = accessSvc.authorizeRequirement(actor, share ? runtime.repository.readRequirement(share.RequirementID) : null, {permissions:['BROKER_NETWORK_CREATE','REQUIREMENTS_READ','LEADS_READ'],hideExistence:true});
+        if (!access.ok) { sendJson(res,{ok:false,error:access.error},access.statusCode); return; }
+        const out = svc.markSent(shareSent[1],actor.userId);
+        sendJson(res,out,out.ok ? 200 : 400); return;
+      }
+
       // Revoke
       const shareRevoke = pathname.match(/^\/api\/v2\/network-shares\/([^\/]+)\/revoke\/?$/i);
       if (shareRevoke && req.method === 'POST') {
         const db = runtime.repository.read();
-        const share = (db.RequirementShares || []).find((row) => row.ShareID === shareRevoke[1]);
+        const share = (db.TransactionShares || []).find((row) => row.ShareID === shareRevoke[1]);
         const requirementAccess = accessSvc.authorizeRequirement(actor, share ? runtime.repository.readRequirement(share.RequirementID) : null, {
           permissions: ['BROKER_NETWORK_ADMIN', 'REQUIREMENTS_READ', 'LEADS_READ'],
           hideExistence: true
@@ -5810,7 +5820,8 @@ appServer = http.createServer((req, res) => withWriteScope(async () => {
   }
 
   const requestPath = url.pathname === '/' ? '/index.html' : url.pathname;
-  let filePath = V2_ROUTES[url.pathname] || requestPath;
+  const isNetworkSharePage = /^\/share\/req\/[A-Za-z0-9_-]+\/?$/.test(url.pathname);
+  let filePath = isNetworkSharePage ? '/share-req.html' : (V2_ROUTES[url.pathname] || requestPath);
   const publicPages = new Set(['/index.html', '/login.html', '/share-req.html']);
   if (url.pathname === '/login') {
     res.writeHead(302, withSecurityHeaders({ Location: '/login.html' }));
@@ -5823,7 +5834,7 @@ appServer = http.createServer((req, res) => withWriteScope(async () => {
     res.end();
     return;
   }
-  if (filePath.endsWith('.html') && !publicPages.has(requestPath)) {
+  if (filePath.endsWith('.html') && !publicPages.has(requestPath) && !isNetworkSharePage) {
     const actor = resolveSessionActor(req, url);
     if (!actor) {
       const next = encodeURIComponent(url.pathname + (url.search || ''));
