@@ -70,6 +70,17 @@ const POSITIVE_NUMBER_FIELDS = [
 // Valid field states
 const FIELD_STATES = { UNKNOWN: 'UNKNOWN', KNOWN: 'KNOWN', NOT_APPLICABLE: 'NOT_APPLICABLE' };
 
+function normalizeBhkLabels(payload) {
+  const result = { ...payload };
+  for (const key of ['BHK', 'bhk', 'BHKMin', 'bhkMin', 'BHKMax', 'bhkMax']) {
+    const value = result[key];
+    if (typeof value !== 'string') continue;
+    const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(?:BHK|bedrooms?)$/i);
+    if (match) result[key] = Number(match[1]);
+  }
+  return result;
+}
+
 function normalizeFieldPriority(value) {
   if (value == null || value === '') return null;
   const normalized = String(value).trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -289,7 +300,7 @@ class V2RequirementService {
       if (previous) return { ok: true, data: previous, reused: true };
     }
     const leadPrefill = this._deriveLeadRequirementPrefill(lead, transaction);
-    const mergedPayload = this._mergeWithPrefill(leadPrefill, payload || {});
+    const mergedPayload = normalizeBhkLabels(this._mergeWithPrefill(leadPrefill, payload || {}));
 
     // ── Derive TransactionType / Category / SubCategory ───────────────────
 
@@ -470,6 +481,7 @@ class V2RequirementService {
    * Immutable fields: RequirementID, LeadID, TransactionID, FormVersion.
    */
   updateRequirement(requirementId, payload, actor = {}) {
+    payload = normalizeBhkLabels(payload || {});
     const db = this.repository.read();
     db.Requirements = db.Requirements || [];
     const idx = db.Requirements.findIndex((r) => r.RequirementID === requirementId);
