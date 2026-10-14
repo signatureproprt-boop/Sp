@@ -1016,10 +1016,10 @@ table td,table th{border-color:var(--v2-line)!important}
       return null;
     };
     return {
-      TransactionType: read('TransactionType', 'transactionType', 'RequirementType', 'requirementType') || txnType || null,
-      Category: read('Category', 'category') || category || null,
-      SubCategory: read('SubCategory', 'subCategory', 'PropertyType', 'propertyType') || subCategory || null,
-      PropertyType: read('PropertyType', 'propertyType', 'SubCategory', 'subCategory') || subCategory || null,
+      TransactionType: txnType || read('TransactionType', 'transactionType', 'RequirementType', 'requirementType') || null,
+      Category: category || read('Category', 'category') || null,
+      SubCategory: subCategory || null,
+      PropertyType: subCategory || null,
       BudgetMin: read('BudgetMin', 'budgetMin'),
       BudgetMax: read('BudgetMax', 'budgetMax', 'Budget'),
       Location1: read('Location1', 'location1', 'Location', 'location', 'PreferredLocation', 'preferredLocation'),
@@ -2223,6 +2223,9 @@ table td,table th{border-color:var(--v2-line)!important}
       const dynamicValues = collectDynamicValues('need');
       const fieldPriorities = extractFieldPrioritiesFromValues(dynamicValues);
       Object.entries(dynamicValues).forEach(([key, val]) => {
+        // These values come from the visible scope selectors, never old
+        // client preferences retained in dynamic form state.
+        if (['TransactionType', 'transactionType', 'Category', 'category', 'SubCategory', 'subCategory'].includes(key)) return;
         if (key.startsWith('__priority__')) return;
         if (!editingNeedId && (val === '' || val == null || (Array.isArray(val) && !val.length))) return;
         txnPayload[key] = val === '' ? null : val;
@@ -2528,7 +2531,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const source = sheetRequirementRows[index];
     if (!source) return;
     await openAddNeedModal();
-    const type = source.TransactionType === 'Sale' ? 'Sell' : source.TransactionType;
+    const type = source.TransactionType === 'Sell' ? 'Sale' : source.TransactionType;
     document.getElementById('need-txn-type').value = type || '';
     document.getElementById('need-category').value = source.Category || '';
     await onNeedScopeChange();
