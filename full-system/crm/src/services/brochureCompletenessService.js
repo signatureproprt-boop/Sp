@@ -25,9 +25,9 @@ function validateReview(review, data, pageCount) {
   const fail = (issue, code = 'BROCHURE_REVIEW_FORMAT') => { const error = new Error('Review required: ' + issue); error.code = code; throw error; };
   if (!review || typeof review.Complete !== 'boolean' || !Array.isArray(review.Pages) || !Array.isArray(review.Findings) || !Array.isArray(review.ConfigChecks)) fail('incomplete independent brochure review: expected Complete, Pages, Findings and ConfigChecks');
   const warnings = [], blocking = [];
-  const scalarFields = new Set(['RERANumber','BuilderName','Location1','Address','SalesPersonName','SalesPersonPhone','Category','ProjectStatus','TotalUnits','ProjectArea','TotalTowers','TotalFloors','FloorHeightFt','PriceMin','PriceMax','PossessionDate']);
+  const scalarFields = new Set(['ProjectName','Overview','RERANumber','BuilderName','Location1','Address','SalesPersonName','SalesPersonPhone','Category','ProjectStatus','TotalUnits','ProjectArea','TotalTowers','TotalFloors','FloorHeightFt','PriceMin','PriceMax','PossessionDate']);
   const listFields = new Set(['Amenities','Highlights','ConfigDetails']);
-  const configFields = new Set(['CarpetAreaSqft','SuperBuiltUpAreaSqft','TerraceAreaSqft','ParkingAllotted','ServantRoom']);
+  const configFields = new Set(['Tower','FlatType','Type','BHK','CarpetAreaSqft','SuperBuiltUpAreaSqft','TerraceAreaSqft','ParkingAllotted','ServantRoom']);
   for (const finding of review.Findings) {
     if (finding?.Kind !== 'not_stated') { blocking.push(finding); continue; }
     if (!Number.isInteger(finding.Page) || finding.Page < 1 || finding.Page > pageCount || !String(finding.Issue || '').trim()) fail('invalid not-stated source finding');
@@ -36,7 +36,7 @@ function validateReview(review, data, pageCount) {
       if (!Number.isInteger(finding.ConfigIndex) || finding.ConfigIndex < 0 || finding.ConfigIndex >= (data.ConfigDetails || []).length) fail('not-stated finding requires an exact configuration index');
       target = data.ConfigDetails[finding.ConfigIndex];
     } else if ((scalarFields.has(finding.Field) || listFields.has(finding.Field)) && finding.ConfigIndex == null) target = data;
-    else fail('not-stated finding requires an allowed field');
+    else fail('not-stated finding requires an allowed field: '+String(finding.Field || 'missing'));
     const value = target[finding.Field];
     const absent = listFields.has(finding.Field) ? value == null || (Array.isArray(value) && value.length === 0) : value == null || value === '';
     if (!absent) fail('not-stated source field has an unsupported extracted value: ' + finding.Field, 'BROCHURE_REVIEW_FINDINGS');
