@@ -4,6 +4,9 @@
   dialog.setAttribute('aria-label', 'Dashboard work');
   dialog.style.cssText = 'margin:auto;padding:20px;border:1px solid #ddd;border-radius:12px;width:min(660px,94vw);max-height:90vh;overflow:auto;color:#382718';
   document.body.append(dialog);
+  const style = document.createElement('style');
+  style.textContent = '#visit-form label{display:grid;gap:4px;min-width:0} #visit-form input,#visit-form select{width:100%;min-width:0;padding:7px;box-sizing:border-box}';
+  document.head.append(style);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let generation = 0;
   const rows = result => Array.isArray(result.data) ? result.data : [];
@@ -85,7 +88,7 @@
       try {
         const result = await request('/api/v2/clients/'+encodeURIComponent(id)+'/workspace');
         if (run !== generation || version !== requirementVersion) return;
-        const requirements = (result.data.requirements || []).filter(r => !['Lost','Closed','Cancelled'].includes(r.Status || r.RequirementStatus));
+        const requirements = (result.data.requirements || []).filter(r => !['lost','closed','cancelled','archived'].includes(String(r.RequirementStatus || r.Status || '').toLowerCase()));
         find('visit-requirement').innerHTML = '<option value="">Select requirement</option>'+requirements.map(r=>`<option value="${escape(r.RequirementID)}">${escape(r.RequirementID)} · ${escape(r.TransactionType || r.Purpose || '')} · ${escape(r.Category || '')}</option>`).join('');
         find('visit-requirement').disabled = !requirements.length;
         message.innerHTML = requirements.length ? '' : `No open requirement. ${workspaceLink(id,'Open client to confirm a requirement')}.`;
