@@ -8,7 +8,7 @@ test('individual auto-fill leaves form unchanged for another project or missing 
  const ctx={document:{getElementById:id=>elements[id]},editingId:'project',MEDIA_LIMITS:{brochure:999},pendingBrochureFile:null,
  fileToBase64Full:async()=> 'cGRm',requestBrochureExtraction:async()=>({ok:true,data:{ProjectName:'THE ULTIMA II'}}),toast:m=>messages.push(m),applyAutoFill:()=>applied++};
  vm.createContext(ctx);vm.runInContext(html.slice(start,end),ctx);
- await ctx.onBrochureAutoFill({size:1});assert.equal(applied,0);assert.match(messages[0],/does not match THE ULTIMA/);
+ await ctx.onBrochureAutoFill({size:1});assert.equal(applied,0);assert.match(elements['autofill-status'].textContent,/does not match THE ULTIMA/);
  ctx.requestBrochureExtraction=async()=>({ok:true,data:{}});await ctx.onBrochureAutoFill({size:1});assert.equal(applied,0);
  ctx.requestBrochureExtraction=async()=>({ok:true,data:{ProjectName:'the ultima',ConfigDetails:[]}});
  await ctx.onBrochureAutoFill({size:1});assert.equal(applied,1);

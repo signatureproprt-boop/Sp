@@ -34,7 +34,7 @@ test('PDF preview returns fields without waiting for a stuck snapshot save', asy
 
 test('individual and bulk PDF extraction report upstream text errors without a JSON parse crash', async () => {
   const html = fs.readFileSync(require.resolve('../builder-projects.html'), 'utf8');
-  const start = html.indexOf('  async function requestBrochureExtraction(');
+  const start = html.indexOf('  const brochureReaderCooldowns =');
   const end = html.indexOf('  async function onBrochureAutoFill(', start);
   const context = { AbortController, setTimeout, clearTimeout, atob, crypto: require('node:crypto').webcrypto, editingId: 'test', brochureCache: async () => null,
     fetch: async () => ({ ok: false, status: 502, text: async () => 'upstream request timeout' }) };
@@ -96,4 +96,15 @@ test('rendered PDF uses page text and JPEG instead of the heavy original', async
     global.fetch = oldFetch;
     if (oldKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = oldKey;
   }
+});
+
+test('manual reader respects provider cooldown and retains a retryable failure',async()=>{
+ const html=fs.readFileSync(require.resolve('../builder-projects.html'),'utf8');
+ const start=html.indexOf('  const brochureReaderCooldowns ='),end=html.indexOf('  async function onBrochureAutoFill(',start);
+ let calls=0;
+ const context={AbortController,setTimeout,clearTimeout,atob,crypto:require('node:crypto').webcrypto,editingId:'cooldown-test',brochureCache:async()=>null,
+ fetch:async()=>{calls++;return {ok:false,status:503,text:async()=>JSON.stringify({ok:false,retryAfterSeconds:120})};}};
+ vm.createContext(context);vm.runInContext(html.slice(start,end),context);
+ await assert.rejects(context.requestBrochureExtraction('x.pdf','cGRm'),/Retry after 120 seconds/);
+ await assert.rejects(context.requestBrochureExtraction('x.pdf','cGRm'),/AI busy/);assert.equal(calls,1);
 });

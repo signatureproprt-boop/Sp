@@ -3,6 +3,7 @@
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const crypto = require('node:crypto');
+const { setTimeout: wait } = require('node:timers/promises');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
@@ -87,7 +88,8 @@ async function extractBrochureUncached(fileBase64, pageImages) {
 
   // One shared deadline covers extraction, review and the bounded correction pass.
   const extractionSignal = AbortSignal.timeout(240000);
-  async function generate(prompt) {
+  let capacityRetriesRemaining = 2;
+  async function generateOnce(prompt) {
   const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     signal: extractionSignal,
     method: 'POST',
@@ -125,9 +127,10 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     if ([429,503].includes(response.status)) {
       error.code = response.status === 429 ? 'AI_RATE_LIMIT' : 'AI_UNAVAILABLE';
       const header = response.headers?.get?.('retry-after');
-      const headerSeconds = header && /^\\d+(?:\\.\\d+)?$/.test(header) ? Number(header) : Math.max(0, (Date.parse(header || '') - Date.now()) / 1000);
-      const delays = (payload?.error?.details || []).map(d => /^([0-9]+(?:\\.[0-9]+)?)s$/.exec(String(d?.retryDelay || ''))).filter(Boolean).map(m => Number(m[1]));
-      error.retryAfterSeconds = Math.ceil(Math.max(60, Number.isFinite(headerSeconds) ? headerSeconds : 0, ...delays));
+      const headerSeconds = header && /^\d+(?:\.\d+)?$/.test(header) ? Number(header) : Math.max(0, (Date.parse(header || '') - Date.now()) / 1000);
+      const delays = (payload?.error?.details || []).map(d => /^([0-9]+(?:\.[0-9]+)?)s$/.exec(String(d?.retryDelay || ''))).filter(Boolean).map(m => Number(m[1]));
+      error.providerRetryAfterSeconds = Math.max(0, Number.isFinite(headerSeconds) ? headerSeconds : 0, ...delays);
+      error.retryAfterSeconds = Math.ceil(Math.max(60, error.providerRetryAfterSeconds));
     }
     throw error;
   }
@@ -135,6 +138,20 @@ async function extractBrochureUncached(fileBase64, pageImages) {
   if (!text) throw new Error('Gemini returned no extraction result');
   if (payload.candidates[0].finishReason && payload.candidates[0].finishReason !== 'STOP') throw new Error('Review required: AI response was truncated or incomplete');
   return parseModelJson(text);
+  }
+  async function generate(prompt) {
+    let attempt = 0;
+    while (true) {
+      try { return await generateOnce(prompt); }
+      catch (error) {
+        // One bounded overload retry budget covers extraction and review.
+        // Quota, authentication and source-validation errors are not retried.
+        if (error.status !== 503 || capacityRetriesRemaining <= 0 || error.providerRetryAfterSeconds > 8) throw error;
+        capacityRetriesRemaining--;
+        const delayMs = Math.max(1000 * (3 ** attempt++), (error.providerRetryAfterSeconds || 0) * 1000);
+        await wait(delayMs, undefined, { signal: extractionSignal });
+      }
+    }
   }
   const pageCount = Array.isArray(pageImages) && pageImages.length ? pageImages.length : await countPdfPages(buffer);
   let data = await generate(EXTRACTION_PROMPT);
