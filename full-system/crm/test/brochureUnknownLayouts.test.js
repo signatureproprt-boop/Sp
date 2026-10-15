@@ -16,3 +16,11 @@ test('known matching layouts combine towers while private terrace variants stay 
  const rows=grouped([{Tower:'A',FlatType:'1',Type:'Apartment',BHK:3,CarpetAreaSqft:1200},{Tower:'B',FlatType:'2',Type:'Apartment',BHK:3,CarpetAreaSqft:1200},{Tower:'A',FlatType:'1',Type:'Terrace Flat',BHK:3,CarpetAreaSqft:1200,TerraceAreaSqft:400},{Tower:'B',FlatType:'2',Type:'Terrace Flat',BHK:3,CarpetAreaSqft:1200,TerraceAreaSqft:500}]);
  assert.equal(rows.length,3);assert.equal(rows[0].Tower,'A/B');assert.equal(rows[1].TerraceAreaSqft,400);assert.equal(rows[2].TerraceAreaSqft,500);
 });
+
+test('interactive form also preserves unknown-area layouts across towers and flat numbers',()=>{
+ const html=fs.readFileSync(__dirname+'/../builder-projects.html','utf8');const start=html.indexOf('  function groupedConfigDetails('),end=html.indexOf('  function amenityIcon',start);
+ const context={};vm.createContext(context);vm.runInContext(html.slice(start,end),context);
+ const rows=[{Tower:'A/B',FlatType:'101/102',Type:'Apartment',BHK:4},{Tower:'C/D',FlatType:'101/102',Type:'Apartment',BHK:4},{Tower:'A/B',FlatType:'103/104',Type:'Apartment',BHK:4}];
+ assert.equal(context.groupedConfigDetails(rows).length,3);assert.equal(context.groupedConfigDetails([{Type:'Apartment',BHK:4},{Type:'Apartment',BHK:4}]).length,2);
+ assert.equal(context.groupedConfigDetails(rows.map(row=>({...row,CarpetAreaSqft:1500}))).length,1);
+});
