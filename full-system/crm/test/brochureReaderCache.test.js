@@ -165,8 +165,9 @@ test('brochure catalogue groups edit rows and keeps layout evidence and missing-
       { Tower: 'C', FlatType: 'Layout upper', Type: 'Apartment', BHK: 3 },
       { Tower: 'C', FlatType: 'Layout lower', Type: 'Apartment', BHK: 3 }
     ] });
-  assert.equal(context.configRows.length, 3);
-  assert.equal(context.configRows[0].Tower, 'A/B');
+  assert.equal(context.configRows.length, 4);
+  assert.equal(context.configRows[0].Tower, 'A');
+  assert.equal(context.configRows[1].Tower, 'B');
   assert.equal(context.configRows[0].CarpetAreaSqft, '');
   assert.equal(fields['f-builder-name'].value, 'Swagat Developers');
   assert.match(fields['f-notes'].value, /Page 5/);

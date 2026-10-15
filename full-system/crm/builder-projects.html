@@ -1283,9 +1283,11 @@ html body{background-image:none!important;background:#f7f7f5!important}
   function groupedConfigDetails(rows) {
     const groups = new Map();
     const fields = ['Type', 'BHK', 'CarpetAreaSqft', 'SuperBuiltUpAreaSqft', 'TerraceAreaSqft', 'BuiltUpAreaSqft', 'AreaSqft', 'ParkingAllotted', 'ServantRoom'];
-    for (const row of rows || []) {
+    for (const [index,row] of (rows || []).entries()) {
+      const knownArea=['CarpetAreaSqft','SuperBuiltUpAreaSqft','BuiltUpAreaSqft','AreaSqft'].some(field=>Number(row[field])>0);
+      const unknownIdentity=knownArea ? null : [row.Tower || '',row.FlatType || '',!row.Tower && !row.FlatType ? index : null];
       const layoutLabel = /[a-z]/i.test(String(row.FlatType || '')) ? String(row.FlatType).trim() : null;
-      const key = JSON.stringify([layoutLabel, ...fields.map(field => row[field] === '' || row[field] == null ? null : row[field])]);
+      const key = JSON.stringify([unknownIdentity, layoutLabel, ...fields.map(field => row[field] === '' || row[field] == null ? null : row[field])]);
       if (!groups.has(key)) groups.set(key, { ...row, towers: new Set(), flats: new Set() });
       const group = groups.get(key);
       if (row.Tower) group.towers.add(String(row.Tower).trim());
