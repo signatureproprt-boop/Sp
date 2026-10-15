@@ -2406,6 +2406,17 @@ async function handleApi(req, res, url) {
             sendJson(res, { ok: false, error: 'Client transaction unavailable' }, 403); return;
           }
         }
+        const configIndex = bodyForV2?.selectedConfigIndex;
+        const configs = project.data.ConfigDetails || [];
+        if (configIndex != null && (!Number.isInteger(configIndex) || !configs[configIndex])) {
+          sendJson(res,{ok:false,error:'Selected layout is unavailable. Select the project again.'},400);return;
+        }
+        if (requirementId) {
+          const need=runtime.repository.find('Requirements','RequirementID',requirementId);
+          if(need?.Category && String(need.Category).toLowerCase()!==String(project.data.Category || '').toLowerCase()) {
+            sendJson(res,{ok:false,error:'Project category does not match this client requirement.'},400);return;
+          }
+        }
         const recipient = normalizeBrochureRecipient(lead ? {
           recipientName:lead.ClientName || lead.Name,
           recipientPhone:lead.WhatsApp || lead.PrimaryMobile || lead.Phone,
@@ -2422,6 +2433,7 @@ async function handleApi(req, res, url) {
           const existing = runtime.repository.list('BuilderBrochureShares').find(row => row.ClientRequestID === requestId && row.CreatedBy === actor.userId);
           if (existing) {
             if (existing.LeadID !== leadId || existing.ProjectID !== project.data.ProjectID || existing.RequirementID !== (requirementId || null) ||
+              JSON.stringify(existing.SelectedConfiguration || null) !== JSON.stringify(configIndex == null ? null : configs[configIndex]) ||
               existing.BrochureFileKey !== String(brochure.DriveFileID || brochure.DriveFileId || brochure.StoragePath) || Date.parse(existing.ExpiresAt)<=Date.now()) {
               sendJson(res,{ok:false,error:'Preparation request changed; select the brochure again'},409);return;
             }
@@ -2443,6 +2455,7 @@ async function handleApi(req, res, url) {
           LeadID: lead?.LeadID || null,
           RequirementID: requirementId || null,
           TransactionID: transactionId || null,
+          SelectedConfiguration: configIndex == null ? null : configs[configIndex],
           BrochureMediaID: brochure.MediaID || null,
           BrochureFileKey: brochure.DriveFileID || brochure.DriveFileId || brochure.StoragePath,
           BrochureName: brochure.Name || brochure.name || brochure.FileName || 'Brochure.pdf',
