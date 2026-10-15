@@ -266,6 +266,24 @@ table td,table th{border-color:var(--v2-line)!important}
   .topnav,.top,.topbar{min-height:54px!important;padding:0 11px!important}
   .client-header,.hero{border-radius:0!important;border-left:0!important;border-right:0!important}
 }
+
+/* Compact project-first catalogue */
+html body{background-image:none!important;background:#f7f7f5!important}
+.page{max-width:1440px;padding:20px 24px 32px}
+.project-header{margin-bottom:12px;gap:12px}.workspace-eyebrow{display:none}.project-header .page-title{font-size:25px;letter-spacing:-.7px}.project-header .page-sub{font-size:12px;margin-top:5px}.project-primary-actions .btn{min-height:38px;padding:9px 14px;font-size:12px}
+.project-overview{display:flex;flex-wrap:wrap;gap:8px 22px;border:0;border-radius:0;background:transparent;box-shadow:none;margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid #e5ded4}
+.overview-item{padding:0;border:0;display:flex;flex-direction:row;align-items:baseline;gap:6px}.overview-item>span{font-size:11px;text-transform:none;letter-spacing:0}.overview-item strong{font-size:17px;letter-spacing:0;order:-1}.overview-item small{display:none}.project-overview[data-mode="cards"] .overview-item:not(:first-child){display:none}.project-overview[data-mode="cards"] #overview-scope{display:inline;font-size:11px;margin-left:6px;color:#81766c}
+.project-tools{margin-bottom:12px;background:transparent;border-radius:7px}.project-tools>summary{padding:9px 12px;font-size:11px;min-height:34px}.project-tools>summary::after{font-size:16px}.project-tools-body{padding:4px 12px 12px}
+#karma-scrape-status[data-state="completed"]{display:none!important}
+.project-filter-panel{padding:12px 14px;margin-bottom:16px;border-radius:9px}.filter-panel-heading{margin-bottom:10px}.filter-panel-heading h2{font-size:13px}.filter-panel-heading .btn{padding:6px 10px;font-size:11px;min-height:30px}
+.project-filter-panel .toolbar{gap:7px;margin-bottom:9px}.project-filter-panel #search-input{flex:2 1 280px}.project-filter-panel #builder-select{flex:1 1 180px;max-width:260px}.project-filter-panel #filter-location{flex:1 1 160px}.project-filter-panel .search-input,.project-filter-panel #builder-select{min-height:38px;font-size:13px;padding:8px 10px}
+.project-filter-panel .category-row{margin-bottom:6px}.project-filter-panel .category-row label{margin-left:auto}.project-filter-panel .chip{min-height:32px;padding:6px 10px;font-size:12px}.project-filter-panel #project-grouping{min-height:32px;padding:6px 9px;font-size:11px}
+.advanced-project-filters{border-top:1px solid #eee8df;margin-top:8px}.advanced-project-filters>summary{font-size:12px;font-weight:650;padding:10px 0 0;color:#68523f;cursor:pointer}.advanced-project-filters>summary>span{font-weight:400;font-size:11px;color:#8a7b70;margin-left:8px}.advanced-project-filters[open]>summary{padding-bottom:12px}.project-filter-panel .toolbar:last-child{border:0;padding-top:0;margin-bottom:0}
+.directory-heading{margin-bottom:10px}.directory-heading h2{font-size:14px}.directory-heading>span{font-size:11px}
+.builder-group{margin:7px 0;border-radius:8px}.builder-group>summary{padding:10px 14px;min-height:48px;gap:10px}.group-icon{width:28px;height:28px;font-size:14px;border-radius:7px}.group-label{font-size:13px}.group-count{font-size:11px;padding:4px 9px}.group-location>summary,.group-builder>summary{min-height:42px;padding:8px 12px}.group-location .group-icon,.group-builder .group-icon{width:24px;height:24px;font-size:12px}
+.grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.card{border-radius:9px!important}.card-cover{height:125px}.card-top{padding:13px 14px}.card-status{margin-bottom:8px}.card-project{font-size:16px;line-height:1.35}.card-builder{font-size:12px;margin-top:4px}.card-loc{margin-top:7px;font-size:12px}.card-body{padding:12px 14px}.card-price{font-size:17px}.card-body>.btn{padding:8px 10px!important;font-size:12px}.card-facts{margin-top:7px}.card-fact{font-size:11px;line-height:1.5}.card-facts>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.more-project-facts .card-facts>span{display:block;overflow:visible}.card-footer{padding:10px 14px}.card-footer>span{margin-bottom:7px}.card-footer>div{gap:9px}.card-footer .link{font-size:11px;min-height:24px}
+@media(max-width:1100px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.project-filter-panel #builder-select{max-width:none}.tools-description{display:none}}
+@media(max-width:700px){.page{padding:14px 12px 28px}.project-header{gap:9px;margin-bottom:10px}.project-header .page-title{font-size:24px}.project-header .page-sub{font-size:12px}.project-header>div:last-child{width:auto;display:flex!important;margin-top:0}.project-primary-actions .btn{min-height:36px;padding:8px 10px;font-size:11px}.project-overview{gap:7px 16px;margin-bottom:10px;padding-bottom:10px}.overview-item{padding:0!important;border:0!important}.overview-item strong{font-size:16px}.overview-item>span{font-size:11px}.project-filter-panel{padding:10px 12px}.project-filter-panel #search-input{flex-basis:100%}.project-filter-panel #builder-select,.project-filter-panel #filter-location{flex:1 1 130px;width:auto;min-width:0}.project-filter-panel .category-row{gap:6px}.project-filter-panel .category-row label{width:auto;margin-left:0!important}.project-filter-panel label select{width:auto}.project-filter-panel .chip{font-size:11px;padding:6px 9px}.advanced-project-filters>summary>span{font-size:10px}.directory-heading{flex-direction:row;align-items:center;gap:8px}.directory-heading>span{max-width:200px;text-align:right;line-height:1.4}.grid{grid-template-columns:minmax(0,1fr);gap:12px}.group-label{font-size:13px}.builder-group>summary{padding:9px 12px}.project-tools>summary{padding:8px 10px}}
 </style>
 </head>
 <body>
@@ -360,19 +378,24 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
   </div>
 
-  <section class="project-filter-panel" aria-label="Project filters"><div class="filter-panel-heading"><div><h2>Explore projects</h2><p>Choose a category, narrow the location, then open a builder group.</p></div><button class="btn btn-ghost" onclick="resetDirectoryFilters()">Reset filters</button></div>
+  <section class="project-filter-panel" aria-label="Project filters"><div class="filter-panel-heading"><div><h2>Find a project</h2></div><button class="btn btn-ghost" onclick="resetDirectoryFilters()">Reset filters</button></div>
   <div class="toolbar">
     <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
     <select id="builder-select" class="btn" aria-label="Choose builder" onchange="selectBuilder(this.value)"><option value="">All builders</option></select>
+    <input id="filter-location" class="search-input" list="dl-surat-areas" placeholder="Location" aria-label="Location" onchange="applyProjectFilters()" />
+  </div>
+  <div class="toolbar category-row">
     <button type="button" class="chip active" aria-pressed="true" data-testid="filter-cat-all" onclick="setCategoryFilter(this, '')">All Categories</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-land" onclick="setCategoryFilter(this, 'Land')">Land</button>
+    <label style="margin-left:auto">Group projects <select id="project-grouping" class="btn" aria-label="Group projects" onchange="setProjectGrouping(this.value)"><option value="category-location-builder">Category → Location → Builder</option><option value="location-category-builder">Location → Category → Builder</option><option value="builder-category-location">Builder → Category → Location</option><option value="none" selected>Project cards</option></select></label>
   </div>
 
+  <details class="advanced-project-filters"><summary>Advanced filters <span>BHK, area &amp; construction status</span></summary>
   <div class="toolbar" aria-label="Project size filters">
-    <input id="filter-location" class="search-input" list="dl-surat-areas" placeholder="Location" aria-label="Location" onchange="applyProjectFilters()" />
+
     <select id="filter-bhk" class="btn" aria-label="BHK" onchange="applyProjectFilters()"><option value="">All BHK</option><option>1 BHK</option><option>2 BHK</option><option>3 BHK</option><option>4 BHK</option><option>5 BHK</option></select>
     <input id="filter-carpet-min" type="number" min="0" class="search-input" placeholder="Carpet min sqft" aria-label="Carpet minimum sqft" onchange="applyProjectFilters()" />
     <input id="filter-carpet-max" type="number" min="0" class="search-input" placeholder="Carpet max sqft" aria-label="Carpet maximum sqft" onchange="applyProjectFilters()" />
@@ -387,9 +410,10 @@ table td,table th{border-color:var(--v2-line)!important}
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-uc" onclick="setStatusFilter(this, 'Under Construction')">Under Construction</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-rtm" onclick="setStatusFilter(this, 'Ready to Move')">Ready to Move</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-completed" onclick="setStatusFilter(this, 'Completed')">Completed</button>
-    <label style="margin-left:auto">Group projects <select id="project-grouping" class="btn" aria-label="Group projects" onchange="setProjectGrouping(this.value)"><option value="category-location-builder">Category → Location → Builder</option><option value="location-category-builder">Location → Category → Builder</option><option value="builder-category-location">Builder → Category → Location</option><option value="none">Individual projects</option></select></label>
+
   </div>
 
+  </details>
   </section>
   <div class="directory-heading"><h2>Project directory</h2><span id="directory-result-note" role="status">Loading projects…</span></div>
   <div id="grid" class="grid" data-testid="projects-grid"></div>
@@ -675,7 +699,7 @@ table td,table th{border-color:var(--v2-line)!important}
   let currentPage = 1;
   let totalPages = 1;
   let totalProjects = 0;
-  let projectGrouping = 'category-location-builder';
+  let projectGrouping = 'none';
   let projectLoadVersion = 0;
   let editingId = null;
   let selectedFile = null;
@@ -884,6 +908,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const resumeButton = document.getElementById('karma-scrape-resume-btn');
     const testButton = document.getElementById('karma-scrape-test-btn');
     const result = data?.result || {};
+    if (box.dataset) box.dataset.state = data?.status || '';
     renderKarmaScrapeErrors(data);
     const running = data?.status === 'running';
     const interrupted = data?.status === 'interrupted';
@@ -1118,12 +1143,13 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function updateProjectOverview() {
     const grouped = projectGrouping !== 'none';
+    document.querySelector('.project-overview').dataset.mode = grouped ? 'groups' : 'cards';
     const unique = dimension => new Set(allProjects.map(p => groupLabel(p,dimension).toLowerCase())).size;
     document.getElementById('overview-projects').textContent = String(totalProjects);
     document.getElementById('overview-locations').textContent = String(unique('location'));
     document.getElementById('overview-builders').textContent = String(unique('builder'));
     document.getElementById('overview-brochures').textContent = String(allProjects.filter(p => (p.Brochures || []).some(isStoredBrochure)).length);
-    document.getElementById('overview-scope').textContent = grouped ? 'All matching projects' : 'Total matches · other counts on this page';
+    document.getElementById('overview-scope').textContent = grouped ? 'All matching projects' : `${allProjects.length} shown on this page`;
     document.getElementById('directory-result-note').textContent = `${totalProjects} matching projects · ${grouped ? 'open a group to explore' : 'individual view'}`;
   }
 
@@ -1526,7 +1552,7 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function setProjectGrouping(value) {
-    projectGrouping = ['category-location-builder','location-category-builder','builder-category-location','none'].includes(value) ? value : 'category-location-builder';
+    projectGrouping = ['category-location-builder','location-category-builder','builder-category-location','none'].includes(value) ? value : 'none';
     currentPage = 1;
     loadProjects();
   }
