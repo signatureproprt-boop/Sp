@@ -946,6 +946,7 @@ table td,table th{border-color:var(--v2-line)!important}
 </div>
 
 <script src="/client-brochures.js"></script>
+<script src="/shortlist-share.js"></script>
 <script src="/client-agent-broadcast.js" defer></script>
 <script>
   const LEAD_ID = new URLSearchParams(location.search).get('id');
@@ -3479,59 +3480,23 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   // ── WhatsApp Share (Shortlist) ───────────────────────────────────────────
-  function shareShortlistOnWhatsApp(reqId) {
-    const rows = (workspace._shortlist || {})[reqId] || [];
+  async function shareShortlistOnWhatsApp(reqId) {
+    await loadShortlistForReq(reqId);
+    if (workspace._shortlistErrors?.[reqId]) { alert('Fresh shortlist could not be loaded. Please retry.'); return; }
+    const rows = workspace._shortlist[reqId] || [];
     if (!rows.length) { alert('Shortlist khali hai — pehle kuch add karo'); return; }
-    const client = workspace?.lead || {};
-    const clientName = client.ClientName || client.Name || 'Client';
-    const clientPhone = String(client.PrimaryMobile || client.Phone || '').replace(/\D/g, '');
-    const brokerName  = (workspace?.agent?.Name) || 'Signature Properties';
-
-    const lines = [];
-    lines.push(`🏠 *Signature Properties*`);
-    lines.push(`Hi *${clientName}* 👋`);
-    lines.push('');
-    lines.push(`Aapki requirement ke according ye ${rows.length} shortlisted propert${rows.length===1?'y':'ies'} select ki hain:`);
-    lines.push('');
-    rows.forEach((r, i) => {
-      const p = r.Property || {};
-      const price = fmtInrShort(p.AskingPrice, p.ListingFor);
-      const rate = p.AskingRatePerSqFt ? ` @ ₹${Number(p.AskingRatePerSqFt).toLocaleString('en-IN')}/sqft` : '';
-      lines.push(`*${i + 1}. ${p.Title || r.PropertyID}*`);
-      const loc = [p.Location1, p.SocietyName].filter(Boolean).join(' • ');
-      if (loc) lines.push(`   📍 ${loc}`);
-      if (p.AskingPrice) lines.push(`   💰 ${price}${rate}`);
-      const specs = [];
-      if (p.BHK) specs.push(p.BHK);
-      if (p.CarpetArea) specs.push(`${p.CarpetArea} sqft carpet`);
-      if (p.FurnishingType) specs.push(p.FurnishingType);
-      if (specs.length) lines.push(`   🏘 ${specs.join(' · ')}`);
-      // RERA info if available
-      if (p.IsReraMaster && p.RERANumber) {
-        lines.push(`   🏗️ RERA: ${p.RERANumber}`);
-      }
-      if (r.Notes) lines.push(`   📝 ${r.Notes}`);
-      const media = p.MediaLinks || {};
-      const absoluteMediaUrl = (value) => {
-        try { return new URL(String(value), window.location.origin).toString(); } catch (_) { return String(value || ''); }
-      };
-      const photos = (media.photos || []).map(absoluteMediaUrl).filter(Boolean);
-      const videos = (media.videos || []).map(absoluteMediaUrl).filter(Boolean);
-      const brochures = (media.brochures || []).map(absoluteMediaUrl).filter(Boolean);
-      if (brochures.length) lines.push(`   📄 Brochure: ${brochures[0]}`);
-      if (photos.length) lines.push(`   🖼 Photos: ${photos.slice(0, 5).join(' | ')}`);
-      if (videos.length) lines.push(`   🎥 Video: ${videos[0]}`);
-      lines.push('');
-    });
-    lines.push(`Inme se jo pasand aaye uska number reply kar do. Main price, availability aur site visit confirm karwa dunga. 🙏`);
-    lines.push('');
-    lines.push(`— ${brokerName}\nSignature Properties`);
-
-    const text = lines.join('\n');
-    const url = clientPhone
-      ? `https://wa.me/${clientPhone}?text=${encodeURIComponent(text)}`
-      : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank', 'noopener');
+    const phone = ShortlistShare.phone(workspace.lead);
+    if (!phone) { alert('Client WhatsApp number missing or invalid. Update client details first.'); return; }
+    document.getElementById('shortlist-share-preview')?.remove();
+    const modal = document.createElement('div'); modal.id = 'shortlist-share-preview'; modal.className = 'modal-overlay';
+    modal.innerHTML = `<div class="modal" style="max-width:760px" role="dialog" aria-label="Review shortlist message"><div class="modal-header"><span class="modal-title">Review client details</span><button class="modal-close" id="close-shortlist-preview">×</button></div><div class="modal-body"><p>Client: ${esc(workspace.lead.ClientName || 'Client')} · WhatsApp: ${esc(phone)}</p><p>Check project, configuration, area and brochure before sending. Internal notes are excluded.</p><textarea aria-label="Shortlist message" id="shortlist-share-text" rows="16" style="width:100%"></textarea><a id="shortlist-share-open" class="btn btn-primary" target="_blank" rel="noopener">Open WhatsApp</a></div></div>`;
+    document.body.appendChild(modal);
+    const input = document.getElementById('shortlist-share-text');
+    input.value = ShortlistShare.message(rows, workspace.lead, window.location.origin);
+    const link = document.getElementById('shortlist-share-open');
+    const update = () => { link.href = `https://wa.me/${phone}?text=${encodeURIComponent(input.value)}`; };
+    input.addEventListener('input', update); update();
+    document.getElementById('close-shortlist-preview').onclick = () => modal.remove();
   }
 
   function smartMatchCard(m, reqId) {

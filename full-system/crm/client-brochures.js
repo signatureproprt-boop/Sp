@@ -17,6 +17,7 @@ async function openClientBrochures(requirementId) {
     <div class="modal-header"><span class="modal-title">Shortlist &amp; Brochures</span><button class="modal-close" onclick="document.getElementById('client-brochure-modal').remove()">×</button></div>
     <div class="modal-body"><p><b>${esc(workspace.lead.ClientName)}</b> · Select a project and review its brochure before sharing.</p>
     <h3>Shortlisted properties</h3><div id="client-brochure-shortlist">Loading…</div>
+    <button class="btn btn-primary" onclick="shareShortlistOnWhatsApp(clientBrochureFlow.requirementId)">Review &amp; share shortlist</button>
     <button class="btn btn-ghost" onclick="openManualShortlistFromBrochure()">＋ Add manual property</button>
     <h3>Find builder project</h3><label for="client-brochure-search">Project or builder name</label><input id="client-brochure-search" placeholder="Search project or builder" style="width:100%">
     <button class="btn btn-ghost" onclick="searchClientBrochures()">Search Projects</button><div id="client-brochure-projects"></div>
@@ -67,7 +68,7 @@ async function prepareClientBrochure() {
     const {project,file}=clientBrochureFlow.selected;
     const result=await brochureApi(`/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure-shares`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leadId:workspace.lead.LeadID,requirementId:clientBrochureFlow.requirementId,brochureFileKey:file.DriveFileID || file.DriveFileId || file.StoragePath,channel:'whatsapp_text',clientRequestId:clientBrochureFlow.requestId})});
     clientBrochureFlow.share=result.data;
-    const text=`Hi ${workspace.lead.ClientName},\n${project.ProjectName} ka brochure:\n${result.data.url}\n— Signature Properties`;
+    const text=ShortlistShare.message([{PropertyID:project.ProjectID,Property:{Title:project.ProjectName,BuilderName:project.BuilderName,Category:project.Category,Location1:project.Location1,Status:project.ProjectStatus,RERANumber:project.RERANumber,ConfigDetails:project.ConfigDetails,MediaLinks:{brochures:[result.data.url]}}}],workspace.lead,window.location.origin);
     const url=`https://wa.me/${result.data.recipientPhone}?text=${encodeURIComponent(text)}`;
     document.getElementById('client-brochure-send').innerHTML=`<p>Brochure prepared. Review the PDF, then open WhatsApp.</p><a href="${escAttr(result.data.url)}" target="_blank" rel="noopener">View selected PDF</a> · <a class="btn btn-primary" href="${escAttr(url)}" target="_blank" rel="noopener">Open WhatsApp</a>
       <p>WhatsApp does not confirm sending back to CRM. Confirm below after you send it.</p><label><input id="client-brochure-sent" type="checkbox"> I sent this brochure to this client</label><p><label for="client-brochure-followup">Follow-up date (optional)</label><input id="client-brochure-followup" type="date"></p><button id="client-brochure-confirm" class="btn btn-primary" onclick="confirmClientBrochureSent()">Confirm sent &amp; save follow-up</button>`;

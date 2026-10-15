@@ -51,7 +51,9 @@ class ShortlistServiceV2 {
       SocietyName: prop.SocietyName || null,
       AskingPrice: prop.AskingPrice ?? prop.Price ?? null,
       AskingRatePerSqFt: prop.AskingRatePerSqFt ?? null,
-      CarpetArea: prop.CarpetArea ?? prop.Area ?? null,
+      CarpetArea: prop.CarpetArea ?? prop.CarpetAreaSqft ?? null,
+      Area: prop.Area ?? null,
+      SuperBuiltUpAreaSqft: prop.SuperBuiltUpAreaSqft ?? null,
       BHK: prop.BHK ?? null,
       FurnishingType: prop.FurnishingType || null,
       InventorySource: prop.InventorySource || null,
@@ -70,9 +72,20 @@ class ShortlistServiceV2 {
     };
   }
 
+  _builderSnapshot(project) {
+    return {
+      Title: project.ProjectName || 'Builder Project', ProjectName: project.ProjectName || null,
+      BuilderName: project.BuilderName || null, Category: project.Category || null,
+      Location1: project.Location1 || project.Location || null, InventorySource: 'Builder',
+      Status: project.ProjectStatus || null, RERANumber: project.RERANumber || null,
+      ConfigDetails: project.ConfigDetails || []
+    };
+  }
+
   buildView(row) {
     const transaction = resolveClientWork(this.repo, workKey(row));
     const prop = row.IsManual ? null : this.repo.find('Inventory', 'PropertyID', row.PropertyID);
+    const builderProject = row.BuilderProjectID ? this.repo.find('BuilderProjects', 'ProjectID', row.BuilderProjectID) : null;
     return {
       ShortlistID: row.ShortlistID,
       RequirementID: row.RequirementID || null,
@@ -90,7 +103,7 @@ class ShortlistServiceV2 {
       IsManual: !!row.IsManual,
       BuilderProjectID: row.BuilderProjectID || null,
       BrochureShareID: row.BrochureShareID || null,
-      Property: row.IsManual ? (row.ManualProperty || {}) : this._propertySnapshot(prop)
+      Property: row.IsManual ? { ...(row.ManualProperty || {}), ...(builderProject ? this._builderSnapshot(builderProject) : {}) } : this._propertySnapshot(prop)
     };
   }
 
@@ -223,13 +236,7 @@ class ShortlistServiceV2 {
     const existing = db.Shortlists.find(row =>
       workKey(row) === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
     const manualProperty = {
-      Title: project.ProjectName || 'Builder Project',
-      ProjectName: project.ProjectName || null,
-      BuilderName: project.BuilderName || null,
-      Category: project.Category || null,
-      Location1: project.Location1 || null,
-      InventorySource: 'Builder',
-      Status: project.ProjectStatus || null,
+      ...this._builderSnapshot(project),
       MediaLinks: { photos: [], videos: [], brochures: [brochureUrl] }
     };
     const now = this._now();
