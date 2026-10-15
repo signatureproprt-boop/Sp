@@ -24,7 +24,7 @@ test('groups projects across pages by category, location and builder; filters su
   await expect(page.getByLabel('Group projects',{exact:true})).toHaveValue('none');
   await expect(page.getByTestId('project-card-G1')).toBeVisible();
   expect((await page.getByTestId('project-card-G1').boundingBox()).y).toBeLessThan(600);
-  await expect(page.getByLabel('Carpet minimum sqft',{exact:true})).not.toBeVisible();
+  await expect(page.getByLabel('Super built-up minimum sqft',{exact:true})).not.toBeVisible();
   await page.getByLabel('Group projects',{exact:true}).selectOption('category-location-builder');
   await expect(page.getByTestId('project-card-G4')).toBeAttached();
   // Whitespace and casing variants share one location group across API pages.
