@@ -13,7 +13,7 @@ function context(fetch){
 test('complete groups include later API pages with the same filters',async()=>{
   const queries=[];
   const {scope}=context(async url=>{const q=new URL(url,'http://test').searchParams;queries.push(q);return {ok:true,json:async()=>({ok:true,data:[{ProjectID:q.get('page')}],pagination:{total:2,totalPages:2}})};});
-  vm.runInContext("currentCategory='Residential'; document.getElementById('filter-location').value='Vesu';",scope);
+  vm.runInContext("projectGrouping='category-location-builder'; currentCategory='Residential'; document.getElementById('filter-location').value='Vesu';",scope);
   await vm.runInContext('loadProjects()',scope);
   assert.equal(vm.runInContext('allProjects.length',scope),2);
   assert.equal(queries[1].get('category'),'Residential');assert.equal(queries[1].get('location'),'Vesu');
@@ -29,6 +29,7 @@ test('groups normalize location case, retain unknowns and escape names',()=>{
 });
 test('failed later page does not display incomplete groups',async()=>{
   const {scope,elements}=context(async url=>({ok:true,json:async()=>new URL(url,'http://test').searchParams.get('page')==='1'?{ok:true,data:[{ProjectID:'A'}],pagination:{totalPages:2}}:{ok:false,error:'Second page unavailable'}}));
+  vm.runInContext("projectGrouping='category-location-builder'",scope);
   await vm.runInContext('loadProjects()',scope);
   assert.match(elements.get('grid').innerHTML,/Failed to load: Second page unavailable/);
   assert.equal(vm.runInContext('allProjects.length',scope),0);
