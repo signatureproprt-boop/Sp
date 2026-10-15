@@ -47,10 +47,10 @@ test('persistent omissions fail closed after one correction and are not cached',
  assert.equal(h.prompts.length,4);
  await h.service.extractBrochure(pdf);assert.equal(h.prompts.length,6);
 });
-test('upstream high demand does not trigger correction retries',async()=>{
- const h=harness([{error:'High demand'}]);
+test('persistent high demand has bounded transport retries without correction retries',async()=>{
+ const h=harness([{error:'High demand'},{error:'High demand'},{error:'High demand'}]);
  await assert.rejects(h.service.extractBrochure(pdf),/High demand/);
- assert.equal(h.prompts.length,1);
+ assert.equal(h.prompts.length,3);assert.ok(h.prompts.every(p=>p===h.prompts[0]));
 });
 test('printed terrace omission can be corrected but still requires independent review',async()=>{
  const missing={...candidate,SourceEvidence:['Page 1: Private Terrace 500 sqft']};
@@ -60,4 +60,10 @@ test('printed terrace omission can be corrected but still requires independent r
  const result=await h.service.extractBrochure(pdf);
  assert.equal(result.ConfigDetails[1].TerraceAreaSqft,500);
  assert.equal(h.prompts.length,3);
+});
+
+test('temporary high demand recovers and still requires independent review',async()=>{
+ const h=harness([{error:'High demand'},candidate,approved]);
+ const result=await h.service.extractBrochure(Buffer.from('%PDF recovered').toString('base64'));
+ assert.equal(result.ProjectName,'THE ULTIMA');assert.equal(h.prompts.length,3);assert.match(h.prompts[2],/^Independently audit/);
 });
