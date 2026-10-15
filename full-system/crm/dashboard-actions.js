@@ -115,9 +115,20 @@
         const result = await request('/api/v2/site-visit-bookings?leadId=all');
         if (run !== generation) return;
         const visits = rows(result).filter(v => v.VisitDate === indiaDay(Date.now()) && !['Cancelled','Completed','NoShow'].includes(v.Status));
-        find('visit-list').innerHTML = visits.length ? visits.map(v=>`<article style="padding:10px 0">${workspaceLink(v.LeadID,v.ClientName || v.LeadID)} · ${escape(v.VisitTime)} IST · ${escape(v.Status)}<p>${escape(v.MeetingPoint || '')}</p></article>`).join('') : 'No site visits scheduled for today.';
+        find('visit-list').innerHTML = visits.length ? visits.map(v=>`<article style="padding:10px 0">${workspaceLink(v.LeadID,v.ClientName || v.LeadID)} · ${escape(v.VisitTime)} IST · ${escape(v.Status)}<p>${escape(v.RequirementID)} · ${escape((v.Properties || []).map(p=>p.Title || p.PropertyID).join(', '))}</p><p>${escape(v.MeetingPoint || '')}</p><button type="button" data-cancel-visit="${escape(v.VisitBookingID)}">Cancel visit</button></article>`).join('') : 'No site visits scheduled for today.';
       } catch(error) { if (run === generation) find('visit-list').textContent=error.message; }
     }
+    find('visit-list').onclick = async event => {
+      const button = event.target.closest('[data-cancel-visit]');
+      if (!button || !confirm('Cancel this site visit?')) return;
+      button.disabled = true;
+      try {
+        await request('/api/v2/site-visit-bookings/'+encodeURIComponent(button.dataset.cancelVisit)+'/cancel',{method:'POST'});
+        if (run !== generation) return;
+        message.textContent = 'Site visit cancelled.';
+        await loadVisits();
+      } catch(error) { if (run === generation) {message.textContent=error.message;button.disabled=false;} }
+    };
     await Promise.all([searchClients(),searchProperties(),loadVisits()]);
   }
   document.addEventListener('click', event => {
