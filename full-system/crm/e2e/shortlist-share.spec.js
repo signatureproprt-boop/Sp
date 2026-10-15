@@ -10,7 +10,7 @@ test('shortlist share reviews fresh configurations and WhatsApp recipient before
  if(p==='/api/v2/shortlist/R1'){reads++;json={ok:true,data:[{PropertyID:'P1',Notes:'Private discount',Property:{Title:reads>1?'Updated project':'Old project',ConfigDetails:[{BHK:3,CarpetAreaSqft:1200,SuperBuiltUpAreaSqft:2000}],MediaLinks:{brochures:['https://crm.example/selected.pdf']}}}]};}
  await r.fulfill({json});});
  await page.goto('/client-workspace.html?id=L1');
- await page.getByTestId('req-shortlist-R1').click();await page.getByTestId('sl-whatsapp-R1').click();
+ await page.getByRole('button',{name:'⭐ Shortlist & Brochures',exact:true}).click();await page.getByRole('button',{name:'Review & share shortlist',exact:true}).click();
  const preview=page.getByRole('dialog',{name:'Review shortlist message'});await expect(preview).toBeVisible();
  const text=page.getByRole('textbox',{name:'Shortlist message'});
  await expect(text).toHaveValue(/Updated project/);await expect(text).toHaveValue(/3 BHK · Carpet: 1200 sqft · Super built-up: 2000 sqft/);await expect(text).not.toHaveValue(/Private discount/);
