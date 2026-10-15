@@ -91,3 +91,15 @@ test('tower flat sizes and feature points survive saves without merging equal si
  assert.deepEqual(project.Highlights,['2 towers','14 floors']);
  assert.equal(svc.list({builtUpMin:1850}).count,1);
 });
+
+test('builder residential BHK sqft shortlist requires every condition on one known layout', () => {
+ const base={BuilderName:'Avadh',Category:'Residential',Active:true};
+ const service=new BuilderProjectService(repo([
+  {...base,ProjectID:'match',ConfigDetails:[{Type:'3 BHK',CarpetAreaSqft:1200}]},
+  {...base,ProjectID:'wrong-builder',BuilderName:'Other',ConfigDetails:[{Type:'3 BHK',CarpetAreaSqft:1200}]},
+  {...base,ProjectID:'wrong-category',Category:'Commercial',ConfigDetails:[{Type:'3 BHK',CarpetAreaSqft:1200}]},
+  {...base,ProjectID:'split-layout',ConfigDetails:[{Type:'3 BHK',CarpetAreaSqft:900},{Type:'2 BHK',CarpetAreaSqft:1200}]},
+  {...base,ProjectID:'unknown-size',ConfigDetails:[{Type:'3 BHK',AreaSqft:1200}]}
+ ]));
+ assert.deepEqual(service.listPage({builder:'Avadh',category:'Residential',bhk:'3 BHK',carpetMin:1000,carpetMax:1500}).data.map(p=>p.ProjectID),['match']);
+});
