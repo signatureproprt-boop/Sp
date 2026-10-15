@@ -310,6 +310,7 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="chip" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</div>
     <div class="chip" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</div>
     <div class="chip" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</div>
+    <div class="chip" data-testid="filter-cat-land" onclick="setCategoryFilter(this, 'Land')">Land</div>
   </div>
 
   <div class="toolbar" aria-label="Project size filters">
@@ -328,7 +329,7 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="chip" data-testid="filter-status-uc" onclick="setStatusFilter(this, 'Under Construction')">Under Construction</div>
     <div class="chip" data-testid="filter-status-rtm" onclick="setStatusFilter(this, 'Ready to Move')">Ready to Move</div>
     <div class="chip" data-testid="filter-status-completed" onclick="setStatusFilter(this, 'Completed')">Completed</div>
-    <div class="chip" data-testid="toggle-group-view" onclick="toggleGroupView(this)" style="margin-left:auto">📁 Group by Builder</div>
+    <label style="margin-left:auto">Group projects <select id="project-grouping" class="btn" aria-label="Group projects" onchange="setProjectGrouping(this.value)"><option value="category-location-builder">Category → Location → Builder</option><option value="location-category-builder">Location → Category → Builder</option><option value="builder-category-location">Builder → Category → Location</option><option value="none">Individual projects</option></select></label>
   </div>
 
   <div class="section-card" id="uploaded-brochure-batch-panel">
@@ -628,8 +629,8 @@ table td,table th{border-color:var(--v2-line)!important}
   let currentPage = 1;
   let totalPages = 1;
   let totalProjects = 0;
-  let groupByBuilder = false;
-  let collapsedGroups = new Set();
+  let projectGrouping = 'category-location-builder';
+  let projectLoadVersion = 0;
   let editingId = null;
   let selectedFile = null;
   let pendingBrochureFile = null;
@@ -743,11 +744,13 @@ table td,table th{border-color:var(--v2-line)!important}
   });
 
   async function loadProjects() {
+    const version = ++projectLoadVersion;
+    const grouped = projectGrouping !== 'none';
     document.getElementById('grid').innerHTML = '<div class="empty-state">Loading…</div>';
     try {
       const params = new URLSearchParams();
-      params.set('page', String(currentPage));
-      params.set('limit', '50');
+      params.set('page', grouped ? '1' : String(currentPage));
+      params.set('limit', grouped ? '100' : '50');
       if (currentStatus) params.set('status', currentStatus);
       if (currentCategory) params.set('category', currentCategory);
       if (currentBuilder) params.set('builder', currentBuilder);
@@ -758,12 +761,26 @@ table td,table th{border-color:var(--v2-line)!important}
       }
       const res = await fetch('/api/v2/builder-projects?' + params.toString()).then(r => r.json());
       if (!res.ok) throw new Error(res.error || 'Builder project load failed');
-      allProjects = res.data || [];
-      totalProjects = Number(res.pagination?.total || allProjects.length);
-      totalPages = Math.max(1, Number(res.pagination?.totalPages || 1));
+      const rows = [...(res.data || [])];
+      const pages = Math.max(1, Number(res.pagination?.totalPages || 1));
+      if (grouped) {
+        for (let page = 2; page <= pages; page++) {
+          if (version !== projectLoadVersion) return;
+          params.set('page', String(page));
+          const response = await fetch('/api/v2/builder-projects?' + params.toString());
+          const next = await response.json();
+          if (!response.ok || !next.ok) throw new Error(next.error || 'Could not load complete project groups');
+          rows.push(...(next.data || []));
+        }
+      }
+      if (version !== projectLoadVersion) return;
+      allProjects = rows;
+      totalProjects = Number(res.pagination?.total ?? rows.length);
+      totalPages = grouped ? 1 : pages;
       render();
       updateBuilderNameOptions();
     } catch (e) {
+      if (version !== projectLoadVersion) return;
       document.getElementById('grid').innerHTML = `<div class="empty-state" style="color:var(--clr-danger)" data-testid="projects-load-error">Failed to load: ${esc(e.message)}<br><button class="btn btn-ghost" style="margin-top:12px" data-testid="projects-retry-btn" onclick="loadProjects()">↻ Retry</button></div>`;
     }
   }
@@ -786,10 +803,6 @@ table td,table th{border-color:var(--v2-line)!important}
   function selectBuilder(name) {
     currentBuilder = name;
     currentPage = 1;
-    groupByBuilder = Boolean(name);
-    const toggle = document.querySelector('[data-testid="toggle-group-view"]');
-    toggle.classList.toggle('active', groupByBuilder);
-    toggle.textContent = groupByBuilder ? '▦ Individual View' : '📁 Group by Builder';
     loadProjects();
   }
 
@@ -1048,43 +1061,37 @@ table td,table th{border-color:var(--v2-line)!important}
         <div style="font-size:16px;font-weight:600;color:var(--clr-brown);margin-bottom:6px">No builder projects found</div>
         <div>Click "＋ Add Project" or bulk upload a CSV to get started.</div>
       </div>`;
-      return;
-    }
-    if (!groupByBuilder) {
-      grid.className = 'grid';
-      grid.innerHTML = items.map(renderCard).join('');
       renderPagination();
       return;
     }
-    // Group the current page; the exact builder filter is applied before pagination on the server.
-    grid.className = '';
-    const groups = new Map();
-    for (const p of items) {
-      const key = p.BuilderName || 'Unknown Builder';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(p);
-    }
-    const sortedKeys = Array.from(groups.keys()).sort((a, b) => groups.get(b).length - groups.get(a).length);
-    grid.innerHTML = sortedKeys.map(builder => {
-      const gid = 'grp-' + builder.replace(/[^a-zA-Z0-9]/g, '_');
-      const collapsed = collapsedGroups.has(builder);
-      return `
-      <div class="builder-group" data-testid="builder-group-${esc(builder)}" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--clr-gold-mid);cursor:pointer" data-testid="group-header-${esc(builder)}" data-builder="${esc(builder)}" onclick="toggleGroupCollapse(this.dataset.builder)">
-          <span style="font-size:13px;color:var(--clr-brown);transition:transform .15s;display:inline-block${collapsed ? '' : ';transform:rotate(90deg)'}">▶</span>
-          <span style="font-size:16px;font-weight:800;color:var(--clr-brown)">🏢 ${esc(builder)}</span>
-          <span style="font-size:12px;background:var(--clr-gold-soft);color:var(--clr-brown-mid);padding:3px 10px;border-radius:12px;font-weight:700">${groups.get(builder).length} on this page</span>
-        </div>
-        <div id="${gid}" style="${collapsed ? 'display:none' : ''}">
-          <button class="btn btn-ghost" data-builder="${esc(builder)}" onclick="openBuilderBrochureStatus(this)" style="margin-bottom:12px">📋 ${esc(builder)} brochure & missing details</button>
-          ${[...new Set(['Residential','Commercial','Industrial','Land','Uncategorized', ...groups.get(builder).map(p => p.Category || 'Uncategorized')])].map(category => {
-            const rows = groups.get(builder).filter(p => (p.Category || 'Uncategorized') === category);
-            return rows.length ? `<div style="margin:16px 0 8px;font-weight:800;color:var(--clr-brown)">${esc(category)} · ${rows.length}</div><div class="grid">${rows.map(renderCard).join('')}</div>` : '';
-          }).join('')}
-        </div>
-      </div>`;
-    }).join('');
+    grid.className = projectGrouping === 'none' ? 'grid' : '';
+    grid.innerHTML = projectGrouping === 'none' ? items.map(renderCard).join('') : renderProjectGroups(items, projectGrouping.split('-'));
     renderPagination();
+  }
+
+  function groupLabel(project, dimension) {
+    const raw = String(project[dimension === 'category' ? 'Category' : dimension === 'location' ? 'Location1' : 'BuilderName'] || '').trim().replace(/\s+/g, ' ');
+    if (!raw) return dimension === 'category' ? 'Uncategorized' : dimension === 'location' ? 'Location not set' : 'Unknown Builder';
+    if (dimension === 'location') return SURAT_AREAS.find(area => area.toLowerCase() === raw.toLowerCase()) || raw;
+    return raw;
+  }
+
+  function renderProjectGroups(items, dimensions) {
+    if (!dimensions.length) return '<div class="grid">' + items.slice().sort((a,b) => String(a.ProjectName || '').localeCompare(String(b.ProjectName || ''))).map(renderCard).join('') + '</div>';
+    const [dimension, ...rest] = dimensions, groups = new Map();
+    for (const project of items) {
+      const label = groupLabel(project, dimension), key = label.toLowerCase();
+      if (!groups.has(key)) groups.set(key, { label, rows: [] });
+      groups.get(key).rows.push(project);
+    }
+    return [...groups.values()].sort((a,b) => a.label.localeCompare(b.label)).map(({label,rows}) => {
+      const icon = dimension === 'category' ? '🏘' : dimension === 'location' ? '📍' : '🏢';
+      return `<details open class="builder-group" data-group-dimension="${dimension}" style="margin:12px 0;padding:12px;border:1px solid var(--clr-gold-mid);border-radius:10px">
+        <summary style="cursor:pointer;font-weight:800;color:var(--clr-brown)">${icon} ${esc(label)} · ${rows.length} projects</summary>
+        ${dimension === 'builder' ? `<button class="btn btn-ghost" data-builder="${esc(label)}" onclick="openBuilderBrochureStatus(this)" style="margin-top:8px">📋 Brochure & missing details</button>` : ''}
+        ${renderProjectGroups(rows, rest)}
+      </details>`;
+    }).join('');
   }
 
   function renderPagination() {
@@ -1094,6 +1101,10 @@ table td,table th{border-color:var(--v2-line)!important}
       el.id = 'builder-pagination-controls';
       el.style.cssText = 'display:flex;justify-content:center;align-items:center;gap:10px;padding:18px 8px;flex-wrap:wrap;';
       document.getElementById('grid').parentElement.appendChild(el);
+    }
+    if (projectGrouping !== 'none') {
+      el.textContent = `${allProjects.length} matching projects · grouped by ${projectGrouping.split('-').join(' → ')}`;
+      return;
     }
     el.innerHTML = `<button class="btn btn-ghost" ${currentPage <= 1 ? 'disabled' : ''} onclick="builderPrevPage()">← Previous</button>
       <span style="font-size:12px;color:var(--clr-text-light);font-weight:700">Page ${currentPage} / ${totalPages} · ${totalProjects} total</span>
@@ -1112,11 +1123,6 @@ table td,table th{border-color:var(--v2-line)!important}
     loadProjects();
   }
 
-  function toggleGroupCollapse(builder) {
-    if (collapsedGroups.has(builder)) collapsedGroups.delete(builder);
-    else collapsedGroups.add(builder);
-    render();
-  }
 
   function fmtPrice(n) {
     if (n == null || n === '') return null;
@@ -1448,11 +1454,10 @@ table td,table th{border-color:var(--v2-line)!important}
     loadProjects();
   }
 
-  function toggleGroupView(el) {
-    groupByBuilder = !groupByBuilder;
-    el.classList.toggle('active', groupByBuilder);
-    el.textContent = groupByBuilder ? '▦ Individual View' : '📁 Group by Builder';
-    render();
+  function setProjectGrouping(value) {
+    projectGrouping = ['category-location-builder','location-category-builder','builder-category-location','none'].includes(value) ? value : 'category-location-builder';
+    currentPage = 1;
+    loadProjects();
   }
 
   function openBuilderBrochureStatus(button) {
