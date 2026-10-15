@@ -56,6 +56,8 @@ async function renderClientBrochureShortlist() {
 
 async function searchClientBrochures() {
   const root=document.getElementById('client-brochure-projects'); root.textContent='Searching…';
+  clientBrochureFlow.selected=null;clientBrochureFlow.share=null;
+  document.getElementById('client-brochure-preview').replaceChildren();
   try {
     const params=new URLSearchParams({limit:'50',q:document.getElementById('client-brochure-search').value.trim()});
     for(const [id,key] of [['category','category'],['builder','builder'],['location','location'],['bhk','bhk'],['min','carpetMin'],['max','carpetMax']]) {
