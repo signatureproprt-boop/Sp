@@ -103,7 +103,7 @@ class ShortlistServiceV2 {
       IsManual: !!row.IsManual,
       BuilderProjectID: row.BuilderProjectID || null,
       BrochureShareID: row.BrochureShareID || null,
-      Property: row.IsManual ? { ...(row.ManualProperty || {}), ...(builderProject ? this._builderSnapshot(builderProject) : {}) } : this._propertySnapshot(prop)
+      Property: row.IsManual ? { ...(row.ManualProperty || {}), ...(builderProject ? this._builderSnapshot(builderProject) : {}), ...(row.ManualProperty?.SelectedConfiguration ? {ConfigDetails:[row.ManualProperty.SelectedConfiguration]} : {}) } : this._propertySnapshot(prop)
     };
   }
 
@@ -237,6 +237,7 @@ class ShortlistServiceV2 {
       workKey(row) === transactionId && row.PropertyID === propertyId && row.Status === 'Active');
     const manualProperty = {
       ...this._builderSnapshot(project),
+      ...(share.SelectedConfiguration ? {SelectedConfiguration:share.SelectedConfiguration,ConfigDetails:[share.SelectedConfiguration]} : {}),
       MediaLinks: { photos: [], videos: [], brochures: [brochureUrl] }
     };
     const now = this._now();
