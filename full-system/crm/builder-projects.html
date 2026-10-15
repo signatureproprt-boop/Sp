@@ -1072,6 +1072,7 @@ table td,table th{border-color:var(--v2-line)!important}
   function groupLabel(project, dimension) {
     const raw = String(project[dimension === 'category' ? 'Category' : dimension === 'location' ? 'Location1' : 'BuilderName'] || '').trim().replace(/\s+/g, ' ');
     if (!raw) return dimension === 'category' ? 'Uncategorized' : dimension === 'location' ? 'Location not set' : 'Unknown Builder';
+    if (dimension === 'category') return ['Residential','Commercial','Industrial','Land'].find(category => category.toLowerCase() === raw.toLowerCase()) || 'Category needs review';
     if (dimension === 'location') return SURAT_AREAS.find(area => area.toLowerCase() === raw.toLowerCase()) || raw;
     return raw;
   }

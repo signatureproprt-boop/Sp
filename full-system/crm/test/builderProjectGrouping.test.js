@@ -24,6 +24,8 @@ test('groups normalize location case, retain unknowns and escape names',()=>{
   vm.runInContext('renderCard = p => p.ProjectID;',scope);
   const result=vm.runInContext(`renderProjectGroups([{ProjectID:'A',Category:'Residential',Location1:' vesu ',BuilderName:'<Builder>'},{ProjectID:'B',Category:'Residential',Location1:'Vesu',BuilderName:'<Builder>'},{ProjectID:'C'}],['category','location','builder'])`,scope);
   assert.match(result,/Vesu · 2 projects/);assert.match(result,/&lt;Builder&gt;/);assert.match(result,/Location not set/);assert.match(result,/Unknown Builder/);assert.match(result,/Uncategorized/);
+  assert.equal(vm.runInContext("groupLabel({Category:'Marketing description'}, 'category')",scope),'Category needs review');
+  assert.equal(vm.runInContext("groupLabel({Category:' residential '}, 'category')",scope),'Residential');
 });
 test('failed later page does not display incomplete groups',async()=>{
   const {scope,elements}=context(async url=>({ok:true,json:async()=>new URL(url,'http://test').searchParams.get('page')==='1'?{ok:true,data:[{ProjectID:'A'}],pagination:{totalPages:2}}:{ok:false,error:'Second page unavailable'}}));
