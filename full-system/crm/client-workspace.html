@@ -3489,7 +3489,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!phone) { alert('Client WhatsApp number missing or invalid. Update client details first.'); return; }
     document.getElementById('shortlist-share-preview')?.remove();
     const modal = document.createElement('div'); modal.id = 'shortlist-share-preview'; modal.className = 'modal-overlay';
-    modal.innerHTML = `<div class="modal" style="max-width:760px" role="dialog" aria-label="Review shortlist message"><div class="modal-header"><span class="modal-title">Review client details</span><button class="modal-close" id="close-shortlist-preview">×</button></div><div class="modal-body"><p>Client: ${esc(workspace.lead.ClientName || 'Client')} · WhatsApp: ${esc(phone)}</p><p>Check project, configuration, area and brochure before sending. Internal notes are excluded.</p><textarea aria-label="Shortlist message" id="shortlist-share-text" rows="16" style="width:100%"></textarea><a id="shortlist-share-open" class="btn btn-primary" target="_blank" rel="noopener">Open WhatsApp</a></div></div>`;
+    modal.innerHTML = `<div class="modal" style="max-width:760px" role="dialog" aria-label="Review shortlist message"><div class="modal-header"><span class="modal-title">Review client details</span><button class="modal-close" id="close-shortlist-preview">×</button></div><div class="modal-body"><p>Client: ${esc(workspace.lead.ClientName || 'Client')} · WhatsApp: ${esc(phone)}</p><p>Check project, configuration, area and brochure before sending. Internal notes are excluded.</p><div id="shortlist-branded-cards"></div><p>Share card sends the branded image through your device. Open WhatsApp opens the text draft; attach the downloaded card if needed.</p><textarea aria-label="Shortlist message" id="shortlist-share-text" rows="16" style="width:100%"></textarea><a id="shortlist-share-open" class="btn btn-primary" target="_blank" rel="noopener">Open WhatsApp</a></div></div>`;
     document.body.appendChild(modal);
     const input = document.getElementById('shortlist-share-text');
     input.value = ShortlistShare.message(rows, workspace.lead, window.location.origin);
@@ -3497,6 +3497,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const update = () => { link.href = `https://wa.me/${phone}?text=${encodeURIComponent(input.value)}`; };
     input.addEventListener('input', update); update();
     document.getElementById('close-shortlist-preview').onclick = () => modal.remove();
+    try { await ShortlistShare.renderCards(document.getElementById('shortlist-branded-cards'),rows,workspace.lead); } catch(e) { alert(e.message); }
   }
 
   function smartMatchCard(m, reqId) {
