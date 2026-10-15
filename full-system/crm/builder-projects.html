@@ -1768,10 +1768,13 @@ html body{background-image:none!important;background:#f7f7f5!important}
     });
   }
 
+  const brochureReaderCooldowns = new Map();
   async function requestBrochureExtraction(filename, fileBase64) {
     const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
     const cacheKey = 'reader-v7-source-completeness:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const retryAt=brochureReaderCooldowns.get(cacheKey) || 0;
+    if(retryAt>Date.now()) throw new Error('AI busy. Retry after '+Math.ceil((retryAt-Date.now())/1000)+' seconds. Uploaded PDF retained; project fields unchanged.');
     const cached = await brochureCache('get', cacheKey);
     if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
 
@@ -1792,7 +1795,14 @@ html body{background-image:none!important;background:#f7f7f5!important}
       try { result = JSON.parse(text); } catch (_) {
         throw new Error('AI service could not respond (HTTP ' + response.status + '). Please retry.');
       }
-      if (!response.ok || !result.ok) throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
+      if (!response.ok || !result.ok) {
+        if ([429,503].includes(response.status)) {
+          const seconds=Math.max(60,Number(result.retryAfterSeconds) || 60);
+          brochureReaderCooldowns.set(cacheKey,Date.now()+seconds*1000);
+          throw new Error((response.status===503 ? 'AI temporarily busy after bounded retries.' : 'AI quota/rate limit reached.')+' Retry after '+seconds+' seconds. Uploaded PDF retained; project fields unchanged.');
+        }
+        throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
+      }
       await brochureCache('put', cacheKey, result);
       return result;
     } catch (error) {
@@ -1831,7 +1841,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     const readProjectName = document.getElementById('f-project-name').value;
     if (!stored) pendingBrochureFile = file;
     const statusEl = document.getElementById('autofill-status');
-    statusEl.textContent = '⏳ Uploaded brochure padh raha hai… 4 minute tak lag sakte hain. Dobara click na karein.';
+    statusEl.textContent = '⏳ Reading every PDF page and checking layouts / areas. Temporary AI overload is retried automatically. Up to 4 minutes; please do not click again.';
     try {
       const fileBase64 = await fileToBase64Full(file);
       const res = await requestBrochureExtraction(file.name, fileBase64);
@@ -1852,8 +1862,8 @@ html body{background-image:none!important;background:#f7f7f5!important}
         (Array.isArray(res.data.ReadingWarnings) && res.data.ReadingWarnings.length ? ' ' + res.data.ReadingWarnings.join(' ') : '') +
         (missing.length ? ' Not extracted — verify in PDF; existing values retained: ' + missing.join(', ') + '.' : '');
     } catch (e) {
-      statusEl.textContent = '';
-      toast('Auto-fill failed: ' + e.message, true);
+      statusEl.textContent = 'Reading not completed: ' + e.message;
+      toast('Brochure reading not completed. See the message above the form.', true);
     } finally { brochureReadInProgress = false; }
   }
 
