@@ -10,7 +10,8 @@ async function brochureApi(url, options) {
 
 async function openClientBrochures(requirementId) {
   document.getElementById('client-brochure-modal')?.remove();
-  clientBrochureFlow = {requirementId, projects:[], selected:null, share:null};
+  const requirement=(workspace.requirements || []).find(r=>r.RequirementID===requirementId) || (workspace.transactions || []).find(r=>r.TransactionID===requirementId) || {};
+  clientBrochureFlow = {requirement,requirementId, projects:[], selected:null, share:null};
   const modal = document.createElement('div');
   modal.id = 'client-brochure-modal'; modal.className = 'modal-overlay';
   modal.innerHTML = `<div class="modal" style="max-width:760px;max-height:90vh;overflow:auto" role="dialog" aria-label="Client shortlist and brochures">
@@ -20,10 +21,25 @@ async function openClientBrochures(requirementId) {
     <button class="btn btn-primary" onclick="shareShortlistOnWhatsApp(clientBrochureFlow.requirementId)">Review &amp; share shortlist</button>
     <button class="btn btn-ghost" onclick="openManualShortlistFromBrochure()">＋ Add manual property</button>
     <h3>Find builder project</h3><label for="client-brochure-search">Project or builder name</label><input id="client-brochure-search" placeholder="Search project or builder" style="width:100%">
-    <button class="btn btn-ghost" onclick="searchClientBrochures()">Search Projects</button><div id="client-brochure-projects"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <label>Category<select id="client-project-category" aria-label="Project category"><option value="">Choose category</option><option>Residential</option><option>Commercial</option><option>Industrial</option><option>Land</option></select></label>
+      <label>Builder<input id="client-project-builder" aria-label="Project builder" placeholder="Builder name"></label>
+      <label>Location<input id="client-project-location" aria-label="Project location" placeholder="Location"></label>
+      <label>BHK<select id="client-project-bhk" aria-label="Project BHK"><option value="">All BHK</option>${[1,2,3,4,5].map(n=>`<option>${n} BHK</option>`).join('')}</select></label>
+      <label>Carpet min sqft<input id="client-project-min" aria-label="Project carpet minimum sqft" type="number" min="0"></label>
+      <label>Carpet max sqft<input id="client-project-max" aria-label="Project carpet maximum sqft" type="number" min="0"></label></div>
+    <p id="client-project-scope" role="status"></p><button class="btn btn-ghost" onclick="searchClientBrochures()">Search Projects</button><div id="client-brochure-projects"></div>
     <div id="client-brochure-preview"></div><p id="client-brochure-error" role="alert" style="color:#991b1b"></p>
     </div></div>`;
   document.body.appendChild(modal);
+  document.getElementById('client-project-category').value=requirement.Category || '';
+  document.getElementById('client-project-category').disabled=!!requirement.Category;
+  document.getElementById('client-project-location').value=requirement.Location1 || requirement.Location || '';
+  const fields=requirement.Fields || requirement;
+  const bhk=String(fields.BHK || fields.BHKMin || '').match(/\d+/)?.[0];
+  document.getElementById('client-project-bhk').value=bhk ? bhk+' BHK' : '';
+  document.getElementById('client-project-min').value=fields.CarpetAreaMin || '';
+  document.getElementById('client-project-max').value=fields.CarpetAreaMax || '';
   try {
     await renderClientBrochureShortlist();
     await searchClientBrochures();
@@ -41,11 +57,22 @@ async function renderClientBrochureShortlist() {
 async function searchClientBrochures() {
   const root=document.getElementById('client-brochure-projects'); root.textContent='Searching…';
   try {
-    const result=await brochureApi('/api/v2/builder-projects?limit=50&q='+encodeURIComponent(document.getElementById('client-brochure-search').value.trim()));
+    const params=new URLSearchParams({limit:'50',q:document.getElementById('client-brochure-search').value.trim()});
+    for(const [id,key] of [['category','category'],['builder','builder'],['location','location'],['bhk','bhk'],['min','carpetMin'],['max','carpetMax']]) {
+      const value=document.getElementById('client-project-'+id).value.trim();if(value) params.set(key,value);
+    }
+    if(!params.get('category')) {root.textContent='Choose a category before searching.';return;}
+    const min=Number(params.get('carpetMin')),max=Number(params.get('carpetMax'));
+    if(params.has('carpetMin')&&params.has('carpetMax')&&min>max) {root.textContent='Minimum sqft cannot exceed maximum sqft.';return;}
+    const request=clientBrochureFlow.searchVersion=(clientBrochureFlow.searchVersion || 0)+1;
+    const result=await brochureApi('/api/v2/builder-projects?'+params);
+    if(request!==clientBrochureFlow.searchVersion)return;
+    clientBrochureFlow.filters=Object.fromEntries(params);
+    document.getElementById('client-project-scope').textContent=[params.get('category'),params.get('builder'),params.get('location'),params.get('bhk'),params.has('carpetMin')||params.has('carpetMax') ? `Carpet ${params.get('carpetMin')||'0'}–${params.get('carpetMax')||'any'} sqft` : ''].filter(Boolean).join(' · ');
     clientBrochureFlow.projects=result.data || [];
     root.innerHTML=clientBrochureFlow.projects.map((project,i)=>{
       const files=(project.Brochures || []).filter(row=>row.verified===true && String(row.downloadStatus).toLowerCase()==='downloaded' && (row.DriveFileID || row.DriveFileId || row.StoragePath));
-      return `<div style="padding:10px;border-bottom:1px solid #ddd"><b>${esc(project.ProjectName)}</b> · ${esc(project.BuilderName || '')}<div>${esc(project.Location1 || project.Location || '')}</div>${files.length ? files.map((file,j)=>`<button class="btn btn-ghost" onclick="selectClientBrochure(${i},${j})">${esc(file.Name || file.name || file.FileName || 'Brochure '+(j+1))}</button>`).join('') : '<span>No verified brochure available</span>'}</div>`;
+      return `<div style="padding:10px;border-bottom:1px solid #ddd"><b>${esc(project.ProjectName)}</b> · ${esc(ShortlistShare.builder(project.BuilderName))}<div>${esc(project.Location1 || project.Location || '')}</div>${files.length ? files.map((file,j)=>`<button class="btn btn-ghost" onclick="selectClientBrochure(${i},${j})">${esc(file.Name || file.name || file.FileName || 'Brochure '+(j+1))}</button>`).join('') : '<span>No verified brochure available</span>'}</div>`;
     }).join('') || '<p>No matching projects found.</p>';
     if(Number(result.pagination?.total)>clientBrochureFlow.projects.length) root.innerHTML+='<p>Showing the first 50 projects. Refine the project or builder name.</p>';
   } catch(e) { root.textContent='Could not load projects.';brochureFlowError(e); }
@@ -56,7 +83,9 @@ function selectClientBrochure(projectIndex, fileIndex) {
   const file=project.Brochures.filter(row=>row.verified===true && String(row.downloadStatus).toLowerCase()==='downloaded' && (row.DriveFileID || row.DriveFileId || row.StoragePath))[fileIndex];
   clientBrochureFlow.selected={project,file}; clientBrochureFlow.share=null;clientBrochureFlow.requestId=crypto.randomUUID();
   const phone=resolveLeadPhone(true);
+  const configs=(project.ConfigDetails || []).map((config,index)=>({config,index})).filter(({config})=>ShortlistShare.matchesLayout(config,clientBrochureFlow.filters || {}));
   document.getElementById('client-brochure-preview').innerHTML=`<h3>Review sharing details</h3><p><b>${esc(project.ProjectName)}</b><br>${esc(file.Name || file.name || file.FileName || 'Brochure.pdf')}<br>Client: ${esc(workspace.lead.ClientName)}<br>WhatsApp: ${esc(phone || 'Number missing')}</p>
+    <label>Unit configuration<select id="client-selected-layout" aria-label="Unit configuration"><option value="">${configs.length ? 'Choose BHK / sqft layout' : 'Configuration not available — brochure only'}</option>${configs.map(({config,index})=>`<option value="${index}">${esc(ShortlistShare.layout(config) || 'Layout '+(index+1))}</option>`).join('')}</select></label>
     <button id="client-brochure-prepare" class="btn btn-primary" ${phone?'':'disabled'} onclick="prepareClientBrochure()">Add to shortlist &amp; prepare brochure</button><div id="client-brochure-send"></div>`;
 }
 
@@ -66,12 +95,17 @@ async function prepareClientBrochure() {
   brochureFlowError({message:''});
   try {
     const {project,file}=clientBrochureFlow.selected;
-    const result=await brochureApi(`/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure-shares`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leadId:workspace.lead.LeadID,requirementId:clientBrochureFlow.requirementId,brochureFileKey:file.DriveFileID || file.DriveFileId || file.StoragePath,channel:'whatsapp_text',clientRequestId:clientBrochureFlow.requestId})});
+    const layoutValue=document.getElementById('client-selected-layout').value;
+    if((project.ConfigDetails || []).some(c=>ShortlistShare.matchesLayout(c,clientBrochureFlow.filters || {})) && layoutValue==='')throw new Error('Select the BHK / sqft layout first.');
+    const selectedConfigIndex=layoutValue===''?null:Number(layoutValue);
+    const result=await brochureApi(`/api/v2/builder-projects/${encodeURIComponent(project.ProjectID)}/brochure-shares`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leadId:workspace.lead.LeadID,requirementId:clientBrochureFlow.requirementId,brochureFileKey:file.DriveFileID || file.DriveFileId || file.StoragePath,channel:'whatsapp_text',clientRequestId:clientBrochureFlow.requestId,selectedConfigIndex})});
     clientBrochureFlow.share=result.data;
-    const text=ShortlistShare.message([{PropertyID:project.ProjectID,Property:{Title:project.ProjectName,BuilderName:project.BuilderName,Category:project.Category,Location1:project.Location1,Status:project.ProjectStatus,RERANumber:project.RERANumber,ConfigDetails:project.ConfigDetails,MediaLinks:{brochures:[result.data.url]}}}],workspace.lead,window.location.origin);
+    const text=ShortlistShare.message([{PropertyID:project.ProjectID,Property:{Title:project.ProjectName,BuilderName:project.BuilderName,Category:project.Category,Location1:project.Location1,Status:project.ProjectStatus,RERANumber:project.RERANumber,ConfigDetails:selectedConfigIndex===null?[]:[project.ConfigDetails[selectedConfigIndex]],MediaLinks:{brochures:[result.data.url]}}}],workspace.lead,window.location.origin);
+    const cardRows=[{Property:{Title:project.ProjectName,BuilderName:project.BuilderName,Location1:project.Location1,Category:project.Category,ConfigDetails:selectedConfigIndex===null?[]:[project.ConfigDetails[selectedConfigIndex]],Status:project.ProjectStatus}}];
     const url=`https://wa.me/${result.data.recipientPhone}?text=${encodeURIComponent(text)}`;
-    document.getElementById('client-brochure-send').innerHTML=`<p>Brochure prepared. Review the PDF, then open WhatsApp.</p><a href="${escAttr(result.data.url)}" target="_blank" rel="noopener">View selected PDF</a> · <a class="btn btn-primary" href="${escAttr(url)}" target="_blank" rel="noopener">Open WhatsApp</a>
+    document.getElementById('client-brochure-send').innerHTML=`<p>Brochure prepared. Review the selected layout and branded card before sharing.</p><div id="prepared-property-card"></div><a href="${escAttr(result.data.url)}" target="_blank" rel="noopener">View selected PDF</a> · <a class="btn btn-primary" href="${escAttr(url)}" target="_blank" rel="noopener">Open WhatsApp</a>
       <p>WhatsApp does not confirm sending back to CRM. Confirm below after you send it.</p><label><input id="client-brochure-sent" type="checkbox"> I sent this brochure to this client</label><p><label for="client-brochure-followup">Follow-up date (optional)</label><input id="client-brochure-followup" type="date"></p><button id="client-brochure-confirm" class="btn btn-primary" onclick="confirmClientBrochureSent()">Confirm sent &amp; save follow-up</button>`;
+    await ShortlistShare.renderCards(document.getElementById('prepared-property-card'),cardRows,workspace.lead);
     button.textContent='Added to shortlist';await renderClientBrochureShortlist();
   } catch(e) {button.disabled=false;button.textContent='Retry preparation';brochureFlowError(e);}
 }

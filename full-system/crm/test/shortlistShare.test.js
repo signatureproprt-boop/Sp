@@ -10,3 +10,16 @@ const p=new ShortlistServiceV2({})._propertySnapshot({Area:1500,BHK:3});assert.e
 test('existing builder shortlist refreshes project configurations while retaining selected brochure',()=>{
 const project={ProjectName:'Updated',ConfigDetails:[{BHK:3,CarpetAreaSqft:1234}]};const svc=new ShortlistServiceV2({read:()=>({}),find:c=>c==='BuilderProjects'?project:null});const view=svc.buildView({IsManual:true,BuilderProjectID:'P1',ManualProperty:{Title:'Old',MediaLinks:{brochures:['https://crm.example/selected']}}});assert.equal(view.Property.Title,'Updated');assert.equal(view.Property.ConfigDetails[0].CarpetAreaSqft,1234);assert.deepEqual(view.Property.MediaLinks.brochures,['https://crm.example/selected']);
 });
+test('layout matching uses same configuration and never treats saleable as carpet',()=>{
+ assert.equal(share.matchesLayout({BHK:3,CarpetAreaSqft:900},{bhk:'3 BHK',carpetMin:'1000'}),false);
+ assert.equal(share.matchesLayout({BHK:2,CarpetAreaSqft:1200},{bhk:'3 BHK',carpetMin:'1000'}),false);
+ assert.equal(share.matchesLayout({BHK:3,SuperBuiltUpAreaSqft:1200},{bhk:'3 BHK',carpetMin:'1000'}),false);
+ assert.equal(share.matchesLayout({BHK:3,CarpetAreaSqft:1200},{bhk:'3 BHK',carpetMin:'1000',carpetMax:'1500'}),true);
+ assert.equal(share.builder('details for covered parking.'),'');assert.equal(share.builder('Unknown Builder'),'');
+});
+test('chosen builder layout remains the only shared configuration on reload',()=>{
+ const selected={BHK:3,CarpetAreaSqft:1200};const project={ProjectName:'Project',ConfigDetails:[selected,{BHK:4,CarpetAreaSqft:1800}]};
+ const svc=new ShortlistServiceV2({read:()=>({}),find:c=>c==='BuilderProjects'?project:null});
+ const result=svc.buildView({IsManual:true,BuilderProjectID:'P1',ManualProperty:{SelectedConfiguration:selected}});
+ assert.deepEqual(result.Property.ConfigDetails,[selected]);
+});
