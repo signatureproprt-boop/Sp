@@ -21,6 +21,10 @@ test('groups projects across pages by category, location and builder; filters su
     await r.fulfill({json});
   });
   await page.goto('/builder-projects');
+  await expect(page.getByLabel('Group projects',{exact:true})).toHaveValue('none');
+  await expect(page.getByTestId('project-card-G1')).toBeVisible();
+  await expect(page.getByLabel('Carpet minimum sqft',{exact:true})).not.toBeVisible();
+  await page.getByLabel('Group projects',{exact:true}).selectOption('category-location-builder');
   await expect(page.getByTestId('project-card-G4')).toBeAttached();
   // Whitespace and casing variants share one location group across API pages.
   await expect(page.locator('[data-group-dimension="location"]').filter({hasText:'First Vesu'})).toContainText(/Vesu\s*2 projects/);
