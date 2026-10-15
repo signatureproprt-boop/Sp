@@ -174,6 +174,49 @@
   .pd-empty {padding:24px;border:1px dashed #d5c7b3;border-radius:10px;background:#fcfbf8;color:var(--clr-text-light);font-size:13px}
   @media(max-width:700px){.project-detail{width:calc(100vw - 12px);max-height:97vh;border-radius:12px}.pd-content{padding:12px}.pd-hero{grid-template-columns:1fr;gap:0}.pd-visual{min-height:160px}.pd-visual img{height:220px}.pd-intro{padding:20px}.pd-intro h1{font-size:27px}.pd-section{padding:18px}.pd-stats{grid-template-columns:repeat(2,1fr)}.pd-configs{grid-template-columns:1fr}.pd-amenities{grid-template-columns:repeat(2,1fr)}.pd-gallery{grid-template-columns:repeat(2,1fr)}.pd-specs{columns:1}.pd-topbar{padding:12px 16px}}
 
+
+/* Builder directory — Dashboard V2 workspace */
+body{background-image:none!important;background:#f6f5f2!important}
+.page{max-width:1440px;padding:32px 32px 56px}
+.topnav{overflow-x:auto;white-space:nowrap;flex-shrink:0}
+.topnav .brand,.topnav a{flex-shrink:0}
+.project-header{align-items:center;margin-bottom:28px;gap:20px}
+.workspace-eyebrow{font-size:10px;letter-spacing:1.6px;font-weight:700;color:#96826a;margin-bottom:12px}
+.project-header .page-title{font-size:34px;letter-spacing:-1.2px;line-height:1.15}
+.project-header .page-sub{font-size:14px;margin-top:10px;line-height:1.6;color:#81766c}
+.project-primary-actions{display:flex;gap:10px;align-items:center}
+.project-primary-actions .btn{min-height:44px;padding:11px 18px}
+.project-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:white;border:1px solid #e5ded4;border-radius:14px;margin-bottom:22px;padding:6px 0;box-shadow:0 3px 16px #402c1705}
+.overview-item{padding:18px 24px;border-right:1px solid #eee8e0;display:flex;flex-direction:column;gap:7px;min-width:0}
+.overview-item:last-child{border:0}.overview-item>span{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#8b7b6c;font-weight:600}
+.overview-item strong{font-size:32px;line-height:1.15;letter-spacing:-1px;color:#342317}.overview-item small{font-size:11px;color:#92857a;line-height:1.5}
+.project-tools{margin:0 0 22px;border:1px solid #e5ded4;border-radius:10px;background:#fdfcf9}
+.project-tools>summary{padding:15px 18px;display:flex;gap:12px;align-items:center;cursor:pointer;font-size:12px;color:#554333;font-weight:650}
+.project-tools>summary::after{content:'+';margin-left:auto;font-size:20px;font-weight:400}.project-tools[open]>summary::after{content:'−'}
+.tools-description{font-weight:400;color:#95887c}.project-tools-body{padding:0 18px 18px}.project-tool-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.project-tools .section-card{margin-bottom:0;box-shadow:none!important;background:#fff}.project-tools .btn{font-size:12px;min-height:40px}
+.project-filter-panel{background:#fff;border:1px solid #e5ded4;border-radius:14px;padding:22px 24px;margin-bottom:28px}
+.filter-panel-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}.filter-panel-heading h2,.directory-heading h2{font-size:16px;letter-spacing:-.3px}.filter-panel-heading p{font-size:12px;color:#938476;margin-top:5px;line-height:1.5}
+.project-filter-panel .toolbar{gap:8px;flex-wrap:wrap;overflow:visible;margin-bottom:14px}.project-filter-panel .toolbar:last-child{border-top:1px solid #eee8df;padding-top:16px;margin:4px 0 0}
+.project-filter-panel .search-input{min-width:160px;min-height:42px;flex:1 1 180px;background:#faf9f6!important;border-color:#e9e2d8!important;font-size:12px}
+.project-filter-panel #search-input{flex:1 1 300px}.project-filter-panel #builder-select{max-width:240px;min-height:42px;font-size:12px}.project-filter-panel #filter-location{flex:1 1 180px}.project-filter-panel input[type=number]{flex:1 1 120px;min-width:120px;width:120px}
+.project-filter-panel .chip{min-height:36px;border-radius:7px!important;padding:8px 12px;font-family:inherit;font-size:12px}.project-filter-panel label{font-size:11px;color:#918071;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.project-filter-panel label select{max-width:100%;font-size:12px}
+.directory-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}.directory-heading>span{font-size:12px;color:#948475}
+.builder-group{background:#fff;border:1px solid #e8e0d5;border-radius:12px;margin:10px 0;overflow:hidden}
+.builder-group>summary{display:flex;align-items:center;gap:14px;padding:20px;cursor:pointer;list-style:none;min-height:68px}.builder-group>summary::-webkit-details-marker{display:none}
+.group-icon{width:40px;height:40px;display:grid;place-items:center;background:#f5f0e6;border:1px solid #eae0cd;border-radius:10px;font-size:18px;flex-shrink:0}
+.group-label{font-size:15px;font-weight:700;color:#4c3523;overflow-wrap:anywhere}.group-count{margin-left:auto;font-size:11px;font-weight:600;background:#f6f2eb;color:#968064;border:1px solid #ede4d6;padding:6px 10px;border-radius:20px;white-space:nowrap}.group-arrow{color:#a58b65;transition:transform .15s}.builder-group[open]>summary .group-arrow{transform:rotate(90deg)}
+.builder-group[open]>summary{border-bottom:1px solid #eee7dc;background:#fcfaf6}.builder-group>.builder-group{margin:12px 18px}.builder-group>.btn{margin-left:18px}.builder-group>.grid{padding:18px;margin:0}.group-location>summary,.group-builder>summary{padding:13px 16px;min-height:54px}.group-location .group-icon,.group-builder .group-icon{width:30px;height:30px;font-size:14px}.group-location .group-label,.group-builder .group-label{font-size:13px}
+.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:18px}
+.card{box-shadow:none!important;border-radius:12px!important;min-width:0}.card:hover{transform:translateY(-2px);box-shadow:0 8px 24px #402c1710!important}
+.card-top{background:#fbf9f4;color:#35271c;padding:18px;border-bottom:1px solid #eee7dc}.card-status{position:static;display:table;font-size:9px;margin-bottom:12px;border-radius:5px;letter-spacing:.6px}.card-project{padding-right:0;font-size:17px;line-height:1.4}.card-builder{color:#8a7765;font-size:12px;margin-top:6px}.card-loc{color:#9b8773;font-size:11px;margin-top:12px}.card-body{padding:18px}.card-facts{gap:6px}.card-fact{font-size:10px;line-height:1.6;border-radius:5px;max-width:100%;overflow-wrap:anywhere}.card-price{font-size:19px;letter-spacing:-.4px;margin-top:4px}.card-rera{overflow-wrap:anywhere;font-size:9px;line-height:1.7}
+.card-footer{display:block;padding:14px 18px;background:#fdfcf9}.card-footer>span{display:block;margin-bottom:10px}.card-footer>div{display:flex;flex-wrap:wrap;gap:10px}.card-footer .link{font-size:11px;text-decoration:none}.more-project-facts summary,.card-body details summary{font-size:11px;color:#8a7157}
+.import-history{margin-top:28px;box-shadow:none}.import-history>summary{font-size:12px;font-weight:700;color:#8c7760;cursor:pointer}.import-history table{margin-top:16px}
+#builder-pagination-controls{color:#958373;font-size:11px}
+.btn:focus-visible,summary:focus-visible,.chip:focus-visible{outline:2px solid #b69253;outline-offset:3px}
+@media(max-width:900px){.page{padding:24px 18px 40px}.overview-item{padding:16px}.project-filter-panel{padding:18px}.project-header .page-title{font-size:29px}.tools-description{display:none}}
+@media(max-width:700px){.project-header{display:flex}.project-header>div:last-child{display:flex!important;width:100%;margin-top:0}.project-primary-actions .btn{width:auto!important;flex:1}.project-overview{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-item:nth-child(2){border-right:0}.overview-item:nth-child(-n+2){border-bottom:1px solid #eee8e0}.overview-item strong{font-size:27px}.overview-item small{font-size:10px}.project-filter-panel .search-input{flex:1 1 140px;min-width:0}.project-filter-panel #search-input{flex-basis:100%}.project-filter-panel #builder-select{max-width:100%;width:100%}.project-filter-panel label{margin-left:0!important;width:100%}.project-filter-panel label select{width:100%}.filter-panel-heading{align-items:flex-start}.filter-panel-heading p{max-width:230px}.directory-heading{align-items:flex-start;flex-direction:column;gap:6px}.builder-group>summary{padding:16px;gap:10px}.builder-group>.builder-group{margin:10px}.builder-group>.grid{padding:10px}.group-label{font-size:14px}.group-count{font-size:10px;padding:5px 8px}.project-tools>summary{padding:14px}.project-tool-actions .btn{flex:1 1 145px}.project-header .page-title{font-size:28px}}
+
 </style>
 
 <style id="v2-unified-architect">
@@ -244,25 +287,39 @@ table td,table th{border-color:var(--v2-line)!important}
 </nav>
 
 <div class="page">
-  <div class="page-header">
-    <div>
-      <div class="page-title">🏗️ Builder Projects — Surat</div>
-      <div class="page-sub">Manually add a project, or bulk-upload a CSV/Excel with all your builder projects.</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-      <button class="btn btn-accent" id="karma-scrape-btn" data-testid="karma-scrape-btn" onclick="startKarmaScrape()">🔄 Scrape Karma Group</button>
+  <header class="page-header project-header">
+    <div><div class="workspace-eyebrow">SIGNATURE PROPERTIES / PROJECT DIRECTORY</div><h1 class="page-title">Builder Projects</h1><p class="page-sub">Find the right project. Explore by category, neighbourhood and builder.</p></div>
+    <div class="project-primary-actions">      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Brochure Log</button>
+      <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button></div>
+  </header>
+  <section class="project-overview" aria-label="Project overview">
+    <div class="overview-item"><span>Matching projects</span><strong id="overview-projects">—</strong><small id="overview-scope">Loading directory</small></div>
+    <div class="overview-item"><span>Locations</span><strong id="overview-locations">—</strong><small>Explore your neighbourhoods</small></div>
+    <div class="overview-item"><span>Builder groups</span><strong id="overview-builders">—</strong><small>Organised in one place</small></div>
+    <div class="overview-item"><span>Brochure ready</span><strong id="overview-brochures">—</strong><small>Projects with stored PDFs</small></div>
+  </section>
+  <details class="project-tools" id="project-tools"><summary><span>⚙ Project management</span><span class="tools-description">Imports, Drive linking &amp; data maintenance</span></summary><div class="project-tools-body"><div class="project-tool-actions">      <button class="btn btn-accent" id="karma-scrape-btn" data-testid="karma-scrape-btn" onclick="startKarmaScrape()">🔄 Scrape Karma Group</button>
       <button class="btn btn-ghost" id="karma-scrape-resume-btn" data-testid="karma-scrape-resume-btn" onclick="resumeKarmaScrape()" style="display:none">▶ Resume saved scrape</button>
       <button class="btn btn-ghost" id="karma-scrape-test-btn" data-testid="karma-scrape-test-btn" onclick="startKarmaScrape(1)">🧪 Test 1 project</button>
       <button class="btn btn-ghost" data-testid="cleanup-builders-btn" onclick="openCleanupModal()">🧹 Clean Names</button>
       <button class="btn btn-ghost" data-testid="fix-unknown-btn" onclick="openUnknownModal()">🏗️ Fix Unknown Builders</button>
       <button class="btn btn-ghost" data-testid="bulk-brochure-btn" onclick="openBulkBrochureModal()">🤖 Bulk from Brochures</button>
       <button class="btn btn-ghost" id="link-drive-brochures-btn" onclick="linkDriveBrochures()">🔗 Link Drive Brochures</button>
-      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Brochure Log</button>
       <button class="btn btn-ghost" data-testid="csv-brochure-import-btn" onclick="openCsvBrochureModal()">📑 CSV Brochures</button>
-      <button class="btn btn-ghost" data-testid="bulk-upload-btn" onclick="openUploadModal()">📤 Bulk Upload</button>
-      <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button>
+      <button class="btn btn-ghost" data-testid="bulk-upload-btn" onclick="openUploadModal()">📤 Bulk Upload</button></div>  <div class="section-card" id="uploaded-brochure-batch-panel">
+    <div class="section-title">AI fill from uploaded brochures</div>
+    <p class="pd-muted">Existing projects only. Reads every permanently stored PDF, saves supported fields and logs missing or conflicting data. Keep this page open while processing; saved progress can be resumed.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
+      <button class="btn btn-primary" id="uploaded-batch-start" onclick="startUploadedBrochureBatch()">Start / Resume AI fill</button>
+      <button class="btn btn-ghost" id="uploaded-batch-pause" onclick="uploadedBatchPaused=true" disabled>Pause after current PDF</button>
+      <button class="btn btn-ghost" onclick="refreshUploadedBrochureBatch()">Refresh progress</button>
+      <button class="btn btn-ghost" onclick="retryUploadedBrochureBatch()">Retry failed / unchecked PDFs</button>
     </div>
+    <p class="muted">Large PDFs are read through complete AI copies; original brochures are retained.</p>
+    <div id="uploaded-batch-summary" role="status">No batch loaded.</div>
+    <details style="margin-top:12px"><summary>Project results</summary><div style="max-height:320px;overflow:auto"><table id="uploaded-batch-results"></table></div></details>
   </div>
+</div></details>
 
   <div id="karma-scrape-status" data-testid="karma-scrape-status" style="display:none;margin-bottom:14px;padding:12px 14px;border:1px solid var(--clr-border);border-radius:8px;background:var(--clr-gold-soft);font-size:12.5px;color:var(--clr-brown)"></div>
 
@@ -303,14 +360,15 @@ table td,table th{border-color:var(--v2-line)!important}
     </div>
   </div>
 
+  <section class="project-filter-panel" aria-label="Project filters"><div class="filter-panel-heading"><div><h2>Explore projects</h2><p>Choose a category, narrow the location, then open a builder group.</p></div><button class="btn btn-ghost" onclick="resetDirectoryFilters()">Reset filters</button></div>
   <div class="toolbar">
     <input class="search-input" id="search-input" data-testid="search-input" type="text" placeholder="Search project / builder / area…" oninput="debounceSearch()" />
     <select id="builder-select" class="btn" aria-label="Choose builder" onchange="selectBuilder(this.value)"><option value="">All builders</option></select>
-    <div class="chip active" data-testid="filter-cat-all" onclick="setCategoryFilter(this, '')">All Categories</div>
-    <div class="chip" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</div>
-    <div class="chip" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</div>
-    <div class="chip" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</div>
-    <div class="chip" data-testid="filter-cat-land" onclick="setCategoryFilter(this, 'Land')">Land</div>
+    <button type="button" class="chip active" aria-pressed="true" data-testid="filter-cat-all" onclick="setCategoryFilter(this, '')">All Categories</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-residential" onclick="setCategoryFilter(this, 'Residential')">Residential</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-land" onclick="setCategoryFilter(this, 'Land')">Land</button>
   </div>
 
   <div class="toolbar" aria-label="Project size filters">
@@ -324,34 +382,22 @@ table td,table th{border-color:var(--v2-line)!important}
   </div>
 
   <div class="toolbar">
-    <div class="chip active" data-testid="filter-status-all" onclick="setStatusFilter(this, '')">All Status</div>
-    <div class="chip" data-testid="filter-status-new" onclick="setStatusFilter(this, 'New Launch')">New Launch</div>
-    <div class="chip" data-testid="filter-status-uc" onclick="setStatusFilter(this, 'Under Construction')">Under Construction</div>
-    <div class="chip" data-testid="filter-status-rtm" onclick="setStatusFilter(this, 'Ready to Move')">Ready to Move</div>
-    <div class="chip" data-testid="filter-status-completed" onclick="setStatusFilter(this, 'Completed')">Completed</div>
+    <button type="button" class="chip active" aria-pressed="true" data-testid="filter-status-all" onclick="setStatusFilter(this, '')">All Status</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-new" onclick="setStatusFilter(this, 'New Launch')">New Launch</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-uc" onclick="setStatusFilter(this, 'Under Construction')">Under Construction</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-rtm" onclick="setStatusFilter(this, 'Ready to Move')">Ready to Move</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-status-completed" onclick="setStatusFilter(this, 'Completed')">Completed</button>
     <label style="margin-left:auto">Group projects <select id="project-grouping" class="btn" aria-label="Group projects" onchange="setProjectGrouping(this.value)"><option value="category-location-builder">Category → Location → Builder</option><option value="location-category-builder">Location → Category → Builder</option><option value="builder-category-location">Builder → Category → Location</option><option value="none">Individual projects</option></select></label>
   </div>
 
-  <div class="section-card" id="uploaded-brochure-batch-panel">
-    <div class="section-title">AI fill from uploaded brochures</div>
-    <p class="pd-muted">Existing projects only. Reads every permanently stored PDF, saves supported fields and logs missing or conflicting data. Keep this page open while processing; saved progress can be resumed.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
-      <button class="btn btn-primary" id="uploaded-batch-start" onclick="startUploadedBrochureBatch()">Start / Resume AI fill</button>
-      <button class="btn btn-ghost" id="uploaded-batch-pause" onclick="uploadedBatchPaused=true" disabled>Pause after current PDF</button>
-      <button class="btn btn-ghost" onclick="refreshUploadedBrochureBatch()">Refresh progress</button>
-      <button class="btn btn-ghost" onclick="retryUploadedBrochureBatch()">Retry failed / unchecked PDFs</button>
-    </div>
-    <p class="muted">Large PDFs are read through complete AI copies; original brochures are retained.</p>
-    <div id="uploaded-batch-summary" role="status">No batch loaded.</div>
-    <details style="margin-top:12px"><summary>Project results</summary><div style="max-height:320px;overflow:auto"><table id="uploaded-batch-results"></table></div></details>
-  </div>
+  </section>
+  <div class="directory-heading"><h2>Project directory</h2><span id="directory-result-note" role="status">Loading projects…</span></div>
   <div id="grid" class="grid" data-testid="projects-grid"></div>
 
   <!-- Import history -->
-  <div class="section-card">
-    <div class="section-title">🕐 Recent Bulk Imports</div>
+  <details class="section-card import-history"><summary>Recent bulk imports</summary>
     <div style="overflow-x:auto"><table id="history-table"></table></div>
-  </div>
+  </details>
 </div>
 
 <!-- CSV Brochure Import Modal -->
@@ -1053,6 +1099,7 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function render() {
+    updateProjectOverview();
     const items = allProjects;
     const grid = document.getElementById('grid');
     if (!items.length) {
@@ -1067,6 +1114,28 @@ table td,table th{border-color:var(--v2-line)!important}
     grid.className = projectGrouping === 'none' ? 'grid' : '';
     grid.innerHTML = projectGrouping === 'none' ? items.map(renderCard).join('') : renderProjectGroups(items, projectGrouping.split('-'));
     renderPagination();
+  }
+
+  function updateProjectOverview() {
+    const grouped = projectGrouping !== 'none';
+    const unique = dimension => new Set(allProjects.map(p => groupLabel(p,dimension).toLowerCase())).size;
+    document.getElementById('overview-projects').textContent = String(totalProjects);
+    document.getElementById('overview-locations').textContent = String(unique('location'));
+    document.getElementById('overview-builders').textContent = String(unique('builder'));
+    document.getElementById('overview-brochures').textContent = String(allProjects.filter(p => (p.Brochures || []).some(isStoredBrochure)).length);
+    document.getElementById('overview-scope').textContent = grouped ? 'All matching projects' : 'Total matches · other counts on this page';
+    document.getElementById('directory-result-note').textContent = `${totalProjects} matching projects · ${grouped ? 'open a group to explore' : 'individual view'}`;
+  }
+
+  function resetDirectoryFilters() {
+    currentSearch = ''; currentBuilder = ''; currentCategory = ''; currentStatus = ''; currentPage = 1;
+    document.getElementById('search-input').value = '';
+    document.getElementById('builder-select').value = '';
+    document.querySelectorAll('[data-testid^="filter-cat-"],[data-testid^="filter-status-"]').forEach(el => {
+      const active = el.dataset.testid.endsWith('-all');
+      el.classList.toggle('active',active); el.setAttribute('aria-pressed',String(active));
+    });
+    clearProjectFilters();
   }
 
   function groupLabel(project, dimension) {
@@ -1087,8 +1156,8 @@ table td,table th{border-color:var(--v2-line)!important}
     }
     return [...groups.values()].sort((a,b) => a.label.localeCompare(b.label)).map(({label,rows}) => {
       const icon = dimension === 'category' ? '🏘' : dimension === 'location' ? '📍' : '🏢';
-      return `<details open class="builder-group" data-group-dimension="${dimension}" style="margin:12px 0;padding:12px;border:1px solid var(--clr-gold-mid);border-radius:10px">
-        <summary style="cursor:pointer;font-weight:800;color:var(--clr-brown)">${icon} ${esc(label)} · ${rows.length} projects</summary>
+      return `<details class="builder-group group-${dimension}" data-group-dimension="${dimension}">
+        <summary><span class="group-icon" aria-hidden="true">${icon}</span><span class="group-label">${esc(label)}</span><span class="group-count">${rows.length} projects</span><span class="group-arrow" aria-hidden="true">↗</span></summary>
         ${dimension === 'builder' ? `<button class="btn btn-ghost" data-builder="${esc(label)}" onclick="openBuilderBrochureStatus(this)" style="margin-top:8px">📋 Brochure & missing details</button>` : ''}
         ${renderProjectGroups(rows, rest)}
       </details>`;
@@ -1260,7 +1329,7 @@ table td,table th{border-color:var(--v2-line)!important}
       <div class="card-body">
         <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(p.Category || 'Residential')}</span>
         <div class="card-price">${priceText === '—' ? 'Price on request' : priceText}</div><button class="btn btn-secondary" style="width:100%;margin:8px 0 12px" data-testid="detail-${esc(p.ProjectID)}" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">View project details →</button>
-        <div class="card-facts">${facts.map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
+        <div class="card-facts">${facts.slice(0,3).map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
           ${p.SalesPersonName || p.SalesPersonPhone ? `<span class="card-fact">Sales: ${esc([p.SalesPersonName, p.SalesPersonPhone].filter(Boolean).join(' · '))}</span>` : ''}
           ${storedPhotos.length ? `<span class="card-fact">📷 ${storedPhotos.length}</span>` : ''}
           ${p.Videos && p.Videos.length ? `<span class="card-fact">🎥 ${p.Videos.length}</span>` : ''}
@@ -1268,6 +1337,7 @@ table td,table th{border-color:var(--v2-line)!important}
           ${brochureDriveLink ? `<a class="card-fact" href="${esc(brochureDriveLink)}" target="_blank" rel="noopener" data-testid="brochure-drive-link-${esc(p.ProjectID)}">🗂 Drive</a>` : ''}
           <span class="card-fact">📄 ${esc(brochureStatusText(p))}</span>
         </div>
+        ${facts.length > 3 ? `<details class="more-project-facts"><summary>All configurations & facts (${facts.length})</summary><div class="card-facts">${facts.slice(3).map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}</div></details>` : ''}
         ${[ ['Amenities', p.Amenities], ['Features', [...(p.Highlights || []), ...(p.Specifications || [])]] ].map(([title, points]) => Array.isArray(points) && points.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">${title} (${points.length})</summary><ul style="padding-left:18px;margin:6px 0">${[...new Set(points)].map(point => `<li style="margin:4px 0">${esc(point)}</li>`).join('')}</ul></details>` : '').join('')}
         ${p.RERANumber ? `<div class="card-rera">RERA: ${esc(p.RERANumber)}</div>` : ''}
       </div>
@@ -1440,16 +1510,16 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   function setStatusFilter(el, val) {
-    el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
+    el.parentElement.querySelectorAll('.chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-pressed','false'); });
+    el.classList.add('active'); el.setAttribute('aria-pressed','true');
     currentStatus = val;
     currentPage = 1;
     loadProjects();
   }
 
   function setCategoryFilter(el, val) {
-    el.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-    el.classList.add('active');
+    el.parentElement.querySelectorAll('.chip').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-pressed','false'); });
+    el.classList.add('active'); el.setAttribute('aria-pressed','true');
     currentCategory = val;
     currentPage = 1;
     loadProjects();
