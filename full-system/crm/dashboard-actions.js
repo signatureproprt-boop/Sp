@@ -52,7 +52,7 @@
   async function showVisits() {
     const run = shell('Site visits');
     const content = dialog.querySelector('#work-content');
-    content.innerHTML = `<h3>Schedule a site visit</h3><p>Choose the client, their requirement and the property to visit.</p><label>Client search <input id="visit-client-search" placeholder="Name or Lead ID"></label> <button id="visit-client-search-btn" type="button">Find client</button><form id="visit-form" style="display:grid;gap:10px;margin:14px 0"><label>Client <select id="visit-client" required><option value="">Select client</option></select></label><label>Requirement <select id="visit-requirement" required disabled><option value="">Select a client first</option></select></label><label>Property search <input id="visit-property-search" placeholder="Property name or ID"></label><button id="visit-property-search-btn" type="button">Find property</button><label>Property <select id="visit-property" required><option value="">Select property</option></select></label><label>Date (India time) <input id="visit-date" type="date" required></label><label>Time (India time) <input id="visit-time" type="time" required></label><label>Meeting point <input id="visit-meeting"></label><button id="visit-save" type="submit">Schedule visit</button></form><p id="visit-message" role="status"></p><h3>Today's site visits</h3><div id="visit-list">Loading…</div>`;
+    content.innerHTML = `<h3>Schedule a site visit</h3><p>Choose the client, their requirement and the property to visit. The selected property will be added to this requirement’s shortlist before scheduling.</p><label>Client search <input id="visit-client-search" placeholder="Name or Lead ID"></label> <button id="visit-client-search-btn" type="button">Find client</button><form id="visit-form" style="display:grid;gap:10px;margin:14px 0"><label>Client <select id="visit-client" required><option value="">Select client</option></select></label><label>Requirement <select id="visit-requirement" required disabled><option value="">Select a client first</option></select></label><label>Property search <input id="visit-property-search" placeholder="Property name or ID"></label><button id="visit-property-search-btn" type="button">Find property</button><label>Property <select id="visit-property" required><option value="">Select property</option></select></label><label>Date (India time) <input id="visit-date" type="date" required></label><label>Time (India time) <input id="visit-time" type="time" required></label><label>Meeting point <input id="visit-meeting"></label><button id="visit-save" type="submit">Shortlist &amp; schedule visit</button></form><p id="visit-message" role="status"></p><h3>Today's site visits</h3><div id="visit-list">Loading…</div>`;
     const find = id => dialog.querySelector('#'+id);
     const message = find('visit-message');
     let clientVersion = 0, propertyVersion = 0, requirementVersion = 0;
@@ -99,13 +99,17 @@
       event.preventDefault();
       const requirementId = find('visit-requirement').value;
       if (!requirementId || find('visit-requirement').disabled) {message.textContent='Choose an open client requirement first.';return;}
+      const clientId = find('visit-client').value;
+      const propertyId = find('visit-property').value;
+      const payload = {requirementId,propertyIds:[propertyId],visitDate:find('visit-date').value,visitTime:find('visit-time').value,meetingPoint:find('visit-meeting').value};
       const button = find('visit-save');
       button.disabled=true;
       message.textContent='Saving visit…';
       try {
-        await request('/api/v2/site-visit-bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({requirementId,propertyIds:[find('visit-property').value],visitDate:find('visit-date').value,visitTime:find('visit-time').value,meetingPoint:find('visit-meeting').value})});
+        await request('/api/v2/shortlist/'+encodeURIComponent(requirementId)+'/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({propertyId})});
+        await request('/api/v2/site-visit-bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         if (run !== generation) return;
-        message.innerHTML = `Site visit saved. ${workspaceLink(find('visit-client').value,'Open client')}`;
+        message.innerHTML = `Site visit saved. ${workspaceLink(clientId,'Open client '+clientId)}`;
         await loadVisits();
       } catch(error) { if (run === generation) message.textContent=error.message; }
       finally { if (run === generation) button.disabled=false; }
@@ -115,9 +119,20 @@
         const result = await request('/api/v2/site-visit-bookings?leadId=all');
         if (run !== generation) return;
         const visits = rows(result).filter(v => v.VisitDate === indiaDay(Date.now()) && !['Cancelled','Completed','NoShow'].includes(v.Status));
-        find('visit-list').innerHTML = visits.length ? visits.map(v=>`<article style="padding:10px 0">${workspaceLink(v.LeadID,v.ClientName || v.LeadID)} · ${escape(v.VisitTime)} IST · ${escape(v.Status)}<p>${escape(v.MeetingPoint || '')}</p></article>`).join('') : 'No site visits scheduled for today.';
+        find('visit-list').innerHTML = visits.length ? visits.map(v=>`<article style="padding:10px 0">${workspaceLink(v.LeadID,v.ClientName || v.LeadID)} · ${escape(v.VisitTime)} IST · ${escape(v.Status)}<p>${escape(v.RequirementID)} · ${escape((v.Properties || []).map(p=>p.Title || p.PropertyID).join(', '))}</p><p>${escape(v.MeetingPoint || '')}</p><button type="button" data-cancel-visit="${escape(v.VisitBookingID)}">Cancel visit</button></article>`).join('') : 'No site visits scheduled for today.';
       } catch(error) { if (run === generation) find('visit-list').textContent=error.message; }
     }
+    find('visit-list').onclick = async event => {
+      const button = event.target.closest('[data-cancel-visit]');
+      if (!button || !confirm('Cancel this site visit?')) return;
+      button.disabled = true;
+      try {
+        await request('/api/v2/site-visit-bookings/'+encodeURIComponent(button.dataset.cancelVisit)+'/cancel',{method:'POST'});
+        if (run !== generation) return;
+        message.textContent = 'Site visit cancelled.';
+        await loadVisits();
+      } catch(error) { if (run === generation) {message.textContent=error.message;button.disabled=false;} }
+    };
     await Promise.all([searchClients(),searchProperties(),loadVisits()]);
   }
   document.addEventListener('click', event => {
