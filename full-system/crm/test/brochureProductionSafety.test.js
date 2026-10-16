@@ -22,6 +22,25 @@ test('cards explicitly label missing areas while retaining printed values',()=>{
  vm.runInContext('{'+html.slice(start,end)+';result=facts.join(" ");}',ctx);
  assert.match(ctx.result,/1500 carpet sqft/);assert.match(ctx.result,/Saleable \/ super built-up: not provided/);
 });
+test('manual edits during reading survive without an AI overwrite, including configuration edits',async()=>{
+ const start=html.indexOf('  let brochureReadInProgress = false;'),end=html.indexOf('  function applyAutoFill(',start);
+ for (const edit of ['scalar','configuration']) {
+  const elements={'f-project-name':{value:'THE ULTIMA'},'f-location1':{value:'Vesu'},'autofill-status':{textContent:''},'project-modal':{classList:{contains:()=>false}}};
+  let applied=0;
+  const ctx={document:{getElementById:id=>elements[id]},editingId:'project',configRows:[{BHK:3}],MEDIA_LIMITS:{brochure:999},pendingBrochureFile:null,
+   fileToBase64Full:async()=> 'cGRm',toast:()=>{},applyAutoFill:()=>applied++};
+  ctx.requestBrochureExtraction=async()=>{
+   if(edit==='scalar') elements['f-location1'].value='Althan'; else ctx.configRows[0].BHK=5;
+   return {ok:true,data:{ProjectName:'THE ULTIMA',Location1:'Surat',ConfigDetails:[{BHK:4}]}};
+  };
+  vm.createContext(ctx);vm.runInContext(html.slice(start,end),ctx);
+  await ctx.onBrochureAutoFill({size:1});
+  assert.equal(applied,0);
+  assert.match(elements['autofill-status'].textContent,/Form edited.*Your edits were kept/);
+  assert.equal(elements['f-location1'].value,edit==='scalar'?'Althan':'Vesu');
+  assert.equal(ctx.configRows[0].BHK,edit==='configuration'?5:3);
+ }
+});
 test('provider capacity errors preserve typed status and full retry delay',async()=>{
  const ctx={module:{exports:{}},Buffer,structuredClone,AbortSignal,Date,process:{env:{GEMINI_API_KEY:'test',GEMINI_MODEL:'gemini-3.1-flash-lite'}},
  require:n=>n==='./brochureCompletenessService'?{...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1}:require(n),

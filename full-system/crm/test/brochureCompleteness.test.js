@@ -13,7 +13,7 @@ test('rejects the actual Livonia failure: terrace evidence exists but only regul
   data.ConfigDetails = [{Type:'Terrace Flat',TerraceAreaSqft:1079}];
   assert.throws(() => validatePrivateTerraces(data), /1361 sqft is missing/);
 });
-const good = () => ({ Complete: true, Pages: [{Page:1,Kind:'floor plan',HasConfigurations:true},{Page:2,Kind:'terrace plan',HasConfigurations:true}], ConfigChecks:[{Index:0,Supported:true}], Findings:[] });
+const good = () => ({ Complete: true, Pages: [{Page:1,Kind:'floor plan',HasConfigurations:true},{Page:2,Kind:'terrace plan',HasConfigurations:true}], ConfigChecks:[{Index:0,Supported:true,Page:1,Pages:[1,2]}], AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:1,PrintedValue:2420,PrintedUnit:'sqft',Label:'Carpet area'}],Findings:[] });
 test('requires exactly every PDF page, not an asserted complete flag', () => {
   const review = good(); review.Pages.pop(); assert.throws(() => validateReview(review,candidate,2), /pages were not reviewed/);
   review.Pages.push({...review.Pages[0]}); assert.throws(() => validateReview(review,candidate,2), /invalid page coverage/);

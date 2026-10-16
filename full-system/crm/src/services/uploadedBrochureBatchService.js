@@ -42,19 +42,22 @@ function buildPayload(project, data, appendConfigs = false) {
   payload.Specifications = [];
   const evidence = unique(data.SourceEvidence);
   const warnings = unique(data.ReadingWarnings);
-  const configs = (data.ConfigDetails || []).filter(x => x && (x.Type || x.BHK)).map(c => {
+  const configs = (data.ConfigDetails || []).map((c, index) => {
+    if (!c || !(c.Type || c.BHK)) return null;
     const row = { ...c, Type: c.Type || 'Apartment', AreaSqft: null, BuiltUpAreaSqft: null };
     for (const key of ['CarpetAreaSqft','SuperBuiltUpAreaSqft','TerraceAreaSqft']) {
       if (row[key] == null || row[key] === '') { row[key] = null; continue; }
       const number = Number(row[key]);
       const label = key === 'CarpetAreaSqft' ? /carpet|c\.?\s*a\.?/i : key === 'TerraceAreaSqft' ? /terrace/i : /saleable|super.?built|s\.?\s*a\.?/i;
       const printedNumber = new RegExp('(^|[^0-9.])' + String(number).replace('.', '\\.') + '([^0-9.]|$)');
-      const supported = Number.isFinite(number) && number > 0 && evidence.some(e => /(?:page|pg\.?|p\.)\s*\d+/i.test(e) && label.test(e) && printedNumber.test(e.replace(/,/g,'')));
+      const checkedArea = data.CompletenessReview?.Version === REVIEW_VERSION && data.CompletenessReview?.Status === 'automated_checks_passed' &&
+        (data.CompletenessReview.AreaChecks || []).some(a => a.ConfigIndex === index && a.Field === key && Math.abs(a.PrintedValue * (a.PrintedUnit === 'sqm' ? 10.76391041671 : 1) - number) <= 0.1);
+      const supported = checkedArea || Number.isFinite(number) && number > 0 && evidence.some(e => /(?:page|pg\.?|p\.)\s*\d+/i.test(e) && label.test(e) && printedNumber.test(e.replace(/,/g,'')));
       if (!supported) { warnings.push(key + ' omitted: missing printed page/area evidence'); row[key] = null; }
       else row[key] = number;
     }
     return row;
-  });
+  }).filter(Boolean);
   if (configs.length) payload.ConfigDetails = grouped([...(appendConfigs ? project.ConfigDetails || [] : []), ...configs]);
   for (const key of ['PriceMin','PriceMax']) if (data[key] != null && Number.isFinite(Number(data[key]))) payload[key] = Number(data[key]);
   const phone = String(data.SalesPersonPhone || '').trim();
