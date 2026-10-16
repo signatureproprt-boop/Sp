@@ -128,7 +128,7 @@ function validateReview(review, data, pageCount) {
     const value = row[area.Field];
     if (value == null || value === '' || !Number.isFinite(Number(value)) || Number(value) <= 0 || typeof area.PrintedValue !== 'number' || !Number.isFinite(area.PrintedValue) || area.PrintedValue <= 0 || !['sqft','sqm'].includes(area.PrintedUnit) || !areaFields[area.Field].test(label) || /common|loading|room dimension/i.test(label)) fail('unsupported printed area for configuration '+area.ConfigIndex+' '+area.Field, 'BROCHURE_REVIEW_FINDINGS');
     const sqft = area.PrintedValue * (area.PrintedUnit === 'sqm' ? 10.76391041671 : 1);
-    if (Math.abs(sqft-Number(value)) > 0.1) fail('printed area conflicts with configuration '+area.ConfigIndex+' '+area.Field+' on page '+area.Page, 'BROCHURE_REVIEW_FINDINGS');
+    if (Math.abs(sqft-Number(value)) > 0.1) fail('printed area conflicts with configuration '+area.ConfigIndex+' '+area.Field+' on page '+area.Page+': candidate '+value+' sqft; independent source transcription '+area.PrintedValue+' '+area.PrintedUnit+' ('+label+'). Re-read that printed total and correct the source-supported value; do not derive it from room dimensions.', 'BROCHURE_REVIEW_FINDINGS');
     const source = review.ConfigChecks.find(c => c.Index === area.ConfigIndex);
     if (!(source.Pages || [source.Page]).includes(area.Page)) fail('area evidence belongs to another layout source page', 'BROCHURE_REVIEW_FINDINGS');
     checkedAreas.add(key);
