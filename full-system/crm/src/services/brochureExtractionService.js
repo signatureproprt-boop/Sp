@@ -1,13 +1,14 @@
 'use strict';
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+// Floor plans need the full vision model; the lightweight general model is not the brochure default.
+const GEMINI_MODEL = process.env.GEMINI_BROCHURE_MODEL || process.env.GEMINI_AGENT_MODEL || 'gemini-3.8-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const crypto = require('node:crypto');
 const { setTimeout: wait } = require('node:timers/promises');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
-const CACHE_VERSION = 'brochure-v13-repair-budgets';
+const CACHE_VERSION = 'brochure-v14-full-vision-model';
 const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces, REVIEW_SCHEMA } = require('./brochureCompletenessService');
 // Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
 const MAX_BYTES = 50 * 1024 * 1024;

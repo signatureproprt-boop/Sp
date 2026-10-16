@@ -42,7 +42,7 @@ test('manual edits during reading survive without an AI overwrite, including con
  }
 });
 test('provider capacity errors preserve typed status and full retry delay',async()=>{
- const ctx={module:{exports:{}},Buffer,structuredClone,AbortSignal,Date,process:{env:{GEMINI_API_KEY:'test',GEMINI_MODEL:'gemini-3.1-flash-lite'}},
+ const ctx={module:{exports:{}},Buffer,structuredClone,AbortSignal,Date,process:{env:{GEMINI_API_KEY:'test',GEMINI_BROCHURE_MODEL:'gemini-3.1-flash-lite'}},
  require:n=>n==='./brochureCompletenessService'?{...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1}:require(n),
  fetch:async()=>({ok:false,status:429,headers:{get:()=> '90'},json:async()=>({error:{message:'Quota exceeded',details:[{retryDelay:'67000s'}]}})})};
  vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);

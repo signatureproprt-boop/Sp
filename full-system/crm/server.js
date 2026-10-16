@@ -2600,7 +2600,7 @@ async function handleApi(req, res, url) {
         extractBrochure(body.fileBase64, body.pageImages, String(actor?.userId || ""))
           .then((data) => sendJson(res, { ok: true, data }))
           .catch((e) => {
-            console.warn('[brochure-reader]', JSON.stringify({ model: process.env.GEMINI_MODEL || 'gemini-3.8-flash', status: e.status || 500, code: e.code || 'EXTRACTION_FAILED' }));
+            console.warn('[brochure-reader]', JSON.stringify({ model: process.env.GEMINI_BROCHURE_MODEL || process.env.GEMINI_AGENT_MODEL || 'gemini-3.8-flash', status: e.status || 500, code: e.code || 'EXTRACTION_FAILED' }));
             sendJson(res, { ok: false, error: e.message, code: e.code || null, retryAfterSeconds: e.retryAfterSeconds || null }, [429,503].includes(e.status) ? e.status : 500);
           });
         return;
