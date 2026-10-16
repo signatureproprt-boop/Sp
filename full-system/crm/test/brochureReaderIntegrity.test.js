@@ -100,5 +100,5 @@ test('area reviewer cannot copy the live Millennium digit error from candidate o
   assert.equal(candidate.ConfigDetails[0].SuperBuiltUpAreaSqft,null);
   assert.equal(source.ConfigDetails[0].CarpetAreaSqft,1289);
   const review = {Complete:true,Pages:[{Page:1,Kind:'floor plan',HasConfigurations:true}],ConfigChecks:[{Index:0,Page:1,Supported:true,BedroomCount:3,BedroomCountSource:'Printed 3 BHK'}],AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:1,PrintedValue:1209,PrintedUnit:'sqft',Label:'R.C.A.'}],Findings:[]};
-  assert.throws(()=>validateReview(review,source,1),e=>e.code==='BROCHURE_REVIEW_FINDINGS');
+  assert.throws(()=>validateReview(review,source,1),e=>e.code==='BROCHURE_REVIEW_FINDINGS' && /candidate 1289 sqft/.test(e.message) && /transcription 1209 sqft/.test(e.message));
 });
