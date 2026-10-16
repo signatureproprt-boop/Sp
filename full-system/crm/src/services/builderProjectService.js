@@ -459,6 +459,9 @@ class BuilderProjectService {
           .map((c) => ({
             Tower: String(c.Tower || "").trim() || null,
             FlatType: String(c.FlatType || "").trim() || null,
+            PriceMin: c.PriceMin != null && c.PriceMin !== '' ? parseNum(c.PriceMin) : null,
+            PriceMax: c.PriceMax != null && c.PriceMax !== '' ? parseNum(c.PriceMax) : null,
+            FloorPlanMediaID: String(c.FloorPlanMediaID || '').trim() || null,
             SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft != null && c.SuperBuiltUpAreaSqft !== "" ? parseNum(c.SuperBuiltUpAreaSqft) : null,
             Type: String(c.Type).trim(),
             BHK: c.BHK != null && c.BHK !== '' ? parseBHK(c.BHK) : null,
