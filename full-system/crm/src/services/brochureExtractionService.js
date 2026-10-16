@@ -7,7 +7,7 @@ const { setTimeout: wait } = require('node:timers/promises');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
-const CACHE_VERSION = 'brochure-v11-typed-review';
+const CACHE_VERSION = 'brochure-v12-reference-repair';
 const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces, REVIEW_SCHEMA } = require('./brochureCompletenessService');
 // Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -191,7 +191,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
       } else {
         // A malformed review must be repeated, not treated as an approved extraction.
         reviewFeedback = '\nYour previous review failed validation: ' + JSON.stringify(error.message) +
-          '. Return the full required review shape with all page entries and configuration checks; report actual findings when Complete is false.';
+          '. Re-read that source page. If it repeats an existing layout, include the page in that configuration ConfigChecks.Pages without changing the extracted configuration. If it contains a distinct missing layout, report an omission Finding instead. Do not change HasConfigurations merely to silence this error. Return the full required review shape with all page entries and configuration checks; report actual findings when Complete is false.';
       }
     }
   }
