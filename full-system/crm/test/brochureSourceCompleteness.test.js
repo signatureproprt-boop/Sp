@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {validateReview,REVIEW_VERSION,reviewPrompt}=require('../src/services/brochureCompletenessService');
+const {validateReview,REVIEW_VERSION,reviewPrompt,REVIEW_SCHEMA}=require('../src/services/brochureCompletenessService');
 const data={ProjectName:'THE ULTIMA',RERANumber:null,ConfigDetails:[{Type:'Apartment',BHK:3,CarpetAreaSqft:null,SuperBuiltUpAreaSqft:null},{Type:'Apartment',BHK:4,CarpetAreaSqft:null,SuperBuiltUpAreaSqft:null}]};
 const review=()=>({Complete:false,Pages:[{Page:1,Kind:'floor plan',HasConfigurations:true},{Page:2,Kind:'contact',HasConfigurations:false}],ConfigChecks:[{Index:0,Supported:true,Page:1,BedroomCount:3,BedroomCountSource:'3 bedroom labels'},{Index:1,Supported:true,Page:1,BedroomCount:4,BedroomCountSource:'4 bedroom labels'}],Findings:[
  {Page:2,Kind:'not_stated',Field:'RERANumber',ConfigIndex:null,Issue:'Printed RERA label is empty'},
@@ -26,4 +26,12 @@ test('unreadable facts and missed printed totals still block even with not-state
 test('not-stated findings never replace full page coverage or configuration support',()=>{
  const r=review();r.Pages.pop();assert.throws(()=>validateReview(r,data,2),/pages were not reviewed/);
  const s=review();s.ConfigChecks[1].Supported=false;assert.throws(()=>validateReview(s,data,2),/unsupported/);
+});
+
+test('review generation distinguishes absent null totals from unsupported values',()=>{
+ assert.match(reviewPrompt(data,2),/no printed total exists AND the candidate area is non-null/);
+ const finding=REVIEW_SCHEMA.properties.Findings.items;
+ assert.ok(finding.required.includes('Kind'));assert.ok(finding.required.includes('Field'));assert.ok(finding.required.includes('ConfigIndex'));
+ assert.ok(finding.properties.Kind.enum.includes('not_stated'));
+ assert.match(finding.properties.Kind.description,/already-null/);
 });
