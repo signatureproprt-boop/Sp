@@ -68,3 +68,18 @@ test('temporary high demand recovers and still requires independent review',asyn
  const result=await h.service.extractBrochure(Buffer.from('%PDF recovered').toString('base64'));
  assert.equal(result.ProjectName,'THE ULTIMA');assert.equal(h.prompts.length,3);assert.match(h.prompts[2],/^Independently audit/);
 });
+
+test('repeated overview page repairs review references without another extraction',async()=>{
+ const overview={...approved,Pages:[page,{Page:2,Kind:'typical overview',HasConfigurations:true}]};
+ const fixed={...overview,ConfigChecks:[{Index:0,Supported:true,Page:1,Pages:[1,2]}]};
+ const prompts=[];
+ const responses=[candidate,overview,fixed];
+ const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test'}},
+ require:n=>n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>2}:n==='./brochurePdfPreparationService'?{renderPdfForAi:async()=>null}:require(n),
+ fetch:async(_url,options)=>{prompts.push(JSON.parse(options.body).contents[0].parts[0].text);return {ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(responses.shift())}]}}]})};}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);
+ const result=await ctx.module.exports.extractBrochure(pdf);
+ assert.equal(result.ConfigDetails.length,1);assert.equal(prompts.length,3);
+ assert.match(prompts[2],/^Independently audit/);assert.match(prompts[2],/page 2.*missing from configuration source checks/);
+ assert.match(prompts[2],/Do not change HasConfigurations merely/);
+});

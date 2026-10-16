@@ -22,7 +22,7 @@ test('bedroom audit does not see the extracted answer or generated supporting cl
 
 test('a checked apartment cannot hide a later unrepresented terrace-plan page', () => {
   assert.throws(() => validateReview(review(), data, 2), e =>
-    e.code === 'BROCHURE_REVIEW_FINDINGS' && /page 2/.test(e.message));
+    e.code === 'BROCHURE_REVIEW_FORMAT' && /page 2/.test(e.message));
 });
 
 test('known identical layouts can cite multiple original source pages', () => {
