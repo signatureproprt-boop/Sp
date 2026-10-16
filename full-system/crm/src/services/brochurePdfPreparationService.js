@@ -33,4 +33,28 @@ async function preparePdfForAi(buffer, options = {}) {
     throw error;
   } finally { await fs.rm(dir,{recursive:true,force:true}); }
 }
-module.exports = { preparePdfForAi, PDF_LIMIT };
+// Normalize multi-page brochures into bounded visual pages. Never truncate pages.
+async function renderPdfForAi(buffer, pageCount, options = {}) {
+  if (pageCount < 2 || pageCount > 30) return null;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'brochure-vision-'));
+  try {
+    const input = path.join(dir, 'source.pdf');
+    await fs.writeFile(input, buffer, { mode: 0o600 });
+    await (options.run || run)('pdftoppm', ['-jpeg', '-scale-to', '2400', '-jpegopt', 'quality=90', input, path.join(dir, 'page')],
+      { timeout: 40000, maxBuffer: 1024 * 1024, signal: options.signal });
+    const files = (await fs.readdir(dir)).filter(name => /^page-\d+\.jpg$/.test(name))
+      .sort((a,b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+    if (files.length !== pageCount) throw new Error('PDF page rendering incomplete; original retained');
+    let totalBytes = 0;
+    const pages = [];
+    for (let index = 0; index < files.length; index++) {
+      if (Number(files[index].match(/\d+/)[0]) !== index + 1) throw new Error('PDF page sequence incomplete');
+      const bytes = await fs.readFile(path.join(dir, files[index]));
+      totalBytes += bytes.length;
+      if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || totalBytes > PDF_LIMIT) throw new Error('Rendered PDF exceeds safe image limit');
+      pages.push({ data: bytes.toString('base64'), text: '' });
+    }
+    return pages;
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+}
+module.exports = { preparePdfForAi, renderPdfForAi, PDF_LIMIT };

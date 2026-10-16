@@ -1774,16 +1774,13 @@ html body{background-image:none!important;background:#f7f7f5!important}
   async function requestBrochureExtraction(filename, fileBase64) {
     const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
-    const cacheKey = 'reader-v9-blind-layout-coverage:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cacheKey = 'reader-v10-server-vision:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     const retryAt=brochureReaderCooldowns.get(cacheKey) || 0;
     if(retryAt>Date.now()) throw new Error('AI busy. Retry after '+Math.ceil((retryAt-Date.now())/1000)+' seconds. Uploaded PDF retained; project fields unchanged.');
     const cached = await brochureCache('get', cacheKey);
     if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
 
-    // Render heavy/vector PDFs into readable pages so malformed annotations and
-    // oversized source images do not hold up the AI. Keep the original for saving.
-    // Gemini reads PDF pages with native vision; send the original once instead of
-    // rendering and uploading every page as a separate large JPEG.
+    // Server normalizes multi-page PDFs into complete visual pages before AI reading.
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 270000);

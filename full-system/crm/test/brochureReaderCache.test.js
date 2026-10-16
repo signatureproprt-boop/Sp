@@ -60,7 +60,7 @@ test('response body timeout reports service delay and remains retryable', async 
     } }) };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
   const pdf = Buffer.from('%PDF timeout').toString('base64');
-  await assert.rejects(context.module.exports.extractBrochure(pdf), /AI service did not finish within 4 minutes/);
+  await assert.rejects(context.module.exports.extractBrochure(pdf), error => error.code === 'AI_TIMEOUT' && /AI service did not finish within 4 minutes/.test(error.message) && /Stage: extraction/.test(error.message));
   assert.equal(timeoutMs, 240000);
   fail = false;
   assert.equal((await context.module.exports.extractBrochure(pdf)).ProjectName, 'Test');

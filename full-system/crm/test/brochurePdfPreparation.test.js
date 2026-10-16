@@ -36,3 +36,18 @@ test('240 DPI fallback reads the same complete source if the 300 DPI copy remain
   }});
   assert.equal(calls,2);assert.equal(result.resolution,240);assert.ok(result.buffer.length<1000);
 });
+test('visual preparation preserves numeric page order and rejects missing pages',async()=>{
+  const {renderPdfForAi}=require('../src/services/brochurePdfPreparationService');
+  let temp;
+  const fakeRun=async(binary,args)=>{
+    assert.equal(binary,'pdftoppm');assert.ok(args.includes('2400'));
+    temp=path.dirname(args.at(-1));
+    for(let n=12;n>=1;n--)await fs.writeFile(path.join(temp,'page-'+n+'.jpg'),Buffer.from([255,216,n,255,217]));
+  };
+  const pages=await renderPdfForAi(Buffer.from('%PDF-1.7'),12,{run:fakeRun});
+  assert.deepEqual(pages.map(p=>Buffer.from(p.data,'base64')[2]),Array.from({length:12},(_,i)=>i+1));
+  await assert.rejects(fs.stat(temp),{code:'ENOENT'});
+  await assert.rejects(renderPdfForAi(Buffer.from('%PDF-1.7'),13,{run:fakeRun}),/incomplete/);
+  await assert.rejects(fs.stat(temp),{code:'ENOENT'});
+  assert.equal(await renderPdfForAi(Buffer.from('%PDF-1.7'),31,{run:()=>{throw Error('must not run')}}),null);
+});
