@@ -148,6 +148,10 @@ async function extractBrochureUncached(fileBase64, pageImages) {
   console.info('[brochure-reader-stage]', JSON.stringify({ phase, event: 'complete', elapsedMs: Date.now() - started }));
   return parsed;
   } catch (error) {
+    if (/^AI service did not finish within 4 minutes/.test(error.message || '')) {
+      error.code = 'AI_TIMEOUT';
+      error.message += ' Stage: ' + phase + '.';
+    }
     console.warn('[brochure-reader-stage]', JSON.stringify({ phase, event: 'failed', elapsedMs: Date.now() - started, status: error.status || null, code: error.code || error.name }));
     throw error;
   }
