@@ -1774,7 +1774,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
   async function requestBrochureExtraction(filename, fileBase64) {
     const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
-    const cacheKey = 'reader-v8-bedroom-verification:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cacheKey = 'reader-v9-blind-layout-coverage:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     const retryAt=brochureReaderCooldowns.get(cacheKey) || 0;
     if(retryAt>Date.now()) throw new Error('AI busy. Retry after '+Math.ceil((retryAt-Date.now())/1000)+' seconds. Uploaded PDF retained; project fields unchanged.');
     const cached = await brochureCache('get', cacheKey);
@@ -1814,6 +1814,10 @@ html body{background-image:none!important;background:#f7f7f5!important}
   }
 
   let brochureReadInProgress = false;
+  function brochureFormSnapshot() {
+    const ids = ['f-project-name','f-builder-name','f-location1','f-address','f-rera-number','f-category','f-status','f-total-units','f-project-area','f-total-towers','f-total-floors','f-floor-height','f-sales-name','f-sales-phone','f-price-min','f-price-max','f-possession','f-amenities','f-overview','f-notes','f-highlights'];
+    return JSON.stringify([ids.map(id => document.getElementById(id)?.value ?? ''), typeof configRows === 'undefined' ? [] : configRows]);
+  }
   async function readStoredBrochure() {
     if (!editingId || brochureReadInProgress) return;
     const id = editingId;
@@ -1841,6 +1845,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     brochureReadInProgress = true;
     const readProjectId = editingId;
     const readProjectName = document.getElementById('f-project-name').value;
+    const readFormSnapshot = brochureFormSnapshot();
     if (!stored) pendingBrochureFile = file;
     const statusEl = document.getElementById('autofill-status');
     statusEl.textContent = '⏳ Reading every PDF page and checking layouts / areas. Temporary AI overload is retried automatically. Up to 4 minutes; please do not click again.';
@@ -1855,6 +1860,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
           throw new Error('Review required: brochure project name does not match ' + readProjectName + ' (PDF: ' + (res.data.ProjectName || 'missing') + '). Project fields were not changed.');
         }
       }
+      if (brochureFormSnapshot() !== readFormSnapshot) throw new Error('Form edited while the brochure was reading. Your edits were kept; retry reading when ready.');
       applyAutoFill(res.data);
       const missing = [['BuilderName', 'builder'], ['Amenities', 'amenities'], ['Highlights', 'features'], ['ConfigDetails', 'configurations'], ['PriceMin', 'price'], ['PossessionDate', 'possession date'], ['FloorHeightFt', 'floor height']]
         .filter(([key]) => res.data[key] == null || (Array.isArray(res.data[key]) && !res.data[key].length)).map(([, label]) => label);
@@ -1862,7 +1868,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
       if (areaMissing) missing.push('carpet / super built-up area for some configurations');
       statusEl.textContent = '✅ Brochure fields filled — review before saving.' +
         (Array.isArray(res.data.ReadingWarnings) && res.data.ReadingWarnings.length ? ' ' + res.data.ReadingWarnings.join(' ') : '') +
-        (missing.length ? ' Not extracted — verify in PDF; existing values retained: ' + missing.join(', ') + '.' : '');
+        (missing.length ? ' Not extracted from this PDF — verify before saving (configuration rows are replaced by the new reading): ' + missing.join(', ') + '.' : '');
     } catch (e) {
       statusEl.textContent = 'Reading not completed: ' + e.message;
       toast('Brochure reading not completed. See the message above the form.', true);

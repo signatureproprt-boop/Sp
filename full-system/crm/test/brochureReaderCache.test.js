@@ -16,7 +16,7 @@ test('same PDF shares one extraction; failed attempts are retryable and scopes s
       assert.equal(request.contents[0].parts[1].inline_data.mime_type, 'application/pdf');
       await new Promise(resolve => setImmediate(resolve));
       return { ok: !fail, status: 500, json: async () => fail ? { error: { message: 'temporary failure' } } :
-        { candidates: [{ content: { parts: [{ text: JSON.stringify(request.contents[0].parts[0].text.startsWith('Independently audit') ? {Complete:true,Pages:[{Page:1,Kind:'other',HasConfigurations:false}],ConfigChecks:[],Findings:[]} : data) }] } }] } }; } };
+        { candidates: [{ content: { parts: [{ text: JSON.stringify(request.contents[0].parts[0].text.startsWith('Independently audit') ? {Complete:true,Pages:[{Page:1,Kind:'other',HasConfigurations:false}],ConfigChecks:[],Findings:[],AmenityInventory:[{Page:1,Label:'Gym',CandidateIndex:0}]} : data) }] } }] } }; } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
   const extract = context.module.exports.extractBrochure;
   const pdf = Buffer.from('%PDF test').toString('base64');
@@ -45,7 +45,7 @@ test('brochure form compiles and BHK-only extracted configurations survive save 
   assert.equal(context.configRows[0].ParkingAllotted, 2);
   assert.equal(context.configRows[0].ServantRoom, true);
   assert.ok(html.includes('Read uploaded brochure'));
-  assert.ok(html.includes('existing values retained'));
+  assert.ok(html.includes('configuration rows are replaced by the new reading'));
 });
 
 test('response body timeout reports service delay and remains retryable', async () => {

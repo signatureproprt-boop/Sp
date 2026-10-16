@@ -7,7 +7,7 @@ const { setTimeout: wait } = require('node:timers/promises');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
-const CACHE_VERSION = 'brochure-v8-bedroom-verification';
+const CACHE_VERSION = 'brochure-v9-blind-layout-coverage';
 const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces } = require('./brochureCompletenessService');
 // Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
 const MAX_BYTES = 50 * 1024 * 1024;

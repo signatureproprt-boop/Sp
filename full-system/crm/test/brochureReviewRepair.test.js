@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const completeness = require('../src/services/brochureCompletenessService');
 const page = {Page:1,Kind:'floor plan',HasConfigurations:true};
 const candidate = {ProjectName:'THE ULTIMA',ConfigDetails:[{Type:'Apartment',CarpetAreaSqft:1000}],Amenities:[],Highlights:[]};
-const approved = {Complete:true,Pages:[page],ConfigChecks:[{Index:0,Supported:true}],Findings:[]};
+const approved = {AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:1,PrintedValue:1000,PrintedUnit:'sqft',Label:'Carpet area'}],Complete:true,Pages:[page],ConfigChecks:[{Index:0,Supported:true,Page:1}],Findings:[]};
 function harness(responses) {
  const prompts=[];
  const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test',GEMINI_MODEL:'gemini-3.1-flash-lite'}},
@@ -27,7 +27,8 @@ test('Complete false exposes exact page findings instead of generic failure',()=
 });
 test('re-reads omissions once and requires a fresh complete review of corrected data',async()=>{
  const corrected={...candidate,Amenities:['Gym']};
- const h=harness([candidate,{...approved,Complete:false,Findings:[{Page:1,Issue:'Gym omitted'}]},corrected,approved]);
+ const gymReview={...approved,AmenityInventory:[{Page:1,Label:'Gym',CandidateIndex:0}]};
+ const h=harness([candidate,{...approved,Complete:false,Findings:[{Page:1,Issue:'Gym omitted'}]},corrected,gymReview]);
  const result=await h.service.extractBrochure(pdf);
  assert.equal(result.Amenities[0],'Gym');
  assert.equal(result.CompletenessReview.Status,'automated_checks_passed');
@@ -55,7 +56,7 @@ test('persistent high demand has bounded transport retries without correction re
 test('printed terrace omission can be corrected but still requires independent review',async()=>{
  const missing={...candidate,SourceEvidence:['Page 1: Private Terrace 500 sqft']};
  const fixed={...missing,ConfigDetails:[...candidate.ConfigDetails,{Type:'Terrace Flat',TerraceAreaSqft:500}]};
- const review={...approved,ConfigChecks:[{Index:0,Supported:true},{Index:1,Supported:true}]};
+ const review={...approved,AreaChecks:[...approved.AreaChecks,{ConfigIndex:1,Field:'TerraceAreaSqft',Page:1,PrintedValue:500,PrintedUnit:'sqft',Label:'Private terrace'}],ConfigChecks:[{Index:0,Supported:true,Page:1},{Index:1,Supported:true,Page:1}]};
  const h=harness([missing,fixed,review]);
  const result=await h.service.extractBrochure(pdf);
  assert.equal(result.ConfigDetails[1].TerraceAreaSqft,500);
