@@ -88,3 +88,17 @@ test('a separate printed area schedule can support an explicitly linked floor pl
   r.ConfigChecks[0].Pages=[1];
   assert.throws(()=>validateReview(r,candidate,2),/another layout source page/);
 });
+
+// Regression: the live Millennium M/N/O/P reader copied 1289 in both passes
+// even though the printed R.C.A. is 1209. Hide the first answer from review.
+test('area reviewer cannot copy the live Millennium digit error from candidate or summary', () => {
+  const source = {Overview:'3 BHK with 1289 sqft carpet', ConfigDetails:[{Tower:'M/N/O/P',Type:'Apartment',BHK:3,CarpetAreaSqft:1289,SuperBuiltUpAreaSqft:null}],SourceEvidence:['R.C.A. 1289 SQ.FT.']};
+  const prompt = reviewPrompt(source,1);
+  const candidate = JSON.parse(prompt.split('Candidate: ')[1]);
+  assert.doesNotMatch(JSON.stringify(candidate),/1289/);
+  assert.match(candidate.ConfigDetails[0].CarpetAreaSqft,/withheld/);
+  assert.equal(candidate.ConfigDetails[0].SuperBuiltUpAreaSqft,null);
+  assert.equal(source.ConfigDetails[0].CarpetAreaSqft,1289);
+  const review = {Complete:true,Pages:[{Page:1,Kind:'floor plan',HasConfigurations:true}],ConfigChecks:[{Index:0,Page:1,Supported:true,BedroomCount:3,BedroomCountSource:'Printed 3 BHK'}],AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:1,PrintedValue:1209,PrintedUnit:'sqft',Label:'R.C.A.'}],Findings:[]};
+  assert.throws(()=>validateReview(review,source,1),e=>e.code==='BROCHURE_REVIEW_FINDINGS');
+});
