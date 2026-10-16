@@ -75,7 +75,7 @@ class UploadedBrochureBatchService {
     this.prepare = deps.prepare || preparePdfForAi;
     this.visible = deps.visible || (() => true);
     this.now = deps.now || (() => Date.now());
-    this.lock = deps.lock || (mongoStore.isEnabled() ? (name, fn) => mongoStore.withDistributedLock(name, fn, { leaseMs: 600000 }) : async (_name, fn) => ({ acquired: true, result: await fn() }));
+    this.lock = deps.lock || (mongoStore.isEnabled() ? (name, fn) => mongoStore.withDistributedLock(name, fn, { leaseMs: 900000 }) : async (_name, fn) => ({ acquired: true, result: await fn() }));
   }
   jobs() { return this.repo.read().UploadedBrochureBatches || []; }
   save(job) {
@@ -88,7 +88,7 @@ class UploadedBrochureBatchService {
   }
   view(job) {
     if (!job) return null;
-    const items = job.Items.map(({ Draft, Before, ...item }) => item);
+    const items = job.Items.map(({ Draft, Before, Checkpoint, ...item }) => item);
     return { ...job, Items: items, Total: items.length, Saved: items.filter(x => x.Status === 'saved').length, ChecksPassed: items.filter(x => x.Status === 'saved' && x.CompletenessReview?.Version === REVIEW_VERSION).length,
       Failed: items.filter(x => x.Status === 'failed').length, Pending: items.filter(x => x.Status === 'pending' || x.Status === 'reading').length,
       Projects: new Set(items.map(x => x.ProjectID)).size };
@@ -147,7 +147,7 @@ class UploadedBrochureBatchService {
             const prepared = await this.prepare(file.buffer);
             item.SourceBytes = file.buffer.length; item.AiBytes = prepared.buffer.length; item.OptimizedCopy = prepared.optimized; item.AiCopyDpi = prepared.resolution || null;
             item.Digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
-            item.Draft = await this.extract(prepared.buffer.toString('base64'), null, actorId + ':' + item.ProjectID);
+            item.Draft = await this.extract(prepared.buffer.toString('base64'), null, actorId + ':' + item.ProjectID, { checkpoint: item.Checkpoint, onCheckpoint: async checkpoint => { item.Checkpoint = checkpoint; this.save(job); } });
             if (prepared.optimized) item.Draft.ReadingWarnings = unique([...(item.Draft.ReadingWarnings || []), 'AI read a full-page ' + prepared.resolution + ' DPI optimized copy; original uploaded brochure retained']);
             // Persist the draft only on failure. Successful fields and queue state
             // share one snapshot write, rather than three serial full snapshots.
@@ -162,7 +162,7 @@ class UploadedBrochureBatchService {
           const result = this.projects.update(item.ProjectID, payload, db => {
             item.CompletenessReview = item.Draft.CompletenessReview;
             item.Status = 'saved'; item.SavedAt = new Date().toISOString(); item.Error = null;
-            item.Warnings = unique(item.Draft.ReadingWarnings); delete item.Draft;
+            item.Warnings = unique(item.Draft.ReadingWarnings); delete item.Draft; delete item.Checkpoint;
             if (job.Status !== 'cooldown' && !job.Items.some(i => ['pending','reading'].includes(i.Status))) job.Status = 'complete';
             job.UpdatedAt = new Date().toISOString();
             db.UploadedBrochureBatches = db.UploadedBrochureBatches || [];

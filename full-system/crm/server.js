@@ -2593,15 +2593,26 @@ async function handleApi(req, res, url) {
       if (/^\/api\/v2\/builder-projects\/extract-brochure\/?$/i.test(pathname)) {
         if (req.method !== 'POST') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         const body = bodyForV2 || {};
-        if (!body.fileBase64) { sendJson(res, { ok: false, error: 'fileBase64 required' }, 400); return; }
+        if (!body.fileBase64 && !body.projectId) { sendJson(res, { ok: false, error: 'PDF or projectId required' }, 400); return; }
         // Extraction only previews fields; the later project save confirms durability.
         res.__sigRequireMongoDurability = false;
         const { extractBrochure } = require('./src/services/brochureExtractionService');
-        extractBrochure(body.fileBase64, body.pageImages, String(actor?.userId || ""))
+        const source = body.projectId ? (async () => {
+          const project = svc.get(String(body.projectId));
+          if (!project.ok) throw Object.assign(new Error('Project not found'), { status: 404 });
+          const tenant = tenantCheck(project.data, actor);
+          if (!tenant.ok) throw Object.assign(new Error(tenant.error), { status: tenant.statusCode || 403 });
+          const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
+          const file = await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectBrochureFile(project.data.ProjectID);
+          if (!file.ok) throw Object.assign(new Error(file.error), { status: file.statusCode || 404 });
+          const { preparePdfForAi } = require('./src/services/brochurePdfPreparationService');
+          return (await preparePdfForAi(file.buffer)).buffer.toString('base64');
+        })() : Promise.resolve(body.fileBase64);
+        source.then(pdf => extractBrochure(pdf, body.pageImages, String(actor?.userId || "")))
           .then((data) => sendJson(res, { ok: true, data }))
           .catch((e) => {
             console.warn('[brochure-reader]', JSON.stringify({ model: process.env.GEMINI_BROCHURE_MODEL || process.env.GEMINI_AGENT_MODEL || 'gemini-3.8-flash', status: e.status || 500, code: e.code || 'EXTRACTION_FAILED' }));
-            sendJson(res, { ok: false, error: e.message, code: e.code || null, retryAfterSeconds: e.retryAfterSeconds || null }, [429,503].includes(e.status) ? e.status : 500);
+            sendJson(res, { ok: false, error: e.message, code: e.code || null, retryAfterSeconds: e.retryAfterSeconds || null }, [400,403,404,429,503].includes(e.status) ? e.status : 500);
           });
         return;
       }

@@ -10,7 +10,7 @@ const approved = {AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:1,Print
 function harness(responses) {
  const prompts=[];
  const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test',GEMINI_BROCHURE_MODEL:'gemini-3.1-flash-lite'}},
- require:n=>n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
+ require:n=>n==='./brochureFileService'?{uploadBrochure:async buffer=>({part:{inline_data:{mime_type:'application/pdf',data:buffer.toString('base64')}},dispose:async()=>{}})}:n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
  fetch:async(url,options)=>{
   assert.match(url,/gemini-3.1-flash-lite/);
   const body=JSON.parse(options.body);prompts.push(body.contents[0].parts[0].text);
@@ -75,7 +75,7 @@ test('repeated overview page repairs review references without another extractio
  const prompts=[];
  const responses=[candidate,overview,fixed];
  const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test'}},
- require:n=>n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>2}:n==='./brochurePdfPreparationService'?{renderPdfForAi:async()=>null}:require(n),
+ require:n=>n==='./brochureFileService'?{uploadBrochure:async buffer=>({part:{inline_data:{mime_type:'application/pdf',data:buffer.toString('base64')}},dispose:async()=>{}})}:n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>2}:n==='./brochurePdfPreparationService'?{renderPdfForAi:async()=>null}:require(n),
  fetch:async(_url,options)=>{prompts.push(JSON.parse(options.body).contents[0].parts[0].text);return {ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(responses.shift())}]}}]})};}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);
  const result=await ctx.module.exports.extractBrochure(pdf);
@@ -100,4 +100,24 @@ test('source corrections cannot loop after a format repair',async()=>{
  const h=harness([candidate,{Complete:true},bad,candidate,bad]);
  await assert.rejects(h.service.extractBrochure(pdf),/Still missing printed amenity/);
  assert.equal(h.prompts.length,5);
+});
+
+test('review failure resumes a source-bound checkpoint after restarting the reader', async()=>{
+ const first=harness([candidate,{error:'busy'},{error:'busy'},{error:'busy'}]);
+ let checkpoint;
+ await assert.rejects(first.service.extractBrochure(pdf,null,'owner:project',{onCheckpoint:async value=>{checkpoint=value;}}),/busy/);
+ assert.equal(checkpoint.Data.ProjectName,candidate.ProjectName);
+ assert.equal(checkpoint.Data.CompletenessReview,undefined);
+ const restarted=harness([approved]);
+ const result=await restarted.service.extractBrochure(pdf,null,'owner:project',{checkpoint});
+ assert.equal(result.CompletenessReview.Status,'automated_checks_passed');
+ assert.equal(restarted.prompts.length,1);
+ assert.match(restarted.prompts[0],/^Independently audit/);
+ const differentSource=harness([candidate,approved]);
+ await differentSource.service.extractBrochure(Buffer.from('%PDF different').toString('base64'),null,'owner:project',{checkpoint});
+ assert.equal(differentSource.prompts.length,2);
+ assert.match(differentSource.prompts[0],/^You are extracting/);
+ const differentOwner=harness([candidate,approved]);
+ await differentOwner.service.extractBrochure(pdf,null,'other-owner:project',{checkpoint});
+ assert.equal(differentOwner.prompts.length,2);
 });

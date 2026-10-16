@@ -9,7 +9,7 @@ test('brochure vision model is independent of the lightweight general model and 
  ]){
   let calls=0;
   const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test',...env}},
-   require:n=>n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
+   require:n=>n==='./brochureFileService'?{uploadBrochure:async buffer=>({part:{inline_data:{mime_type:'application/pdf',data:buffer.toString('base64')}},dispose:async()=>{}})}:n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
    fetch:async(url)=>{assert.ok(url.includes('/'+expected+':generateContent'));calls++;return {ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(calls===1?{ProjectName:'Kronis'}:{Complete:true,Pages:[{Page:1,Kind:'cover',HasConfigurations:false}],ConfigChecks:[],Findings:[]})}]}}]})};}};
   vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);
   assert.equal((await ctx.module.exports.extractBrochure(Buffer.from('%PDF fixture').toString('base64'))).ProjectName,'Kronis');assert.equal(calls,2);
@@ -19,7 +19,7 @@ test('brochure vision model is independent of the lightweight general model and 
 function overloadHarness(responses) {
  const calls=[];
  const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test'}},
- require:n=>n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
+ require:n=>n==='./brochureFileService'?{uploadBrochure:async buffer=>({part:{inline_data:{mime_type:'application/pdf',data:buffer.toString('base64')}},dispose:async()=>{}})}:n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
  fetch:async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});const item=responses.shift();assert.ok(item,'unbounded extra call');return item.status?{ok:false,status:item.status,json:async()=>({error:{message:'Provider unavailable'}})}:{ok:true,json:async()=>({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(item)}]}}]})};}};
  vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);
  return {service:ctx.module.exports,calls};
