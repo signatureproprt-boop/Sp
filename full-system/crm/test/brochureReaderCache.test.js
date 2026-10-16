@@ -70,7 +70,7 @@ test('response body timeout reports service delay and remains retryable', async 
 test('regular, penthouse and terrace configurations retain separate private areas through form rendering', () => {
   const html = fs.readFileSync(path.join(__dirname, '../builder-projects.html'), 'utf8');
   const fields = {};
-  const context = { document: { getElementById: id => fields[id] || (fields[id] = { value: '', innerHTML: '' }) }, configRows: [], esc: String };
+  const context = { document: { getElementById: id => fields[id] || (fields[id] = { value: '', innerHTML: '' }) }, configRows: [], allProjects: [], editingId: null, isStoredPhoto:()=>false, esc: String };
   vm.createContext(context);
   let start = html.indexOf('  function applyAutoFill(d)');
   vm.runInContext(html.slice(start, html.indexOf('  function closeProjectModal', start)), context);
@@ -106,7 +106,7 @@ test('project persistence keeps private terrace separate and preserves each unit
   const rows = ['Apartment', 'Penthouse', 'Terrace Flat'].map((Type, i) => ({
     Tower: 'A', FlatType: '1', Type, BHK: 3, CarpetAreaSqft: '900',
     SuperBuiltUpAreaSqft: '1500', TerraceAreaSqft: i ? String(i * 250) : null,
-    ParkingAllotted: 0, ServantRoom: false
+    ParkingAllotted: 0, ServantRoom: false, PriceMin: 7000000, PriceMax: 7100000, FloorPlanMediaID: 'plan-a'
   }));
   const saved = service._normalizePayload({ ConfigDetails: rows });
   const reloaded = service._normalizePayload(saved);
@@ -119,6 +119,7 @@ test('project persistence keeps private terrace separate and preserves each unit
     assert.equal(row.SuperBuiltUpAreaSqft, 1500);
     assert.equal(row.ParkingAllotted, 0);
     assert.equal(row.ServantRoom, false);
+    assert.equal(row.PriceMin,7000000); assert.equal(row.PriceMax,7100000); assert.equal(row.FloorPlanMediaID,'plan-a');
   }
   assert.equal(reloaded.ConfigDetails[0].TerraceAreaSqft, null);
 });

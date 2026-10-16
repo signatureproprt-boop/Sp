@@ -1,0 +1,27 @@
+const {test,expect}=require('@playwright/test');
+const path=require('node:path');
+test('project plans filter by BHK and show per-layout prices without inventing media',async({page},testInfo)=>{
+ const project={ProjectID:'PLAN-DEMO',ProjectName:'Millennium Antara',BuilderName:'Millennium Residency',Category:'Residential',Location1:'Vesu',ProjectStatus:'Under Construction',TotalTowers:19,TotalUnits:806,Highlights:['19 towers with 2 and 3 BHK residences'],Amenities:['Gym','Swimming pool'],Photos:[],Brochures:[],ConfigDetails:[{Tower:'A/B',Type:'Apartment',BHK:2,CarpetAreaSqft:764.24,PriceMin:7000000},{Tower:'M/N',Type:'Apartment',BHK:3,CarpetAreaSqft:1209.43,PriceMin:11300000},{Tower:'I/J',Type:'Apartment',BHK:3,CarpetAreaSqft:1231.5,PriceMin:11500000}]};
+ await page.route('**/builder-projects',r=>r.fulfill({path:path.join(__dirname,'../builder-projects.html'),contentType:'text/html'}));
+ await page.route('**/api/**',async r=>{const u=new URL(r.request().url());await r.fulfill({json:u.pathname==='/api/v2/builder-projects'?{ok:true,data:[project],pagination:{total:1,totalPages:1}}:{ok:true,data:[]}});});
+ await page.goto('/builder-projects');
+ await page.getByRole('button',{name:'View project details →',exact:true}).click();
+ const dialog=page.locator('#project-detail');
+ await expect(dialog.getByRole('heading',{name:'Floor plans & pricing',exact:true})).toBeVisible();
+ await expect(dialog.locator('[data-plan-bhk]')).toHaveCount(3);
+ await expect(dialog).toContainText('764.24 sqft');
+ await expect(dialog.locator('.pd-layout-price').first()).toContainText('70');
+ await expect(dialog.locator('.pd-plan-missing')).toHaveCount(3);
+ await dialog.getByRole('button',{name:'3 BHK',exact:true}).click();
+ await expect(dialog.locator('[data-plan-bhk]:visible')).toHaveCount(2);
+ await expect(dialog.locator('#pd-layout-count')).toHaveText('2');
+ await dialog.getByRole('button',{name:'2 BHK',exact:true}).click();
+ await expect(dialog.locator('[data-plan-bhk]:visible')).toHaveCount(1);
+ await dialog.getByRole('button',{name:'All layouts',exact:true}).click();
+ await expect(dialog.locator('[data-plan-bhk]:visible')).toHaveCount(3);
+ await page.setViewportSize({width:1440,height:1000});
+ await dialog.locator('#pd-configurations').scrollIntoViewIfNeeded();
+ await page.screenshot({path:testInfo.outputPath('project-layout-desktop.jpg')});
+ await page.setViewportSize({width:390,height:844});
+ expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBeTruthy();
+});
