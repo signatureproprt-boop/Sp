@@ -54,3 +54,13 @@ test('review overload can switch models without re-extracting or skipping review
  assert.match(h.calls[2].body.contents[0].parts[0].text,/^Independently audit/);
  assert.match(h.calls[2].url,/gemini-3.6-flash/);
 });
+
+test('lifts stay as building features and do not falsely fail the lifestyle amenity inventory',async()=>{
+ const h=overloadHarness([{ProjectName:'Antara',Amenities:['Lifts'],Highlights:['19 towers']},approval]);
+ const result=await h.service.extractBrochure(fixture);
+ assert.deepEqual(Array.from(result.Amenities),[]);
+ assert.deepEqual(Array.from(result.Highlights),['19 towers','Lifts']);
+ const candidate=JSON.parse(h.calls[1].body.contents[0].parts[0].text.split('Candidate: ')[1]);
+ assert.deepEqual(candidate.Amenities,[]);
+ assert.ok(candidate.Highlights.includes('Lifts'));
+});
