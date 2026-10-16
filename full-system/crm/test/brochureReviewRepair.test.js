@@ -9,7 +9,7 @@ const candidate = {ProjectName:'THE ULTIMA',ConfigDetails:[{Type:'Apartment',Car
 const approved = {AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:1,PrintedValue:1000,PrintedUnit:'sqft',Label:'Carpet area'}],Complete:true,Pages:[page],ConfigChecks:[{Index:0,Supported:true,Page:1}],Findings:[]};
 function harness(responses) {
  const prompts=[];
- const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test',GEMINI_MODEL:'gemini-3.1-flash-lite'}},
+ const ctx={module:{exports:{}},Buffer,AbortSignal,structuredClone,process:{env:{GEMINI_API_KEY:'test',GEMINI_BROCHURE_MODEL:'gemini-3.1-flash-lite'}},
  require:n=>n==='./brochureCompletenessService'?{...completeness,countPdfPages:async()=>1}:require(n),
  fetch:async(url,options)=>{
   assert.match(url,/gemini-3.1-flash-lite/);
