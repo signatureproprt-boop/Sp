@@ -2,13 +2,14 @@
 
 // Floor plans need the full vision model; the lightweight general model is not the brochure default.
 const GEMINI_MODEL = process.env.GEMINI_BROCHURE_MODEL || process.env.GEMINI_AGENT_MODEL || 'gemini-3.8-flash';
+const FALLBACK_MODEL = process.env.GEMINI_BROCHURE_FALLBACK_MODEL ?? (GEMINI_MODEL === 'gemini-3.8-flash' ? 'gemini-2.5-flash' : '');
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const crypto = require('node:crypto');
 const { setTimeout: wait } = require('node:timers/promises');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const CACHE_LIMIT = 64;
-const CACHE_VERSION = 'brochure-v14-full-vision-model';
+const CACHE_VERSION = 'brochure-v15-capacity-fallback';
 const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces, REVIEW_SCHEMA } = require('./brochureCompletenessService');
 // Gemini's documented PDF processing limit is 50 MB. Stored batch files are read server-side.
 const MAX_BYTES = 50 * 1024 * 1024;
@@ -94,11 +95,12 @@ async function extractBrochureUncached(fileBase64, pageImages) {
 
   // One shared deadline covers extraction, review and the bounded correction pass.
   let capacityRetriesRemaining = 2;
+  let activeModel = GEMINI_MODEL;
   async function generateOnce(prompt, phase) {
   const started = Date.now();
-  console.info('[brochure-reader-stage]', JSON.stringify({ phase, event: 'start', model: GEMINI_MODEL, pageCount, input: pageImages ? 'images' : 'pdf' }));
+  console.info('[brochure-reader-stage]', JSON.stringify({ phase, event: 'start', model: activeModel, pageCount, input: pageImages ? 'images' : 'pdf' }));
   try {
-  const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+  const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(activeModel)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     signal: extractionSignal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -113,7 +115,7 @@ async function extractBrochureUncached(fileBase64, pageImages) {
         responseMimeType: 'application/json',
         ...(phase === 'review' ? { responseJsonSchema: REVIEW_SCHEMA } : {}),
         // Brochure transcription needs fast extraction rather than extended reasoning.
-        ...(/^gemini-3(?:\.|-)/i.test(GEMINI_MODEL.replace(/^models\//, ''))
+        ...(/^gemini-3(?:\.|-)/i.test(activeModel.replace(/^models\//, ''))
           ? { thinkingConfig: { thinkingLevel: 'low' } } : {})
       }
     })
@@ -163,9 +165,16 @@ async function extractBrochureUncached(fileBase64, pageImages) {
     while (true) {
       try { return await generateOnce(prompt, phase); }
       catch (error) {
-        // One bounded overload retry budget covers extraction and review.
-        // Quota, authentication and source-validation errors are not retried.
-        if (error.status !== 503 || capacityRetriesRemaining <= 0 || error.providerRetryAfterSeconds > 8) throw error;
+        // The same global retry budget covers both models and every reading stage.
+        // Never switch for quota, credentials, malformed output or source findings.
+        if (error.status !== 503 || capacityRetriesRemaining <= 0) throw error;
+        if (activeModel === GEMINI_MODEL && FALLBACK_MODEL && FALLBACK_MODEL !== GEMINI_MODEL) {
+          capacityRetriesRemaining--;
+          activeModel = FALLBACK_MODEL;
+          console.info('[brochure-reader-stage]', JSON.stringify({ phase, event: 'capacity_fallback', model: activeModel }));
+          continue;
+        }
+        if (error.providerRetryAfterSeconds > 8) throw error;
         capacityRetriesRemaining--;
         const delayMs = Math.max(1000 * (3 ** attempt++), (error.providerRetryAfterSeconds || 0) * 1000);
         await wait(delayMs, undefined, { signal: extractionSignal });
@@ -204,7 +213,7 @@ async function extractBrochure(fileBase64, pageImages, scope = '') {
   const encoded = String(fileBase64 || '').replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(encoded, 'base64');
   if (!buffer.length || buffer.length > MAX_BYTES) throw new Error('Invalid PDF size (max 50 MB)');
-  const key = crypto.createHash('sha256').update(CACHE_VERSION + GEMINI_MODEL + scope).update(buffer).digest('hex');
+  const key = crypto.createHash('sha256').update(CACHE_VERSION + GEMINI_MODEL + FALLBACK_MODEL + scope).update(buffer).digest('hex');
   if (extractionCache.has(key)) return structuredClone(extractionCache.get(key));
   if (pendingExtractions.has(key)) return structuredClone(await pendingExtractions.get(key));
   const request = extractBrochureUncached(fileBase64, pageImages).then(data => {
