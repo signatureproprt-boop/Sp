@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { promisify } = require('node:util');
 const run = promisify(require('node:child_process').execFile);
-const REVIEW_VERSION = 'full-page-review-v6-reference-repair';
+const REVIEW_VERSION = 'full-page-review-v7-repair-budgets';
 async function countPdfPages(buffer) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'brochure-pages-'));
   try {
@@ -69,6 +69,8 @@ function validateReview(review, data, pageCount) {
   const amenities = data.Amenities || [];
   if (amenities.length || review.Pages.some(p => /amenit|club.?house/i.test(p.Kind || '')) || review.AmenityInventory != null) {
     if (!Array.isArray(review.AmenityInventory)) fail('missing printed amenity inventory');
+    const missingAmenities = review.AmenityInventory.filter(item => item && item.CandidateIndex == null && Number.isInteger(item.Page) && item.Page >= 1 && item.Page <= pageCount && String(item.Label || '').trim());
+    if (missingAmenities.length) fail(missingAmenities.map(item => 'printed amenity on page '+item.Page+' missing: '+item.Label).join('; ').slice(0,2000), 'BROCHURE_REVIEW_FINDINGS');
     const supportedAmenities = new Set();
     for (const item of review.AmenityInventory) {
       if (!Number.isInteger(item.Page) || item.Page < 1 || item.Page > pageCount || !String(item.Label || '').trim()) fail('invalid printed amenity evidence');

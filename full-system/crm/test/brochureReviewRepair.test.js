@@ -83,3 +83,21 @@ test('repeated overview page repairs review references without another extractio
  assert.match(prompts[2],/^Independently audit/);assert.match(prompts[2],/page 2.*missing from configuration source checks/);
  assert.match(prompts[2],/Do not change HasConfigurations merely/);
 });
+
+test('review-format repair does not consume the source correction budget',async()=>{
+ const missing={...approved,AmenityInventory:[{Page:1,Label:'SHALLOW POOL',CandidateIndex:null},{Page:1,Label:'KIDS POOL',CandidateIndex:null}]};
+ const fixed={...candidate,Amenities:['SHALLOW POOL','KIDS POOL']};
+ const passed={...approved,AmenityInventory:[{Page:1,Label:'SHALLOW POOL',CandidateIndex:0},{Page:1,Label:'KIDS POOL',CandidateIndex:1}]};
+ const h=harness([candidate,{Complete:true},missing,fixed,passed]);
+ const result=await h.service.extractBrochure(pdf);
+ assert.equal(result.Amenities.length,2);assert.equal(h.prompts.length,5);
+ assert.match(h.prompts[3],/SHALLOW POOL/);assert.match(h.prompts[3],/KIDS POOL/);
+ assert.match(h.prompts[4],/previous review failed validation/);
+});
+
+test('source corrections cannot loop after a format repair',async()=>{
+ const bad={...approved,Complete:false,Findings:[{Page:1,Issue:'Still missing printed amenity'}]};
+ const h=harness([candidate,{Complete:true},bad,candidate,bad]);
+ await assert.rejects(h.service.extractBrochure(pdf),/Still missing printed amenity/);
+ assert.equal(h.prompts.length,5);
+});
