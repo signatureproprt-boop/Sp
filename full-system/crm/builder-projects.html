@@ -1725,7 +1725,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
 
   // ── Auto-fill from Brochure (AI) ─────────────────────────────────────
   async function prepareBrochurePages(fileBase64) {
-    const encoded = String(fileBase64).replace(/^data:[^;]+;base64,/, '');
+    const encoded = String(fileBase64 || '').replace(/^data:[^;]+;base64,/, '');
     const raw = atob(encoded);
     if (!raw.startsWith('%PDF')) return null;
     const pdfjs = await import('/assets/pdfjs/pdf.mjs');
@@ -1771,23 +1771,23 @@ html body{background-image:none!important;background:#f7f7f5!important}
   }
 
   const brochureReaderCooldowns = new Map();
-  async function requestBrochureExtraction(filename, fileBase64) {
-    const rawBytes = Uint8Array.from(atob(String(fileBase64).replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
+  async function requestBrochureExtraction(filename, fileBase64, projectId = null) {
+    const rawBytes = Uint8Array.from(atob(String(fileBase64 || '').replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
-    const cacheKey = 'reader-v16-current-fallback:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+    const cacheKey = 'reader-v17-original-file:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     const retryAt=brochureReaderCooldowns.get(cacheKey) || 0;
     if(retryAt>Date.now()) throw new Error('AI busy. Retry after '+Math.ceil((retryAt-Date.now())/1000)+' seconds. Uploaded PDF retained; project fields unchanged.');
-    const cached = await brochureCache('get', cacheKey);
+    const cached = projectId ? null : await brochureCache('get', cacheKey);
     if (cached?.ok && cached.data && Array.isArray(cached.data.Amenities) && Array.isArray(cached.data.Highlights) && Array.isArray(cached.data.ConfigDetails)) return cached;
 
-    // Server normalizes multi-page PDFs into complete visual pages before AI reading.
+    // Stored PDFs are loaded on the server; all AI passes use one uploaded original file.
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 270000);
+    const timer = setTimeout(() => controller.abort(), 870000);
     try {
       const response = await fetch('/api/v2/builder-projects/extract-brochure', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, fileBase64 }), signal: controller.signal
+        body: JSON.stringify(projectId ? { projectId } : { filename, fileBase64 }), signal: controller.signal
       });
       const text = await response.text();
       let result;
@@ -1802,7 +1802,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
         }
         throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
       }
-      await brochureCache('put', cacheKey, result);
+      if (!projectId) await brochureCache('put', cacheKey, result);
       return result;
     } catch (error) {
       if (error.name === 'AbortError') throw new Error('AI service did not respond in time. Project data was not changed. The uploaded brochure is retained; retry later.');
@@ -1822,12 +1822,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     button.disabled = true;
     document.getElementById('autofill-status').textContent = 'Loading uploaded brochure…';
     try {
-      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
-      if (!response.ok) throw new Error(`Stored brochure unavailable (HTTP ${response.status})`);
-      const blob = await response.blob();
-      const file = new File([blob], 'stored-brochure.pdf', { type: 'application/pdf' });
-      if (editingId !== id) return;
-      await onBrochureAutoFill(file, true);
+      await onBrochureAutoFill({ name: 'stored-brochure.pdf', size: 0, projectId: id }, true);
     } catch (error) {
       document.getElementById('autofill-status').textContent = error.message;
     } finally { button.disabled = false; }
@@ -1845,10 +1840,10 @@ html body{background-image:none!important;background:#f7f7f5!important}
     const readFormSnapshot = brochureFormSnapshot();
     if (!stored) pendingBrochureFile = file;
     const statusEl = document.getElementById('autofill-status');
-    statusEl.textContent = '⏳ Reading every PDF page and checking layouts / areas. Temporary AI overload is retried automatically. Up to 4 minutes; please do not click again.';
+    statusEl.textContent = '⏳ Reading every PDF page and checking layouts / areas. Temporary AI overload is retried automatically. Large brochures may take longer; please keep this form open.';
     try {
-      const fileBase64 = await fileToBase64Full(file);
-      const res = await requestBrochureExtraction(file.name, fileBase64);
+      const fileBase64 = stored ? null : await fileToBase64Full(file);
+      const res = await requestBrochureExtraction(file.name, fileBase64, stored ? file.projectId : null);
       if (!res.ok) throw new Error(res.error || 'Extraction failed');
       if (editingId !== readProjectId || document.getElementById('project-modal').classList.contains('hidden')) return;
       if (readProjectId) {

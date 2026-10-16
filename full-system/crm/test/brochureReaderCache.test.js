@@ -9,7 +9,7 @@ test('same PDF shares one extraction; failed attempts are retryable and scopes s
   let calls = 0;
   let fail = false;
   const data = { ProjectName: 'Test', Amenities: ['Gym'], Highlights: [], ConfigDetails: [] };
-  const context = { module: { exports: {} }, require: name => name === './brochureCompletenessService' ? {...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1} : require(name), process: { env: { GEMINI_API_KEY: 'test' } },
+  const context = { module: { exports: {} }, require: name => name === './brochureFileService' ? {uploadBrochure:async buffer=>({part:{inline_data:{mime_type:'application/pdf',data:buffer.toString('base64')}},dispose:async()=>{}})} : name === './brochureCompletenessService' ? {...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1} : require(name), process: { env: { GEMINI_API_KEY: 'test' } },
     Buffer, AbortSignal, structuredClone,
     fetch: async (_url, options) => { calls++;
       const request = JSON.parse(options.body);
@@ -51,7 +51,7 @@ test('brochure form compiles and BHK-only extracted configurations survive save 
 test('response body timeout reports service delay and remains retryable', async () => {
   let fail = true;
   let timeoutMs;
-  const context = { module: { exports: {} }, require: name => name === './brochureCompletenessService' ? {...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1} : require(name), process: { env: { GEMINI_API_KEY: 'test' } },
+  const context = { module: { exports: {} }, require: name => name === './brochureFileService' ? {uploadBrochure:async buffer=>({part:{inline_data:{mime_type:'application/pdf',data:buffer.toString('base64')}},dispose:async()=>{}})} : name === './brochureCompletenessService' ? {...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1} : require(name), process: { env: { GEMINI_API_KEY: 'test' } },
     Buffer, structuredClone, AbortSignal: { timeout: ms => { timeoutMs = ms; return {}; } },
     fetch: async (_url, options) => ({ ok: true, json: async () => {
       if (fail) throw Object.assign(new Error('body timeout'), { name: 'TimeoutError' });
@@ -60,8 +60,8 @@ test('response body timeout reports service delay and remains retryable', async 
     } }) };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/services/brochureExtractionService.js'), 'utf8'), context);
   const pdf = Buffer.from('%PDF timeout').toString('base64');
-  await assert.rejects(context.module.exports.extractBrochure(pdf), error => error.code === 'AI_TIMEOUT' && /AI service did not finish within 4 minutes/.test(error.message) && /Stage: extraction/.test(error.message));
-  assert.equal(timeoutMs, 240000);
+  await assert.rejects(context.module.exports.extractBrochure(pdf), error => error.code === 'AI_TIMEOUT' && /AI service did not finish before the server deadline/.test(error.message) && /Stage: extraction/.test(error.message));
+  assert.equal(timeoutMs, 840000);
   fail = false;
   assert.equal((await context.module.exports.extractBrochure(pdf)).ProjectName, 'Test');
 });
