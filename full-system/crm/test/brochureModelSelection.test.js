@@ -30,8 +30,8 @@ test('503 switches to alternate full vision model and still independently review
  const h=overloadHarness([{status:503},{ProjectName:'Kronis'},approval]);
  assert.equal((await h.service.extractBrochure(fixture)).ProjectName,'Kronis');
  assert.match(h.calls[0].url,/gemini-3.8-flash/);
- assert.ok(h.calls.slice(1).every(c=>c.url.includes('gemini-2.5-flash')));
- assert.equal(h.calls[1].body.generationConfig.thinkingConfig,undefined);
+ assert.ok(h.calls.slice(1).every(c=>c.url.includes('gemini-3.6-flash')));
+ assert.equal(h.calls[1].body.generationConfig.thinkingConfig.thinkingLevel,'medium');
  assert.ok(h.calls[2].body.generationConfig.responseJsonSchema);
 });
 test('quota/authentication failures never trigger an alternate-model request',async()=>{
@@ -52,5 +52,5 @@ test('review overload can switch models without re-extracting or skipping review
  assert.equal(h.calls.length,3);
  assert.match(h.calls[1].body.contents[0].parts[0].text,/^Independently audit/);
  assert.match(h.calls[2].body.contents[0].parts[0].text,/^Independently audit/);
- assert.match(h.calls[2].url,/gemini-2.5-flash/);
+ assert.match(h.calls[2].url,/gemini-3.6-flash/);
 });
