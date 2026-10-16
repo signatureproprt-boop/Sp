@@ -62,6 +62,11 @@ function validateReview(review, data, pageCount) {
       if (!Number.isInteger(item.Page) || item.Page < 1 || item.Page > pageCount || !String(item.Label || '').trim()) fail('invalid printed amenity evidence');
       if (item.CandidateIndex == null) fail('printed amenity on page '+item.Page+' missing: '+item.Label, 'BROCHURE_REVIEW_FINDINGS');
       if (!Number.isInteger(item.CandidateIndex) || item.CandidateIndex < 0 || item.CandidateIndex >= amenities.length) fail('invalid amenity candidate index');
+      // A generic swimming-pool entry cannot account for separately printed
+      // children's and shallow pools, even if the reviewer reuses its index.
+      const pool = /\bpool\b/i, children = /\bkids?\b|\bchildren\b|\btoddlers?\b/i;
+      const target = String(amenities[item.CandidateIndex]);
+      if (pool.test(item.Label) && ((children.test(item.Label) && !(pool.test(target) && children.test(target))) || (/\bshallow\b/i.test(item.Label) && !(pool.test(target) && /\bshallow\b/i.test(target))))) fail('separate printed pool missing on page '+item.Page+': '+item.Label, 'BROCHURE_REVIEW_FINDINGS');
       supportedAmenities.add(item.CandidateIndex);
     }
     for (const [index, name] of amenities.entries()) if (!supportedAmenities.has(index)) fail('amenity lacks printed page evidence: '+name, 'BROCHURE_REVIEW_FINDINGS');

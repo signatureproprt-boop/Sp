@@ -45,6 +45,10 @@ test('a printed kids pool missing from the candidate cannot pass an asserted com
     AmenityInventory:[{Page:1,Label:'Swimming pool',CandidateIndex:0},{Page:1,Label:'Kids pool',CandidateIndex:null}]};
   assert.throws(() => validateReview(r, {Amenities:['Swimming pool'],ConfigDetails:[]}, 1), e =>
     e.code === 'BROCHURE_REVIEW_FINDINGS' && /Kids pool/.test(e.message));
+  r.AmenityInventory[1].CandidateIndex=0;
+  assert.throws(() => validateReview(r, {Amenities:['Swimming pool'],ConfigDetails:[]}, 1), /separate printed pool/);
+  r.AmenityInventory[1].CandidateIndex=1;
+  assert.equal(validateReview(r, {Amenities:['Swimming pool','Children swimming pool'],ConfigDetails:[]}, 1).Status,'automated_checks_passed');
 });
 
 test('every extracted amenity requires printed page evidence, with aliases matched by index', () => {
