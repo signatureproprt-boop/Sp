@@ -74,3 +74,13 @@ test('ordinary built-up and a common terrace cannot masquerade as saleable or pr
     assert.throws(()=>validateReview(r,candidate,1),/unsupported printed area/);
   }
 });
+
+test('a separate printed area schedule can support an explicitly linked floor plan', () => {
+  const candidate={ConfigDetails:[{Type:'Apartment',CarpetAreaSqft:995}]};
+  const r={Complete:true,Pages:[{Page:1,Kind:'floor plan',HasConfigurations:true},{Page:2,Kind:'area schedule',HasConfigurations:false}],
+    Findings:[],ConfigChecks:[{Index:0,Supported:true,Page:1,Pages:[1,2]}],
+    AreaChecks:[{ConfigIndex:0,Field:'CarpetAreaSqft',Page:2,PrintedValue:995,PrintedUnit:'sqft',Label:'Carpet area'}]};
+  assert.equal(validateReview(r,candidate,2).Status,'automated_checks_passed');
+  r.ConfigChecks[0].Pages=[1];
+  assert.throws(()=>validateReview(r,candidate,2),/another layout source page/);
+});

@@ -29,6 +29,15 @@ function setup(rows, fail = false) {
 }
 const pdf = id => ({ MediaID:id,DriveFileID:id,verified:true,downloadStatus:'downloaded',Filename:id+'.pdf' });
 const project = { ProjectID:'p1',ProjectName:'Coral Heights',CompanyID:'mine',UpdatedAt:'before',Amenities:['Garden'],Highlights:['Manual specification'],Brochures:[pdf('one'),pdf('one'),pdf('two')] };
+test('batch retains validated sqm conversion against the original configuration index',()=>{
+ const {buildPayload}=setup([project]);
+ const draft={ProjectName:'Coral Heights',ConfigDetails:[{}, {Type:'Apartment',CarpetAreaSqft:1076.39}],
+   CompletenessReview:{Version:REVIEW_VERSION,Status:'automated_checks_passed',AreaChecks:[{ConfigIndex:1,Field:'CarpetAreaSqft',Page:2,PrintedValue:100,PrintedUnit:'sqm',Label:'Carpet area'}]},
+   SourceEvidence:['Page 2: Carpet area 100 sqm']};
+ const payload=buildPayload(project,draft);
+ assert.equal(payload.ConfigDetails.length,1);
+ assert.equal(payload.ConfigDetails[0].CarpetAreaSqft,1076.39);
+});
 test('queue covers all distinct stored PDFs, excludes other tenants and remote-only URLs; actor isolation and idempotent steps',async()=>{
   const x=setup([project,{...project,ProjectID:'hidden',CompanyID:'other'},{...project,ProjectID:'url',Brochures:[{Url:'https://example.com/a.pdf'}]}]);
   const start=x.svc.start('user'); assert.equal(start.data.Total,2); assert.equal(start.data.WithoutStoredBrochure,1);
