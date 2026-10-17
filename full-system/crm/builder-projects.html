@@ -1496,7 +1496,8 @@ html body{background-image:none!important;background:#f7f7f5!important}
       const recipient = await chooseBrochureLead();
       if (!recipient) return;
       const lines = projectShareLines(p);
-      lines.push(`📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${await createBrochureShare(id, recipient, 'whatsapp_text')}`);
+      const brochureLink=await createBrochureShare(id, recipient, 'whatsapp_text');
+      lines.push(`🏡 View project, floor plans & prices: ${brochureLink}?view=project`, `📄 Brochure: ${brochureLink}`);
       lines.push('', '— Signature Properties');
       window.location.assign(`https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines.join('\n'))}`);
     } catch (error) { alert(error.message); }
@@ -1513,7 +1514,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
       const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(id)}/brochure`);
       if (!response.ok) throw new Error('Stored PDF could not be downloaded');
       const file = new File([await response.blob()], `${(p.ProjectName || 'project').replace(/[^a-z0-9-]/gi, '-')}-brochure.pdf`, { type: 'application/pdf' });
-      const text = [...projectShareLines(p), `📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${link}`, '', '— Signature Properties'].join('\n');
+      const text = [...projectShareLines(p), `🏡 View project, floor plans & prices: ${link}?view=project`, `📄 Signature Properties — ${p.ProjectName || 'Project'} Brochure: ${link}`, '', '— Signature Properties'].join('\n');
       let shared = false;
       if (navigator.canShare?.({ files: [file] }) && navigator.share) {
         try {
