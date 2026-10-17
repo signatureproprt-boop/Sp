@@ -196,3 +196,19 @@ test('property detail shows separate areas, honest empty states and escaped cont
   assert.ok(html.includes('aria-labelledby="pd-title"'));
   assert.ok(html.includes('@media(max-width:700px)'));
 });
+
+
+test('brochure re-read retains manually mapped plan and price only for one identical layout',()=>{
+ const html=fs.readFileSync(path.join(__dirname,'../builder-projects.html'),'utf8'),fields={};
+ const prior={Tower:'A/B',Type:'Apartment',BHK:2,CarpetAreaSqft:764,PriceMin:7000000,PriceMax:7100000,FloorPlanMediaID:'owned-plan'};
+ const context={document:{getElementById:id=>fields[id]||(fields[id]={value:''})},configRows:[prior],renderConfigRowsUI(){}};
+ vm.createContext(context);const start=html.indexOf('  function applyAutoFill(d)');
+ vm.runInContext(html.slice(start,html.indexOf('  function closeProjectModal',start)),context);
+ context.applyAutoFill({ConfigDetails:[{Tower:'B/A',Type:'Apartment',BHK:2,CarpetAreaSqft:764,FlatType:'Typical'}]});
+ assert.equal(context.configRows[0].FloorPlanMediaID,'owned-plan');assert.equal(context.configRows[0].PriceMin,7000000);assert.equal(context.configRows[0].PriceMax,7100000);
+ context.applyAutoFill({ConfigDetails:[{Tower:'A/B',Type:'Apartment',BHK:3,CarpetAreaSqft:1209}]});
+ assert.equal(context.configRows[0].FloorPlanMediaID,'');assert.equal(context.configRows[0].PriceMin,'');
+ context.configRows=[prior,{...prior,FloorPlanMediaID:'other-plan'}];
+ context.applyAutoFill({ConfigDetails:[{Tower:'A/B',Type:'Apartment',BHK:2,CarpetAreaSqft:764}]});
+ assert.equal(context.configRows[0].FloorPlanMediaID,'');
+});
