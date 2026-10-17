@@ -47,3 +47,32 @@ test('recipient tracking requires a name, phone and explicit share channel', () 
   assert.equal(normalize({ recipientName: '', recipientPhone: '9876543210', channel: 'pdf_share' }), null);
   assert.equal(normalize({ recipientName: 'Asha', recipientPhone: '9876543210', channel: 'unknown' }), null);
 });
+
+test('project share page uses token scope, hides internal data and respects selected layout', async () => {
+  const token='b'.repeat(64),hash=crypto.createHash('sha256').update(token).digest('hex');
+  const project={ProjectID:'P1',CompanyID:'C1',ProjectName:'<script>bad</script>',Notes:'PRIVATE NOTE',SalesPersonPhone:'PRIVATE PHONE',ConfigDetails:[{Type:'Apartment',BHK:2,CarpetAreaSqft:764},{Type:'Apartment',BHK:3,CarpetAreaSqft:1209}],Photos:[]};
+  const share={TokenHash:hash,ProjectID:'P1',CompanyID:'C1',ExpiresAt:'2099-01-01T00:00:00Z',RecipientName:'PRIVATE CLIENT',SelectedConfiguration:project.ConfigDetails[0]};
+  __test.setRuntimeForTest({repository:{find:collection=>collection==='BuilderBrochureShares'?share:project}});
+  const url=new URL(`https://example.com/api/v2/brochure-shares/${token}?view=project`),res=response();
+  await __test.handleApi({method:'GET',headers:{}},res,url);
+  assert.equal(res.status,200);assert.match(res.headers['Content-Type'],/text\/html/);
+  assert.match(res.body,/764 sqft/);assert.doesNotMatch(res.body,/1209 sqft|PRIVATE NOTE|PRIVATE PHONE|PRIVATE CLIENT|<script>bad/);
+  assert.match(res.body,/&lt;script&gt;bad/);assert.equal(res.headers['Referrer-Policy'],'no-referrer');
+  assert.equal(res.headers['X-Robots-Tag'],'noindex, nofollow');
+  share.CompanyID='OTHER';const mismatch=response();await __test.handleApi({method:'GET',headers:{}},mismatch,url);assert.equal(mismatch.status,404);
+});
+
+test('shared project images cannot address another project asset',async()=>{
+  const token='c'.repeat(64),share={ProjectID:'P1',ExpiresAt:'2099-01-01T00:00:00Z'};
+  __test.setRuntimeForTest({repository:{find:collection=>collection==='BuilderBrochureShares'?share:{ProjectID:'P1',Photos:[{MediaID:'owned',verified:true,StoragePath:'stored'}]}}});
+  const res=response();await __test.handleApi({method:'GET',headers:{}},res,new URL(`https://example.com/api/v2/brochure-shares/${token}?asset=image&id=foreign`));
+  assert.equal(res.status,404);
+});
+
+test('shared plan cards filter BHK, use owned mapped images and retain missing area labels',()=>{
+  const {renderProjectSharePage}=require('../src/services/projectSharePage');
+  const p={ProjectName:'Test',Photos:[{MediaID:'owned',verified:true,StoragePath:'stored'}],ConfigDetails:[{Type:'Apartment',BHK:2,CarpetAreaSqft:764.24,PriceMin:7000000,FloorPlanMediaID:'owned'},{Type:'Apartment',BHK:3,CarpetAreaSqft:1209.43,PriceMin:11300000,FloorPlanMediaID:'foreign'}]};
+  const html=renderProjectSharePage(p,{},'/brochure/test/token','3');
+  assert.match(html,/1209.43 sqft/);assert.doesNotMatch(html,/764.24 sqft/);assert.match(html,/₹1,13,00,000/);assert.match(html,/Floor plan image not provided/);assert.doesNotMatch(html,/id=foreign/);
+  assert.match(html,/Super built-up \/ Saleable/);assert.match(html,/Not provided/);
+});

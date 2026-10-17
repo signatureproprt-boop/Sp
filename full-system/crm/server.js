@@ -1308,6 +1308,32 @@ async function handleApi(req, res, url) {
           (brandedSlug && brandedSlug !== share.ProjectSlug)) {
         sendJson(res, { ok: false, error: 'Brochure link expired or unavailable' }, 404); return;
       }
+      // Project pages and their images use the same expiring recipient token as the PDF.
+      if (url.searchParams.get('view') === 'project' || url.searchParams.get('asset') === 'image') {
+        const project = runtime.repository.find('BuilderProjects', 'ProjectID', share.ProjectID);
+        if (!project || project.Active === false || (share.CompanyID && share.CompanyID !== project.CompanyID) ||
+            (share.BrokerageID && share.BrokerageID !== project.BrokerageID)) {
+          sendJson(res, { ok:false,error:'Project unavailable' },404); return;
+        }
+        const { renderProjectSharePage, storedPhoto } = require('./src/services/projectSharePage');
+        const headers = withSecurityHeaders({ 'Cache-Control':'private, no-store', 'Referrer-Policy':'no-referrer', 'X-Robots-Tag':'noindex, nofollow' }, {includeCsp:true});
+        if (url.searchParams.get('asset') === 'image') {
+          const id=url.searchParams.get('id');
+          if (!(project.Photos || []).some(photo=>storedPhoto(photo) && photo.MediaID===id)) {
+            sendJson(res,{ok:false,error:'Image unavailable'},404); return;
+          }
+          const { ProjectMediaCanaryMigrationService }=require('./src/services/projectMediaCanaryMigrationService');
+          const image=await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectImageFile(share.ProjectID,id);
+          if (!image.ok || !/^image\/(jpeg|png|webp|avif|gif)$/i.test(image.contentType || '')) {
+            sendJson(res,{ok:false,error:'Image unavailable'},404); return;
+          }
+          res.writeHead(200,{...headers,'Content-Type':image.contentType});
+          res.end(req.method==='HEAD'?undefined:image.buffer); return;
+        }
+        const body=renderProjectSharePage(project,share,pathname,url.searchParams.get('bhk') || 'all');
+        res.writeHead(200,{...headers,'Content-Type':'text/html; charset=utf-8'});
+        res.end(req.method==='HEAD'?undefined:body); return;
+      }
       const { ProjectMediaCanaryMigrationService } = require('./src/services/projectMediaCanaryMigrationService');
       const out = await new ProjectMediaCanaryMigrationService(runtime.repository).getProjectBrochureFile(share.ProjectID, share.BrochureMediaID || null, share.BrochureFileKey || null);
       if (!out.ok) { sendJson(res, { ok: false, error: 'Brochure unavailable' }, 404); return; }
