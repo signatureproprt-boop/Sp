@@ -74,6 +74,8 @@ class UploadedBrochureBatchService {
     this.extract = deps.extract || extractBrochure;
     this.prepare = deps.prepare || preparePdfForAi;
     this.visible = deps.visible || (() => true);
+    this.policy = deps.policy || ((_project, payload) => payload);
+    this.flush = deps.flush || (async () => {});
     this.now = deps.now || (() => Date.now());
     this.lock = deps.lock || (mongoStore.isEnabled() ? (name, fn) => mongoStore.withDistributedLock(name, fn, { leaseMs: 900000 }) : async (_name, fn) => ({ acquired: true, result: await fn() }));
   }
@@ -88,7 +90,7 @@ class UploadedBrochureBatchService {
   }
   view(job) {
     if (!job) return null;
-    const items = job.Items.map(({ Draft, Before, Checkpoint, ...item }) => item);
+    const items = job.Items.map(({ Draft, Before, Checkpoint, ReviewDraft, ...item }) => item);
     return { ...job, Items: items, Total: items.length, Saved: items.filter(x => x.Status === 'saved').length, ChecksPassed: items.filter(x => x.Status === 'saved' && x.CompletenessReview?.Version === REVIEW_VERSION).length,
       Failed: items.filter(x => x.Status === 'failed').length, Pending: items.filter(x => x.Status === 'pending' || x.Status === 'reading').length,
       Projects: new Set(items.map(x => x.ProjectID)).size };
@@ -134,7 +136,7 @@ class UploadedBrochureBatchService {
         delete job.NextRetryAt; delete job.PauseReason;
         const item = job.Items.find(i => ['pending','reading'].includes(i.Status));
         if (!item) { job.Status = 'complete'; this.save(job); return { ok: true, data: this.view(job) }; }
-        item.Status = 'reading'; item.Attempts++; item.StartedAt = new Date().toISOString(); job.Status = 'running'; this.save(job);
+        item.Status = 'reading'; item.Attempts++; item.StartedAt = new Date().toISOString(); job.Status = 'running'; this.save(job); await this.flush();
         try {
           const before = this.projects.get(item.ProjectID).data;
           if (!before || before.Active === false || !this.visible(before)) throw new Error('Project unavailable');
@@ -147,7 +149,7 @@ class UploadedBrochureBatchService {
             const prepared = await this.prepare(file.buffer);
             item.SourceBytes = file.buffer.length; item.AiBytes = prepared.buffer.length; item.OptimizedCopy = prepared.optimized; item.AiCopyDpi = prepared.resolution || null;
             item.Digest = crypto.createHash('sha256').update(file.buffer).digest('hex');
-            item.Draft = await this.extract(prepared.buffer.toString('base64'), null, actorId + ':' + item.ProjectID, { checkpoint: item.Checkpoint, onCheckpoint: async checkpoint => { item.Checkpoint = checkpoint; this.save(job); } });
+            item.Draft = await this.extract(prepared.buffer.toString('base64'), null, actorId + ':' + item.ProjectID, { checkpoint: item.Checkpoint, onCheckpoint: async checkpoint => { item.Checkpoint = checkpoint; this.save(job); await this.flush(); } });
             if (prepared.optimized) item.Draft.ReadingWarnings = unique([...(item.Draft.ReadingWarnings || []), 'AI read a full-page ' + prepared.resolution + ' DPI optimized copy; original uploaded brochure retained']);
             // Persist the draft only on failure. Successful fields and queue state
             // share one snapshot write, rather than three serial full snapshots.
@@ -157,7 +159,7 @@ class UploadedBrochureBatchService {
           if (!current || !this.visible(current)) throw new Error('Project unavailable');
           if (current.UpdatedAt !== before.UpdatedAt) throw new Error('Review required: project edited while AI was reading');
           const append = job.Items.some(i => i.ProjectID === item.ProjectID && i.Status === 'saved');
-          const payload = buildPayload(current, item.Draft, append);
+          const payload = this.policy(current, buildPayload(current, item.Draft, append), item);
           item.Before = Object.fromEntries(Object.keys(payload).map(k => [k, current[k] == null ? null : current[k]]));
           const result = this.projects.update(item.ProjectID, payload, db => {
             item.CompletenessReview = item.Draft.CompletenessReview;

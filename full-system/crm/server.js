@@ -2602,6 +2602,30 @@ async function handleApi(req, res, url) {
         return;
       }
 
+      if (pathname === '/api/v2/builder-projects/residential-background') {
+        if (!['GET','POST'].includes(req.method)) { sendJson(res,{ok:false,error:'Method not supported'},405); return; }
+        const {BackgroundBrochureService} = require('./src/services/backgroundBrochureService');
+        if (!ensurePermissionOrRespond(req,res,url,'BUILDER_PROJECTS_READ')) return;
+        if (req.method === 'POST' && !ensureAdminPermissionOrRespond(req,res,url,'BUILDER_PROJECTS_UPDATE')) return;
+        try {
+          const worker = new BackgroundBrochureService(runtime.repository);
+          if (req.method === 'GET') { sendJson(res,worker.status(actor)); return; }
+          const enabled = bodyForV2?.enabled;
+          if (typeof enabled !== 'boolean') { sendJson(res,{ok:false,error:'enabled must be boolean'},400); return; }
+          const out = worker.setEnabled(actor,enabled);
+          if (mongoStore.isEnabled()) {
+            const persisted = await mongoStore.flush();
+            if (persisted.lastError) { sendJson(res,{ok:false,error:'Worker configuration could not be saved'},503); return; }
+          }
+          if (enabled) {
+            try { await require('./src/services/residentialWorkerDispatch').dispatchWorker(); out.dispatch='requested'; }
+            catch (_) { out.dispatch='unavailable'; out.message='Queued. Immediate worker dispatch unavailable; scheduled execution must be verified.'; }
+          }
+          sendJson(res,out);
+        } catch (_) { sendJson(res,{ok:false,error:'Tenant-scoped administrator configuration required'},400); }
+        return;
+      }
+
       if (/^\/api\/v2\/builder-projects\/uploaded-brochure-batch(?:\/[a-f0-9-]+\/(?:step|retry))?\/?$/i.test(pathname)) {
         if (!['GET', 'POST'].includes(req.method)) { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         if (!ensurePermissionOrRespond(req, res, url, req.method === 'GET' ? 'BUILDER_PROJECTS_READ' : 'BUILDER_PROJECTS_UPDATE')) return;

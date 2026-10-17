@@ -52,6 +52,16 @@ steps:
       - --remove-env-vars=CRM_EXISTING_REQUIREMENT_SHEET_ID
       - --allow-unauthenticated
 
+  # Configure and boot-check the independent worker before promoting the UI.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: python3
+    args:
+      - full-system/crm/scripts/deployResidentialWorker.py
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID
+      - --project=$PROJECT_ID
+      - --region=${_REGION}
+      - --service=${_SERVICE}
+
   # Pinned traffic must be promoted explicitly after a successful deployment.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
