@@ -30,6 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: python3 -m unittest discover -s test -p 'test_deploy_residential_worker.py'
       - run: npm install
       - run: npx playwright install --with-deps chromium
       - run: npm test
