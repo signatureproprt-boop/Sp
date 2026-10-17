@@ -377,6 +377,7 @@ async function persistSnapshot(base, desired) {
           );
           if (!current && Object.keys(base).length) throw new Error('Acknowledged Mongo snapshot is missing; reload before saving');
           const remote = current && current.payload ? current.payload : {};
+          require('./backgroundProjectWriteGuard').assertBackgroundProjectsUnchanged(base, desired, remote);
           const { merged, set, unset } = prepareMutation(plan, base, desired, current, threeWayMerge);
           for (const [collection, key] of [['Leads','LeadID'],['Requirements','RequirementID'],['Transactions','TransactionID']]) {
             const counts = rows => (rows || []).reduce((map, row) => {
