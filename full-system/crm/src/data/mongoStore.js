@@ -227,6 +227,7 @@ async function initMongoOnce(fallbackJsonPath) {
       _cache = snap.payload;
       _lastSnapshotReadAt = new Date(snap.updatedAt || 0).getTime() || 0;
       _initialized = true;
+      _lastWriteError = null;
       console.log('[mongo] initialization complete');
       startPolling();
       return { ok: true, source: 'mongo', size: JSON.stringify(_cache).length };
@@ -234,6 +235,7 @@ async function initMongoOnce(fallbackJsonPath) {
 
     _cache = {};
     _initialized = true;
+    _lastWriteError = null;
     console.log('[mongo] initialization complete');
     startPolling();
     return { ok: true, source: 'fresh', size: 0 };

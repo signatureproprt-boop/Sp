@@ -12,6 +12,8 @@ ENV_ALLOWLIST = {
     'SIG_REALTY_GOOGLE_CLIENT_ID', 'SIG_REALTY_GOOGLE_CLIENT_SECRET',
     'SIG_REALTY_GOOGLE_REFRESH_TOKEN', 'GEMINI_API_KEY', 'GEMINI_BROCHURE_MODEL',
     'GEMINI_AGENT_MODEL', 'GEMINI_BROCHURE_FALLBACK_MODEL',
+    'MONGO_SOCKET_TIMEOUT_MS', 'MONGO_CONNECT_TIMEOUT_MS',
+    'MONGO_SERVER_SELECTION_TIMEOUT_MS', 'MONGO_POLL_INTERVAL_MS',
 }
 JOB = 'residential-brochure-worker'
 
@@ -41,7 +43,11 @@ def job_manifest(service, image, project, region):
 
 def run(args, **kwargs):
     # Capturing output prevents a failed CLI call from echoing env/secret values.
-    result = subprocess.run(['gcloud', *args], capture_output=True, text=True, **kwargs)
+    print('WORKER_SETUP_STEP=' + ' '.join(args[:3]), flush=True)
+    try:
+        result = subprocess.run(['gcloud', *args], capture_output=True, text=True, timeout=kwargs.pop('timeout', 180), **kwargs)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('Cloud setup timed out at ' + ' '.join(args[:3]) + '; inspect worker execution logs') from None
     if result.returncode:
         # Only the command family is safe to print; the private manifest is removed.
         reason = re.search(r"Permission '[a-zA-Z0-9_.]+' denied|PERMISSION_DENIED|SERVICE_DISABLED|INVALID_ARGUMENT", result.stderr or '')
@@ -77,7 +83,7 @@ def main():
          '--oauth-service-account-email=' + account, '--oauth-token-scope=https://www.googleapis.com/auth/cloud-platform',
          '--message-body={}', '--max-retry-attempts=0'])
     # Verify container boot and Mongo connectivity without consuming AI quota.
-    run(['run', 'jobs', 'execute', JOB, *common, '--args=scripts/residentialBrochureWorker.js,--check-storage', '--wait'])
+    run(['run', 'jobs', 'execute', JOB, *common, '--args=scripts/residentialBrochureWorker.js,--check-storage', '--task-timeout=600s', '--wait'], timeout=660)
     print('RESIDENTIAL_WORKER_DEPLOYED: storage check passed; scheduler configured every 15 minutes')
 
 
