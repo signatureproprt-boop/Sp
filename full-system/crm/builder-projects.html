@@ -341,6 +341,14 @@ html body{background-image:none!important;background:#f7f7f5!important}
       <button class="btn btn-ghost" onclick="retryUploadedBrochureBatch()">Retry failed / unchecked PDFs</button>
     </div>
     <p class="muted">Large PDFs are read through complete AI copies; original brochures are retained.</p>
+    <section style="padding:16px;border:1px solid var(--clr-border);border-radius:12px;margin:16px 0">
+      <h3>Background residential AI fill</h3>
+      <p class="muted">Processes stored Residential PDFs independently of this page. Fills missing fields after source checks; existing values stay protected. Conflicts and missing brochure sources require review. No automatic web search is configured.</p>
+      <button class="btn btn-primary" id="residential-worker-start" onclick="setResidentialWorker(true)">Enable background worker</button>
+      <button class="btn btn-ghost" onclick="setResidentialWorker(false)">Pause after current PDF</button>
+      <button class="btn btn-ghost" onclick="refreshResidentialWorker()">Refresh background progress</button>
+      <div id="residential-worker-status" role="status">Background status not loaded.</div>
+    </section>
     <div id="uploaded-batch-summary" role="status">No batch loaded.</div>
     <details style="margin-top:12px"><summary>Project results</summary><div style="max-height:320px;overflow:auto"><table id="uploaded-batch-results"></table></div></details>
   </div>
@@ -2231,6 +2239,23 @@ html body{background-image:none!important;background:#f7f7f5!important}
     } catch (e) { alert('Assign failed: ' + e.message); }
   }
 
+
+  function renderResidentialWorker(result) {
+    const el=document.getElementById('residential-worker-status'), cfg=result.data;
+    if(!cfg){el.textContent='Not enabled. No background queue has been created.';return;}
+    const b=cfg.Batch;
+    el.textContent=(cfg.Enabled?'Enabled':'Paused')+' · Residential · '+(cfg.LastHeartbeatAt?'Last worker activity '+new Date(cfg.LastHeartbeatAt).toLocaleString():'Awaiting first worker execution')+(b?' · PDFs '+b.Total+' · Saved '+b.Saved+' · Remaining '+b.Pending+' · Needs review '+cfg.NeedsReview+' · Without PDF '+b.WithoutStoredBrochure:'')+(b?.NextRetryAt?' · Retry after '+new Date(b.NextRetryAt).toLocaleString():'')+(cfg.LastError?' · '+cfg.LastError:'')+(result.message?' · '+result.message:'');
+  }
+  async function refreshResidentialWorker() {
+    try { const r=await fetch('/api/v2/builder-projects/residential-background',{cache:'no-store'}), out=await r.json(); if(!r.ok||!out.ok)throw Error(out.error||'Status unavailable'); renderResidentialWorker(out); }
+    catch(e){document.getElementById('residential-worker-status').textContent=e.message;}
+  }
+  async function setResidentialWorker(enabled) {
+    const button=document.getElementById('residential-worker-start');button.disabled=true;
+    try { const r=await fetch('/api/v2/builder-projects/residential-background',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})}), out=await r.json();if(!r.ok||!out.ok)throw Error(out.error||'Could not update worker');renderResidentialWorker(out); }
+    catch(e){document.getElementById('residential-worker-status').textContent=e.message;}
+    finally{button.disabled=false;}
+  }
 
   let uploadedBatch = null, uploadedBatchRunning = false, uploadedBatchPaused = false;
   function renderUploadedBrochureBatch() {
