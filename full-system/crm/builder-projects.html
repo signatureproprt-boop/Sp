@@ -1793,7 +1793,19 @@ html body{background-image:none!important;background:#f7f7f5!important}
   }
 
   const brochureReaderCooldowns = new Map();
+  // Remember the provider window across reloads and documents in this browser.
+  const brochureQuotaStorageKey = 'signature-brochure-provider-retry-v1';
+  function brochureQuotaRetryAt() {
+    try { const until = Number(localStorage.getItem(brochureQuotaStorageKey)); return Number.isFinite(until) ? until : 0; }
+    catch (_) { return 0; }
+  }
+  function rememberBrochureQuota(seconds) {
+    try { localStorage.setItem(brochureQuotaStorageKey, String(Math.max(brochureQuotaRetryAt(), Date.now() + seconds * 1000))); }
+    catch (_) { /* Server guard still protects readers when browser storage is unavailable. */ }
+  }
   async function requestBrochureExtraction(filename, fileBase64, projectId = null) {
+    const quotaRetryAt = brochureQuotaRetryAt();
+    if (quotaRetryAt > Date.now()) throw new Error('AI quota/rate limit reached. Retry after '+Math.ceil((quotaRetryAt-Date.now())/1000)+' seconds. Uploaded PDF retained; project fields unchanged.');
     const rawBytes = Uint8Array.from(atob(String(fileBase64 || '').replace(/^data:[^;]+;base64,/, '')), c => c.charCodeAt(0));
     const digest = await crypto.subtle.digest('SHA-256', rawBytes);
     const cacheKey = 'reader-v19-core-features:' + (editingId || 'new') + ':' + Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
@@ -1820,6 +1832,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
         if ([429,503].includes(response.status)) {
           const seconds=Math.max(60,Number(result.retryAfterSeconds) || 60);
           brochureReaderCooldowns.set(cacheKey,Date.now()+seconds*1000);
+          if (response.status === 429 && result.code === 'AI_RATE_LIMIT') rememberBrochureQuota(seconds);
           throw new Error((response.status===503 ? 'AI temporarily busy after bounded retries.' : 'AI quota/rate limit reached.')+' Retry after '+seconds+' seconds. Uploaded PDF retained; project fields unchanged.');
         }
         throw new Error(result.error || 'AI extraction failed (HTTP ' + response.status + ')');
