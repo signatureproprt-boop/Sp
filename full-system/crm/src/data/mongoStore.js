@@ -227,6 +227,7 @@ async function initMongoOnce(fallbackJsonPath) {
       _cache = snap.payload;
       _lastSnapshotReadAt = new Date(snap.updatedAt || 0).getTime() || 0;
       _initialized = true;
+      _lastWriteError = null;
       console.log('[mongo] initialization complete');
       startPolling();
       return { ok: true, source: 'mongo', size: JSON.stringify(_cache).length };
@@ -234,6 +235,7 @@ async function initMongoOnce(fallbackJsonPath) {
 
     _cache = {};
     _initialized = true;
+    _lastWriteError = null;
     console.log('[mongo] initialization complete');
     startPolling();
     return { ok: true, source: 'fresh', size: 0 };
@@ -377,6 +379,7 @@ async function persistSnapshot(base, desired) {
           );
           if (!current && Object.keys(base).length) throw new Error('Acknowledged Mongo snapshot is missing; reload before saving');
           const remote = current && current.payload ? current.payload : {};
+          require('./backgroundProjectWriteGuard').assertBackgroundProjectsUnchanged(base, desired, remote);
           const { merged, set, unset } = prepareMutation(plan, base, desired, current, threeWayMerge);
           for (const [collection, key] of [['Leads','LeadID'],['Requirements','RequirementID'],['Transactions','TransactionID']]) {
             const counts = rows => (rows || []).reduce((map, row) => {

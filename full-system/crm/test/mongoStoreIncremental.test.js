@@ -108,6 +108,28 @@ test('incremental snapshots preserve durability and concurrency on real Mongo', 
       assert.ok(!(await snapshots.findOne({ _id: 'singleton' })).payload.Leads.some(row => row.LeadID === 'L2'));
     });
 
+    await t.test('background project and queue commit rejects an unpolled remote manual edit atomically', async () => {
+      const initial = store.read();
+      initial.UploadedBrochureBatches = [{JobID:'background-test',ActorID:'worker:integration',Items:[{ItemID:'pdf',ProjectID:'builder',Status:'reading'}]}];
+      await store.write(initial);
+      const desired = store.read();
+      desired.BuilderProjects[0].BuilderName = 'AI proposal';
+      desired.UploadedBrochureBatches[0].Items[0].Status = 'saved';
+      beforeCommit = () => snapshots.updateOne({_id:'singleton'}, {$set:{'payload.BuilderProjects.0.BuilderName':'Manual developer',revision:'manual-project-edit'}});
+      await assert.rejects(store.write(desired), error => error.code === 'BACKGROUND_PROJECT_CHANGED');
+      const saved = await snapshots.findOne({_id:'singleton'});
+      assert.equal(saved.payload.BuilderProjects[0].BuilderName,'Manual developer');
+      assert.equal(saved.payload.UploadedBrochureBatches[0].Items[0].Status,'reading');
+      await store.__pollOnceForTests();
+      const retry = store.read();
+      retry.BuilderProjects[0].Overview = 'Source checked';
+      retry.UploadedBrochureBatches[0].Items[0].Status = 'saved';
+      await store.write(retry);
+      const resumed = await snapshots.findOne({_id:'singleton'});
+      assert.equal(resumed.payload.BuilderProjects[0].BuilderName,'Manual developer');
+      assert.equal(resumed.payload.UploadedBrochureBatches[0].Items[0].Status,'saved');
+    });
+
     await t.test('new phone collision rejects before acknowledgement and restores durable cache', async () => {
       const desired = store.read(); desired.Leads.push({ LeadID: 'collision', PrimaryMobile: desired.Leads[0].PrimaryMobile });
       await assert.rejects(store.write(desired), error => error.code === 'DUPLICATE_CLIENT_IDENTITY');
