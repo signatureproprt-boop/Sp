@@ -2125,6 +2125,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
 
   async function importMediaFromUrl() {
     if (!editingId) return;
+    const projectId = editingId;
     const kind = document.getElementById('media-url-kind').value;
     const sourceUrl = document.getElementById('media-url-input').value.trim();
     const statusEl = document.getElementById('media-status');
@@ -2137,9 +2138,9 @@ html body{background-image:none!important;background:#f7f7f5!important}
       const isBrochure = kind === 'brochure';
       const endpoint = isBrochure
         ? '/api/v2/admin/brochure-import'
-        : `/api/v2/builder-projects/${encodeURIComponent(editingId)}/media/import-url`;
+        : `/api/v2/builder-projects/${encodeURIComponent(projectId)}/media/import-url`;
       const payload = isBrochure
-        ? { ProjectID: editingId, BrochureURL: sourceUrl }
+        ? { ProjectID: projectId, BrochureURL: sourceUrl }
         : { kind, sourceUrl };
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -2148,11 +2149,21 @@ html body{background-image:none!important;background:#f7f7f5!important}
       });
       const res = await response.json();
       if (!response.ok || !res.ok) throw new Error(res.error || `HTTP ${response.status}`);
-      const idx = allProjects.findIndex(x => x.ProjectID === editingId);
-      if (idx !== -1) allProjects[idx] = res.data;
+      // Admin brochure imports return a migration report, not a project row.
+      let project = res.data;
+      if (isBrochure && project?.ProjectID !== projectId) {
+        const refreshed = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}`, { cache: 'no-store' });
+        const result = await refreshed.json();
+        if (!refreshed.ok || !result.ok) throw new Error('Brochure import completed, but project refresh failed. Reload the project before retrying.');
+        project = result.data;
+      }
+      if (project?.ProjectID !== projectId) throw new Error('Import returned an invalid project. Reload the project before retrying.');
+      const idx = allProjects.findIndex(x => x.ProjectID === projectId);
+      if (idx !== -1) allProjects[idx] = project;
+      if (editingId !== projectId) { render(); return; }
       document.getElementById('media-url-input').value = '';
       statusEl.textContent = '✅ Stored and verified in GridFS. The project now uses its internal asset URL.';
-      renderMediaSection(res.data);
+      renderMediaSection(project);
       render();
     } catch (e) {
       statusEl.textContent = '';
