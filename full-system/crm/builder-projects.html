@@ -1917,7 +1917,19 @@ html body{background-image:none!important;background:#f7f7f5!important}
       notes.value = Array.from(new Set([...String(notes.value || '').split('\n'), ...readingNotes])).filter(Boolean).join('\n');
     }
     if (Array.isArray(d.ConfigDetails) && d.ConfigDetails.length) {
-      configRows = (typeof groupedConfigDetails === 'function' ? groupedConfigDetails(d.ConfigDetails) : d.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null, PriceMin: c.PriceMin ?? '', PriceMax: c.PriceMax ?? '', FloorPlanMediaID: c.FloorPlanMediaID || '' }));
+      const priorLayouts = configRows;
+      const layoutKey = row => JSON.stringify([
+        String(row.Tower || '').toUpperCase().split(/[\s,\/]+/).filter(Boolean).sort(),
+        String(row.Type || 'Apartment').trim().toLowerCase(),
+        ...['BHK','CarpetAreaSqft','SuperBuiltUpAreaSqft','TerraceAreaSqft'].map(key=>row[key]==null || row[key]==='' ? null : Number(row[key]))
+      ]);
+      const retainedMetadata = row => {
+        const matches = priorLayouts.filter(prior=>layoutKey(prior)===layoutKey(row));
+        if (matches.length!==1) return {};
+        const prior=matches[0];
+        return {PriceMin:prior.PriceMin ?? '',PriceMax:prior.PriceMax ?? '',FloorPlanMediaID:prior.FloorPlanMediaID || ''};
+      };
+      configRows = (typeof groupedConfigDetails === 'function' ? groupedConfigDetails(d.ConfigDetails) : d.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null, PriceMin: c.PriceMin ?? '', PriceMax: c.PriceMax ?? '', FloorPlanMediaID: '', ...retainedMetadata(c) }));
       renderConfigRowsUI();
     }
   }
