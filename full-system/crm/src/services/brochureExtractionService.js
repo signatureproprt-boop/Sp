@@ -9,6 +9,9 @@ const { setTimeout: wait } = require('node:timers/promises');
 const extractionCache = new Map();
 const pendingExtractions = new Map();
 const candidateCheckpoints = new Map();
+// Provider quota applies across documents. Never upload another PDF during its retry window.
+// This process-local guard complements the durable per-job batch cooldown.
+const providerCooldowns = new Map();
 const CACHE_LIMIT = 64;
 const CACHE_VERSION = 'brochure-v19-core-features';
 const { countPdfPages, reviewPrompt, validateReview, validatePrivateTerraces, REVIEW_SCHEMA } = require('./brochureCompletenessService');
@@ -223,6 +226,14 @@ async function extractBrochure(fileBase64, pageImages, scope = '', options = {})
   const key = crypto.createHash('sha256').update(CACHE_VERSION + GEMINI_MODEL + FALLBACK_MODEL + scope).update(buffer).digest('hex');
   if (extractionCache.has(key)) return structuredClone(extractionCache.get(key));
   if (pendingExtractions.has(key)) return structuredClone(await pendingExtractions.get(key));
+  const providerKey = crypto.createHash('sha256').update(String(process.env.GEMINI_API_KEY || '') + GEMINI_MODEL + FALLBACK_MODEL).digest('hex');
+  const cooldown = providerCooldowns.get(providerKey);
+  if (cooldown?.until > Date.now()) {
+    throw Object.assign(new Error('AI quota/rate limit reached. Uploaded brochure retained; retry after the provider cooldown.'), {
+      status: 429, code: 'AI_RATE_LIMIT', retryAfterSeconds: Math.ceil((cooldown.until - Date.now()) / 1000)
+    });
+  }
+  providerCooldowns.delete(providerKey);
   const saved = options.checkpoint?.Key === key ? options.checkpoint.Data : candidateCheckpoints.get(key);
   const saveCheckpoint = async data => {
     const candidate = structuredClone(data);
@@ -246,7 +257,16 @@ async function extractBrochure(fileBase64, pageImages, scope = '', options = {})
     return data;
   });
   pendingExtractions.set(key, request);
-  try { return structuredClone(await request); } finally { pendingExtractions.delete(key); }
+  try { return structuredClone(await request); }
+  catch (error) {
+    if (error.code === 'AI_RATE_LIMIT' && error.status === 429) {
+      const seconds = Math.max(60, Number(error.retryAfterSeconds) || 60);
+      const until = Date.now() + seconds * 1000;
+      if (providerCooldowns.size >= CACHE_LIMIT && !providerCooldowns.has(providerKey)) providerCooldowns.delete(providerCooldowns.keys().next().value);
+      providerCooldowns.set(providerKey, { until: Math.max(until, providerCooldowns.get(providerKey)?.until || 0) });
+    }
+    throw error;
+  } finally { pendingExtractions.delete(key); }
 }
 
 module.exports = { extractBrochure };

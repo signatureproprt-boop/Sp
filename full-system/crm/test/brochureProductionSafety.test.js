@@ -64,3 +64,48 @@ test('frontend stops after capacity cooldown instead of spinning through PDFs',a
  assert.match(element('uploaded-batch-summary').textContent,/Paused — AI unavailable/);
  assert.doesNotMatch(element('uploaded-batch-summary').textContent,/Processing/);
 });
+
+test('provider quota blocks other documents and users before another upload, then expires', async () => {
+ let now=1000000,uploads=0,requests=0;
+ class Clock extends Date {static now(){return now;}}
+ const env={GEMINI_API_KEY:'test-key',GEMINI_BROCHURE_MODEL:'test-model'};
+ const ctx={module:{exports:{}},Buffer,structuredClone,AbortSignal,Date:Clock,process:{env},
+ require:n=>n==='./brochureFileService'?{uploadBrochure:async()=>{uploads++;return {part:{},dispose:async()=>{}};}}:n==='./brochureCompletenessService'?{...require('../src/services/brochureCompletenessService'),countPdfPages:async()=>1}:require(n),
+ fetch:async()=>{requests++;return {ok:false,status:429,headers:{get:()=>null},json:async()=>({error:{message:'Quota',details:[{retryDelay:'120s'}]}})};}};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../src/services/brochureExtractionService'),'utf8'),ctx);
+ const read=(pdf,user)=>ctx.module.exports.extractBrochure(Buffer.from(pdf).toString('base64'),undefined,user);
+ await assert.rejects(read('%PDF first','user1'),e=>e.code==='AI_RATE_LIMIT');
+ now+=1000;
+ await assert.rejects(read('%PDF other','user2'),e=>e.status===429&&e.retryAfterSeconds===119);
+ assert.equal(uploads,1);assert.equal(requests,1);
+ now+=120000;
+ await assert.rejects(read('%PDF other','user2'),e=>e.code==='AI_RATE_LIMIT');
+ assert.equal(uploads,2);assert.equal(requests,2);
+ env.GEMINI_API_KEY='replacement-key';
+ await assert.rejects(read('%PDF new','user2'),e=>e.code==='AI_RATE_LIMIT');
+ assert.equal(uploads,3);
+});
+
+test('browser quota survives reload and prevents a different PDF request',async()=>{
+ const start=html.indexOf('  const brochureReaderCooldowns = new Map();'),end=html.indexOf('  let brochureReadInProgress',start);
+ const stored=new Map();let calls=0,now=1000000;
+ class Clock extends Date {static now(){return now;}}
+ const localStorage={getItem:key=>stored.get(key)||null,setItem:(key,value)=>stored.set(key,value)};
+ const context=()=>({localStorage,Date:Clock,Uint8Array,atob,AbortController,setTimeout,clearTimeout,crypto:require('node:crypto').webcrypto,editingId:'project',brochureCache:async()=>null,
+ fetch:async()=>{calls++;return {ok:false,status:429,text:async()=>JSON.stringify({ok:false,code:'AI_RATE_LIMIT',retryAfterSeconds:120})};}});
+ const a=context();vm.createContext(a);vm.runInContext(html.slice(start,end),a);
+ await assert.rejects(a.requestBrochureExtraction('one.pdf',Buffer.from('one').toString('base64')),/quota/);
+ const b=context();vm.createContext(b);vm.runInContext(html.slice(start,end),b);now+=1000;
+ await assert.rejects(b.requestBrochureExtraction('two.pdf',Buffer.from('two').toString('base64')),/119 seconds.*fields unchanged/);
+ assert.equal(calls,1);now+=120000;
+ await assert.rejects(b.requestBrochureExtraction('two.pdf',Buffer.from('two').toString('base64')),/quota/);
+ assert.equal(calls,2);
+});
+
+test('browser storage restrictions do not break brochure requests',async()=>{
+ const start=html.indexOf('  const brochureReaderCooldowns = new Map();'),end=html.indexOf('  let brochureReadInProgress',start);
+ const ctx={localStorage:{getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}},Date,Uint8Array,atob,AbortController,setTimeout,clearTimeout,crypto:require('node:crypto').webcrypto,editingId:'project',brochureCache:async()=>null,
+ fetch:async()=>({ok:false,status:429,text:async()=>JSON.stringify({ok:false,code:'AI_RATE_LIMIT',retryAfterSeconds:120})})};
+ vm.createContext(ctx);vm.runInContext(html.slice(start,end),ctx);
+ await assert.rejects(ctx.requestBrochureExtraction('one.pdf',Buffer.from('one').toString('base64')),/quota/);
+});
