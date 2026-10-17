@@ -65,7 +65,9 @@ def main():
         run(['run', 'jobs', 'replace', path, *common])
     finally:
         os.unlink(path)
-    run(['services', 'enable', 'cloudscheduler.googleapis.com', '--project=' + args.project, '--quiet'])
+    # API activation is a one-time project-admin operation, not a deployment
+    # permission. Do not require serviceusage.services.enable on every build.
+    # Bootstrap once: gcloud services enable cloudscheduler.googleapis.com --project=PROJECT
     location = ['--project=' + args.project, '--location=' + args.region, '--quiet']
     existing = json.loads(run(['scheduler', 'jobs', 'list', *location, '--format=json']))
     operation = 'update' if any(job['name'].endswith('/' + JOB) for job in existing) else 'create'
