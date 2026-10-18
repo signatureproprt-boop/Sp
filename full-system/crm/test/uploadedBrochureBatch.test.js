@@ -75,7 +75,7 @@ test('batch UI and server compile; update permission and tenant check protect al
   for (const script of html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)) new vm.Script(script[1]);
   const server=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'); new vm.Script(server);
   assert.match(server,/UploadedBrochureBatchService/); assert.match(server,/visible: row => tenantCheck\(row, actor\)\.ok/);
-  assert.match(html,/uploadedBatch\.Pending > 0/); assert.match(html,/Pause after current PDF/);
+  assert.match(html,/uploadedBatch\.Pending > 0/); assert.match(html,/Pause manual batch after current PDF/); assert.match(html,/Pause Residential worker/); assert.match(html,/b\?\.PauseReason/);
 });
 test('real project update commits fields and queue metadata in one snapshot and clears stale developer ID',()=>{
   let db={BuilderProjects:[{...structuredClone(project),BuilderName:'Old builder',BuilderID:'old',Location1:'Vesu'}],Builders:[{BuilderID:'old',BuilderName:'Old builder'}]}, writes=0;
