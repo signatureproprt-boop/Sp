@@ -336,7 +336,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     <p class="pd-muted">Existing projects only. Reads every permanently stored PDF, saves supported fields and logs missing or conflicting data. Keep this page open while processing; saved progress can be resumed.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
       <button class="btn btn-primary" id="uploaded-batch-start" onclick="startUploadedBrochureBatch()">Start / Resume AI fill</button>
-      <button class="btn btn-ghost" id="uploaded-batch-pause" onclick="uploadedBatchPaused=true" disabled>Pause after current PDF</button>
+      <button class="btn btn-ghost" id="uploaded-batch-pause" onclick="uploadedBatchPaused=true" disabled>Pause manual batch after current PDF</button>
       <button class="btn btn-ghost" onclick="refreshUploadedBrochureBatch()">Refresh progress</button>
       <button class="btn btn-ghost" onclick="retryUploadedBrochureBatch()">Retry failed / unchecked PDFs</button>
     </div>
@@ -345,7 +345,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
       <h3>Background residential AI fill</h3>
       <p class="muted">Processes stored Residential PDFs independently of this page. Fills missing fields after source checks; existing values stay protected. Conflicts and missing brochure sources require review. No automatic web search is configured.</p>
       <button class="btn btn-primary" id="residential-worker-start" onclick="setResidentialWorker(true)">Enable background worker</button>
-      <button class="btn btn-ghost" onclick="setResidentialWorker(false)">Pause after current PDF</button>
+      <button class="btn btn-ghost" onclick="setResidentialWorker(false)">Pause Residential worker</button>
       <button class="btn btn-ghost" onclick="refreshResidentialWorker()">Refresh background progress</button>
       <div id="residential-worker-status" role="status">Background status not loaded.</div>
     </section>
@@ -2244,7 +2244,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     const el=document.getElementById('residential-worker-status'), cfg=result.data;
     if(!cfg){el.textContent='Not enabled. No background queue has been created.';return;}
     const b=cfg.Batch;
-    el.textContent=(cfg.Enabled?'Enabled':'Paused')+' · Residential · '+(cfg.LastHeartbeatAt?'Last worker activity '+new Date(cfg.LastHeartbeatAt).toLocaleString():'Awaiting first worker execution')+(b?' · PDFs '+b.Total+' · Saved '+b.Saved+' · Remaining '+b.Pending+' · Needs review '+cfg.NeedsReview+' · Without PDF '+b.WithoutStoredBrochure:'')+(b?.NextRetryAt?' · Retry after '+new Date(b.NextRetryAt).toLocaleString():'')+(cfg.LastError?' · '+cfg.LastError:'')+(result.message?' · '+result.message:'');
+    el.textContent=(cfg.Enabled?'Enabled':'Paused')+' · Residential · '+(cfg.LastHeartbeatAt?'Last worker activity '+new Date(cfg.LastHeartbeatAt).toLocaleString():'Awaiting first worker execution')+(b?' · PDFs '+b.Total+' · Saved '+b.Saved+' · Remaining '+b.Pending+' · Needs review '+cfg.NeedsReview+' · Without PDF '+b.WithoutStoredBrochure:'')+(b?.NextRetryAt?' · Retry after '+new Date(b.NextRetryAt).toLocaleString():'')+(b?.PauseReason?' · AI paused: '+b.PauseReason:'')+(cfg.LastError?' · '+cfg.LastError:'')+(result.message?' · '+result.message:'');
   }
   async function refreshResidentialWorker() {
     try { const r=await fetch('/api/v2/builder-projects/residential-background',{cache:'no-store'}), out=await r.json(); if(!r.ok||!out.ok)throw Error(out.error||'Status unavailable'); renderResidentialWorker(out); }
