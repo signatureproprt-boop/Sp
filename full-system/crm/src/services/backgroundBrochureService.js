@@ -80,14 +80,14 @@ class BackgroundBrochureService {
     if (Date.parse(raw.NextRetryAt || '') > this.now() || !raw.Items.some(i => ['pending','reading'].includes(i.Status))) {
       const state = Date.parse(raw.NextRetryAt || '') > this.now() ? 'cooldown' : 'complete';
       config.LastHeartbeatAt = new Date(this.now()).toISOString(); config.LastState = state; this.persist(config); await batch.flush();
-      return {state, nextRetryAt:raw.NextRetryAt};
+      return {state, nextRetryAt:raw.NextRetryAt, reason:raw.PauseReason || null};
     }
     config.LastHeartbeatAt = new Date(this.now()).toISOString(); this.persist(config); await batch.flush();
     const out = await batch.step(raw.JobID, actorId); await batch.flush();
     if (!out.ok) return {state:'busy'};
     const latest = this.configs().find(c => c.AutomationID === configId);
     if (latest) { latest.LastHeartbeatAt = new Date(this.now()).toISOString(); latest.LastState=out.data.Status; this.persist(latest); await batch.flush(); }
-    return {state:out.data.Status === 'cooldown' ? 'cooldown' : 'processed', nextRetryAt:out.data.NextRetryAt};
+    return {state:out.data.Status === 'cooldown' ? 'cooldown' : 'processed', nextRetryAt:out.data.NextRetryAt, reason:out.data.PauseReason || null};
   }
 }
 module.exports = { BackgroundBrochureService, fillMissing, inScope, residential };

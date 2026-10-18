@@ -31,8 +31,8 @@ test('background worker selects only tenant Residential stored PDFs and survives
 });
 test('provider cooldown is durable across restarts and does not repeat calls before retry',async()=>{
   const x=setup();let attempts=0;x.deps.extract=async()=>{attempts++;const e=Error('Quota exceeded');e.status=429;e.retryAfterSeconds=1000;throw e;};
-  await x.service.tick(x.id);assert.equal(attempts,1);
-  const restarted=new BackgroundBrochureService(x.repo,x.deps);assert.equal((await restarted.tick(x.id)).state,'cooldown');assert.equal(attempts,1);
+  const first=await x.service.tick(x.id);assert.equal(first.reason,'Quota exceeded');assert.equal(attempts,1);
+  const restarted=new BackgroundBrochureService(x.repo,x.deps);const cooled=await restarted.tick(x.id);assert.equal(cooled.state,'cooldown');assert.equal(cooled.reason,'Quota exceeded');assert.equal(x.service.status(actor).data.Batch.PauseReason,'Quota exceeded');assert.equal(attempts,1);
   x.advance(1000001);await restarted.tick(x.id);assert.equal(attempts,2);
   x.service.setEnabled(actor,false);assert.equal((await restarted.tick(x.id)).state,'paused');assert.equal(attempts,2);
 });
