@@ -296,7 +296,7 @@ for (const transactionType of TRANSACTION_TYPES) {
       const key = `${transactionType}|${category}|${subCategory}`;
       if (V2FormRegistry[key]) continue;
       let form;
-      if (category === 'Residential' && subCategory === 'Residential Plot') {
+      if (subCategory.endsWith('Plot')) {
         form = buildLandForm(transactionType, category, subCategory);
       } else if (category === 'Residential') {
         form = buildResidentialForm(transactionType, category, subCategory,
@@ -430,7 +430,7 @@ function buildAgricultureForm(txnType, category, subCategory) {
     fields: {
       ...buildCommonFields(),
       ...buildPropertySourceFields(txnType),
-      totalArea:            field('TotalArea',            'Total Area (acres)',        'Number',  true,  20, { validation: 'positive-number' }),
+      totalArea:            field('TotalArea',            'Total Area (acres)',        'Number',  false, 20, { validation: 'positive-number' }),
       waterSource:          field('WaterSource',          'Water Source',             'Select',  false, 21, { options: ['Well', 'Borewell', 'Canal', 'River', 'None'] }),
       soilType:             field('SoilType',             'Soil Type',                'Select',  false, 22, { options: ['Black', 'Red', 'Alluvial', 'Sandy', 'Loamy', 'Mixed'] }),
       electricityAvailable: field('ElectricityAvailable', 'Electricity Available',    'Boolean', false, 23),
@@ -483,8 +483,8 @@ function buildIndustrialForm(txnType, category, subCategory) {
     fields: {
       ...buildCommonFields(),
       ...buildPropertySourceFields(txnType),
-      areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', true, 20, { validation: 'positive-number' }),
-      areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', true, 21, { validation: 'positive-number' }),
+      areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
+      areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
       zoneType: field('ZoneType', 'Zone Type', 'Select', true, 22, { options: ['Warehouse', 'Manufacturing', 'Logistics', 'Cold Storage', 'Data Center'] }),
       powerLoad: field('PowerLoad', 'Power Load (KW)', 'Number', true, 23),
       loadingBay: field('LoadingBay', 'Loading Bay Required', 'Boolean', false, 24),
