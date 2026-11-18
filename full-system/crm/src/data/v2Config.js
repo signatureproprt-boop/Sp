@@ -191,7 +191,7 @@ const ColumnConfig = {
 // Registry key: TransactionType + Category + SubCategory
 // Each entry is versioned and immutable once a Requirement is created.
 
-const FORM_REGISTRY_VERSION = '2.0';
+const FORM_REGISTRY_VERSION = '2.1';
 
 const V2FormRegistry = {
   // ── Residential ─────────────────────────────────────────────────────────────
@@ -278,12 +278,51 @@ const V2FormRegistry = {
   'generic': buildGenericForm()
 };
 
+// Complete the registry for every supported deal direction. This keeps the
+// category and subtype selectors usable regardless of who is asking (buyer,
+// seller, tenant, landlord, lessee, or lessor).
+const CATEGORY_SUBTYPES = {
+  Residential: ['Flat', 'Terrace Flat', 'Villa', 'Row House', 'Bungalow', 'Penthouse', 'Studio', 'Duplex', 'Builder Floor', 'Independent House', 'Residential Plot'],
+  Commercial: ['Office', 'Shop', 'Showroom', 'Warehouse', 'Co-working Space', 'Restaurant', 'Clinic', 'Commercial Plot'],
+  Industrial: ['Factory', 'Warehouse', 'Industrial Shed', 'Industrial Plot', 'Cold Storage', 'Logistics Facility'],
+  Land: ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land'],
+  Agriculture: ['Agricultural Land', 'Farm House', 'Orchard', 'Plantation']
+};
+const TRANSACTION_TYPES = ['Purchase', 'Sale', 'Rent', 'Rent Out', 'Lease', 'Lease Out'];
+
+for (const transactionType of TRANSACTION_TYPES) {
+  for (const [category, subCategories] of Object.entries(CATEGORY_SUBTYPES)) {
+    for (const subCategory of subCategories) {
+      const key = `${transactionType}|${category}|${subCategory}`;
+      if (V2FormRegistry[key]) continue;
+      let form;
+      if (category === 'Residential' && subCategory === 'Residential Plot') {
+        form = buildLandForm(transactionType, category, subCategory);
+      } else if (category === 'Residential') {
+        form = buildResidentialForm(transactionType, category, subCategory,
+          subCategory === 'Studio' ? ['Studio'] : ['1BHK', '2BHK', '3BHK', '4BHK', '5BHK+']);
+      } else if (category === 'Commercial') {
+        form = buildCommercialForm(transactionType, category, subCategory);
+      } else if (category === 'Industrial') {
+        form = buildIndustrialForm(transactionType, category, subCategory);
+      } else if (category === 'Land') {
+        form = buildLandForm(transactionType, category, subCategory);
+      } else {
+        form = buildAgricultureForm(transactionType, category, subCategory);
+      }
+      form.formKey = key;
+      form.formName = `${transactionType} — ${category} — ${subCategory}`;
+      V2FormRegistry[key] = form;
+    }
+  }
+}
+
 // ─── Form Builders ────────────────────────────────────────────────────────────
 
 function buildCommonFields() {
   return {
-    budgetMin: field('budgetMin', 'Budget Min', 'Number', true, 1, { validation: 'positive-number', budgetRole: 'min' }),
-    budgetMax: field('budgetMax', 'Budget Max', 'Number', true, 2, { validation: 'positive-number', budgetRole: 'max' }),
+    budgetMin: field('budgetMin', 'Budget Min', 'Number', false, 1, { validation: 'positive-number', budgetRole: 'min' }),
+    budgetMax: field('budgetMax', 'Budget Max', 'Number', false, 2, { validation: 'positive-number', budgetRole: 'max' }),
     budgetType: field('budgetType', 'Budget Type', 'Select', false, 3, { options: ['All Inclusive', 'Base Price', 'Negotiable'] }),
     budgetFlexibility: field('budgetFlexibility', 'Budget Flexibility', 'Select', false, 4, { options: ['Strict', 'Slightly Flexible', 'Very Flexible'] }),
     location1: field('Location1', 'Primary Location', 'Text', true, 5),
@@ -320,11 +359,15 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
     fields: {
       ...buildCommonFields(),
       ...(isRent ? buildRentSpecificFields() : {}),
-      bhkMin: field('BHKMin', 'BHK Min', 'Select', true, 20, { options: bhkOptions }),
-      bhkMax: field('BHKMax', 'BHK Max', 'Select', true, 21, { options: bhkOptions }),
+      ...(txnType === 'Purchase' ? { propertySource: field('PropertySource', 'Property Type', 'Select', false, 12, { options: ['Resale', 'New Project', 'Both'] }) } : {}),
+      propertyCondition: field('PropertyCondition', 'Property Condition', 'Select', false, 13, { options: ['New', 'Resale - Ready to Move', 'Resale - Occupied', 'Needs Renovation', 'Under Construction', 'Unfinished / Incomplete'] }),
+      bhkMin: field('BHKMin', 'BHK Min', 'Select', false, 20, { options: bhkOptions }),
+      bhkMax: field('BHKMax', 'BHK Max', 'Select', false, 21, { options: bhkOptions }),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 22, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 23, { validation: 'positive-number' }),
-      furnishing: field('Furnishing', 'Furnishing', 'Select', false, 24, { options: ['Unfurnished', 'Semi Furnished', 'Fully Furnished'] }),
+      furnishing: field('Furnishing', 'Furnishing', 'Select', false, 24, { options: ['Unfurnished', 'Semi-Furnished', 'Fully Furnished', 'Any'] }),
+      completionStatus: field('CompletionStatus', 'Construction / Completion Status', 'Select', false, 24.5, { options: ['Ready to Move', 'Under Construction', 'New Launch', 'Unfinished / Incomplete', 'Renovation Required', 'Any'] }),
+      propertyAge: field('PropertyAge', 'Property Age (years)', 'Number', false, 24.7, { validation: 'positive-number' }),
       facing: field('Facing', 'Facing', 'Select', false, 25, { options: ['East', 'West', 'North', 'South', 'North-East', 'North-West', 'South-East', 'South-West'] }),
       floor: field('Floor', 'Floor Preference', 'Select', false, 26, { options: ['Ground', 'Low (1-5)', 'Mid (6-15)', 'High (16+)', 'Any'] }),
       parking: field('Parking', 'Parking', 'MultiSelect', false, 27, { options: ['2 Wheeler', 'Car', 'No Preference'] }),
@@ -352,8 +395,8 @@ function buildCommercialForm(txnType, category, subCategory) {
     fields: {
       ...buildCommonFields(),
       ...(isRent ? buildRentSpecificFields() : {}),
-      areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', true, 20, { validation: 'positive-number' }),
-      areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', true, 21, { validation: 'positive-number' }),
+      areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
+      areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
       businessType: field('BusinessType', 'Business Type', 'Select', true, 22, { options: ['Retail', 'Office', 'Hospitality', 'Healthcare', 'Education', 'IT/ITES', 'Other'] }),
       powerLoad: field('PowerLoad', 'Power Load (KW)', 'Number', false, 23),
       fireNoc: field('FireNOC', 'Fire NOC Required', 'Boolean', false, 24),
@@ -404,8 +447,8 @@ function buildLandForm(txnType, category, subCategory) {
     isActive: true,
     fields: {
       ...buildCommonFields(),
-      plotMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', true, 20, { validation: 'positive-number' }),
-      plotMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', true, 21, { validation: 'positive-number' }),
+      plotMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', false, 20, { validation: 'positive-number' }),
+      plotMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', false, 21, { validation: 'positive-number' }),
       zoning: field('Zoning', 'Zoning', 'Select', true, 22, { options: ['Residential', 'Commercial', 'Mixed Use', 'Agricultural', 'Industrial'] }),
       approachRoad: field('ApproachRoad', 'Approach Road Width (ft)', 'Number', false, 23),
       waterLine: field('WaterLine', 'Water Line Available', 'Boolean', false, 24),
