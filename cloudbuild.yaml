@@ -54,13 +54,17 @@ steps:
 
   # Configure and boot-check the independent worker before promoting the UI.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: python3
+    entrypoint: bash
     args:
-      - full-system/crm/scripts/deployResidentialWorker.py
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID
-      - --project=$PROJECT_ID
-      - --region=${_REGION}
-      - --service=${_SERVICE}
+      - -ceu
+      - |
+        python_bin="$(gcloud info --format='value(basic.python_location)')"
+        test -x "$python_bin"
+        "$python_bin" full-system/crm/scripts/deployResidentialWorker.py \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$BUILD_ID \
+          --project=$PROJECT_ID \
+          --region=${_REGION} \
+          --service=${_SERVICE}
 
   # Pinned traffic must be promoted explicitly after a successful deployment.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
