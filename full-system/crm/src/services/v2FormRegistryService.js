@@ -31,11 +31,11 @@ const {
 // Canonical list per category; kept in sync with V2FormRegistry.
 // Frontend MUST NOT hardcode these — always request from API.
 const STATIC_SUBCATEGORY_CONFIG = {
-  Residential: ['Flat', 'Villa', 'Row House', 'Bungalow', 'Penthouse', 'Studio', 'Plot'],
-  Commercial:  ['Office', 'Shop', 'Showroom', 'Warehouse'],
-  Industrial:  ['Factory', 'Warehouse', 'Shed', 'Industrial Plot'],
-  Land:        ['Residential Plot', 'Commercial Plot', 'Agricultural Land'],
-  Agriculture: ['Agricultural Land', 'Farm House', 'Orchard']
+  Residential: ['Flat', 'Terrace Flat', 'Villa', 'Row House', 'Bungalow', 'Penthouse', 'Studio', 'Duplex', 'Builder Floor', 'Independent House', 'Residential Plot'],
+  Commercial:  ['Office', 'Shop', 'Showroom', 'Warehouse', 'Co-working Space', 'Restaurant', 'Clinic', 'Commercial Plot'],
+  Industrial:  ['Factory', 'Warehouse', 'Industrial Shed', 'Industrial Plot', 'Cold Storage', 'Logistics Facility'],
+  Land:        ['Residential Plot', 'Commercial Plot', 'Industrial Plot', 'Agricultural Land'],
+  Agriculture: ['Agricultural Land', 'Farm House', 'Orchard', 'Plantation']
 };
 
 // ── V2FormRegistryService ──────────────────────────────────────────────────────
