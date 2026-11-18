@@ -346,6 +346,12 @@ function buildRentSpecificFields() {
   };
 }
 
+function buildPropertySourceFields(txnType) {
+  return txnType === 'Purchase'
+    ? { propertySource: field('PropertySource', 'Property Type', 'Select', false, 12, { options: ['Resale', 'New Project', 'Both'] }) }
+    : {};
+}
+
 function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
   const isRent = txnType === 'Rent' || txnType === 'Rent Out';
   return {
@@ -359,7 +365,7 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
     fields: {
       ...buildCommonFields(),
       ...(isRent ? buildRentSpecificFields() : {}),
-      ...(txnType === 'Purchase' ? { propertySource: field('PropertySource', 'Property Type', 'Select', false, 12, { options: ['Resale', 'New Project', 'Both'] }) } : {}),
+      ...buildPropertySourceFields(txnType),
       propertyCondition: field('PropertyCondition', 'Property Condition', 'Select', false, 13, { options: ['New', 'Resale - Ready to Move', 'Resale - Occupied', 'Needs Renovation', 'Under Construction', 'Unfinished / Incomplete'] }),
       bhkMin: field('BHKMin', 'BHK Min', 'Select', false, 20, { options: bhkOptions }),
       bhkMax: field('BHKMax', 'BHK Max', 'Select', false, 21, { options: bhkOptions }),
@@ -394,6 +400,7 @@ function buildCommercialForm(txnType, category, subCategory) {
     isActive: true,
     fields: {
       ...buildCommonFields(),
+      ...buildPropertySourceFields(txnType),
       ...(isRent ? buildRentSpecificFields() : {}),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
@@ -422,6 +429,7 @@ function buildAgricultureForm(txnType, category, subCategory) {
     isActive: true,
     fields: {
       ...buildCommonFields(),
+      ...buildPropertySourceFields(txnType),
       totalArea:            field('TotalArea',            'Total Area (acres)',        'Number',  true,  20, { validation: 'positive-number' }),
       waterSource:          field('WaterSource',          'Water Source',             'Select',  false, 21, { options: ['Well', 'Borewell', 'Canal', 'River', 'None'] }),
       soilType:             field('SoilType',             'Soil Type',                'Select',  false, 22, { options: ['Black', 'Red', 'Alluvial', 'Sandy', 'Loamy', 'Mixed'] }),
@@ -447,6 +455,7 @@ function buildLandForm(txnType, category, subCategory) {
     isActive: true,
     fields: {
       ...buildCommonFields(),
+      ...buildPropertySourceFields(txnType),
       plotMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', false, 20, { validation: 'positive-number' }),
       plotMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', false, 21, { validation: 'positive-number' }),
       zoning: field('Zoning', 'Zoning', 'Select', true, 22, { options: ['Residential', 'Commercial', 'Mixed Use', 'Agricultural', 'Industrial'] }),
@@ -473,6 +482,7 @@ function buildIndustrialForm(txnType, category, subCategory) {
     isActive: true,
     fields: {
       ...buildCommonFields(),
+      ...buildPropertySourceFields(txnType),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', true, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', true, 21, { validation: 'positive-number' }),
       zoneType: field('ZoneType', 'Zone Type', 'Select', true, 22, { options: ['Warehouse', 'Manufacturing', 'Logistics', 'Cold Storage', 'Data Center'] }),
