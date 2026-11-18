@@ -1157,23 +1157,9 @@ table td,table th{border-color:var(--v2-line)!important}
       if (value === 'false') value = false;
       values[key] = value;
     });
-    root.querySelectorAll('.field-priority').forEach(el => {
-      const key = el.dataset.priorityFor;
-      if (!key) return;
-      if (el.value) values[`__priority__${key}`] = el.value;
-      else delete values[`__priority__${key}`];
-    });
     syncRenderedBudgetAliases(values, Array.from(root.querySelectorAll('[data-field-key]')).map(el => el.dataset.fieldKey), true);
     state.values = values;
     return values;
-  }
-
-  function extractFieldPrioritiesFromValues(values) {
-    const out = {};
-    Object.entries(values || {}).forEach(([key, value]) => {
-      if (key.startsWith('__priority__') && value) out[key.replace('__priority__', '')] = value;
-    });
-    return out;
   }
 
   function buildEvaluationFields(values) {
@@ -1239,7 +1225,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const state = dynamicFormState[mode];
     const root = document.getElementById(state.containerId);
     if (!root) return;
-    root.querySelectorAll('[data-field-key], .field-priority').forEach(el => {
+    root.querySelectorAll('[data-field-key]').forEach(el => {
       el.onchange = () => {
         const values = collectDynamicValues(mode);
         const visibleStates = evaluateFieldVisibility(state.config, state.rules, values);
@@ -1265,7 +1251,6 @@ table td,table th{border-color:var(--v2-line)!important}
     const hint = f.Placeholder || lbl;
     const help = f.HelpText || '';
     const value = values?.[fk];
-    const priorityValue = values?.[`__priority__${fk}`] || '';
     const isFull = typ === 'Textarea' || typ === 'MultiSelect' || fk === 'SocietyName' || fk === 'RERANumber' || fk === 'AvoidLocations' || fk === 'Preferences' || fk === 'GujaratRERA' || fk === 'ExistingBusiness' || fk === 'ExistingCrops' || fk === 'TPScheme';
     const groupClass = isFull ? 'form-group full' : 'form-group';
     let input = '';
@@ -1288,8 +1273,7 @@ table td,table th{border-color:var(--v2-line)!important}
       input = `<input id="${escAttr(id)}" data-field-key="${escAttr(fk)}" type="text" placeholder="${escAttr(hint)}" value="${escAttr(value ?? '')}" />`;
     }
     const tierBadge = f.Tier === 'CORE' ? '<span style="color:#dc2626;font-size:10px;margin-left:4px">*</span>' : '';
-    const priority = `<select class="field-priority" data-priority-for="${escAttr(fk)}" style="margin-top:6px"><option value="">Normal Priority</option><option value="MUST_HAVE" ${priorityValue==='MUST_HAVE'?'selected':''}>Must Have</option><option value="PREFERRED" ${priorityValue==='PREFERRED'?'selected':''}>Preferred</option><option value="FLEXIBLE" ${priorityValue==='FLEXIBLE'?'selected':''}>Flexible</option></select>`;
-    return `<div class="${groupClass}"><label>${esc(lbl)}${tierBadge}</label>${input}${priority}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
+    return `<div class="${groupClass}"><label>${esc(lbl)}${tierBadge}</label>${input}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
   }
 
   function rerenderDynamicForm(mode, savedValues = null) {
@@ -2071,8 +2055,6 @@ table td,table th{border-color:var(--v2-line)!important}
       keys.forEach(key => {
         const value = getRequirementValue(transaction, key);
         if (value !== null && value !== undefined) values[key] = value;
-        const priority = transaction.Fields?.[key]?.priority || transaction.FieldPriorities?.[key];
-        if (priority) values['__priority__' + key] = priority;
       });
       // Edit uses this transaction's values, rather than another need's lead prefill.
       dynamicFormState.need.values = values;
@@ -2104,13 +2086,11 @@ table td,table th{border-color:var(--v2-line)!important}
       RequirementStatus: document.getElementById('req-status').value
     };
     const dynamicValues = collectDynamicValues('req');
-    const fieldPriorities = extractFieldPrioritiesFromValues(dynamicValues);
     Object.entries(dynamicValues).forEach(([key, val]) => {
       if (key.startsWith('__priority__')) return;
       if (val === '' || val == null || (Array.isArray(val) && !val.length)) return;
       payload[key] = val;
     });
-    if (Object.keys(fieldPriorities).length) payload.FieldPriorities = fieldPriorities;
     try {
       const res = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
         method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
@@ -2265,8 +2245,7 @@ table td,table th{border-color:var(--v2-line)!important}
         SubCategory: sub
       };
       const dynamicValues = collectDynamicValues('need');
-      const fieldPriorities = extractFieldPrioritiesFromValues(dynamicValues);
-      Object.entries(dynamicValues).forEach(([key, val]) => {
+        Object.entries(dynamicValues).forEach(([key, val]) => {
         // These values come from the visible scope selectors, never old
         // client preferences retained in dynamic form state.
         if (['TransactionType', 'transactionType', 'Category', 'category', 'SubCategory', 'subCategory'].includes(key)) return;
@@ -2274,7 +2253,6 @@ table td,table th{border-color:var(--v2-line)!important}
         if (!editingNeedId && (val === '' || val == null || (Array.isArray(val) && !val.length))) return;
         txnPayload[key] = val === '' ? null : val;
       });
-      if (Object.keys(fieldPriorities).length) txnPayload.FieldPriorities = fieldPriorities;
       const txnUrl = editingNeedId
         ? `/api/v2/requirements/${encodeURIComponent(editingNeedId)}`
         : `/api/v2/clients/${encodeURIComponent(LEAD_ID)}/requirements`;
@@ -2839,13 +2817,11 @@ table td,table th{border-color:var(--v2-line)!important}
       RequirementStatus: document.getElementById('req-status').value
     };
     const dynamicValues = collectDynamicValues('req');
-    const fieldPriorities = extractFieldPrioritiesFromValues(dynamicValues);
     Object.entries(dynamicValues).forEach(([key, val]) => {
       if (key.startsWith('__priority__')) return;
       if (val === '' || val == null || (Array.isArray(val) && !val.length)) return;
       payload[key] = val;
     });
-    if (Object.keys(fieldPriorities).length) payload.FieldPriorities = fieldPriorities;
     try {
       const res = await fetch(`/api/transactions/${encodeURIComponent(txnId)}/requirements`, {
         method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
