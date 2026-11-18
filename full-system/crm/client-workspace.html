@@ -1585,6 +1585,39 @@ table td,table th{border-color:var(--v2-line)!important}
         </div>
       </div>
 
+      <section aria-label="Client work flow" style="margin-top:14px;padding:14px;background:#fffdf8;border:1px solid #ead9b7;border-radius:10px">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--clr-brown);margin-bottom:10px">Client ka kaam — ek-ek karke</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px">
+          <div style="padding:10px;background:#fff;border:1px solid var(--clr-border);border-radius:8px">
+            <div style="font-size:12px;font-weight:700;color:var(--clr-brown)">1. Call aur requirement pakki karein</div>
+            <div style="font-size:11.5px;color:#6b7280;margin:5px 0 8px">Client se baat karke budget, area aur possession update karein.</div>
+            <button class="need-action-btn ghost" onclick="callClient()">📞 Call</button>
+            <button class="need-action-btn ghost" onclick="openUpdateNeedModal('${esc(reqId)}')">Requirement update</button>
+          </div>
+          <div style="padding:10px;background:#fff;border:1px solid var(--clr-border);border-radius:8px">
+            <div style="font-size:12px;font-weight:700;color:var(--clr-brown)">2. Apni inventory dekhein</div>
+            <div style="font-size:11.5px;color:#6b7280;margin:5px 0 8px">Pehle CRM mein apni available properties match karein.</div>
+            <button class="need-action-btn ghost" onclick="toggleSmartMatches('${esc(reqId)}')">🏠 Properties match karein</button>
+          </div>
+          <div style="padding:10px;background:#fff;border:1px solid var(--clr-border);border-radius:8px">
+            <div style="font-size:12px;font-weight:700;color:var(--clr-brown)">3. Match na mile to broker ko bhejein</div>
+            <div style="font-size:11.5px;color:#6b7280;margin:5px 0 8px">Sirf requirement share hoti hai; client ka naam aur phone private rehta hai.</div>
+            <button class="need-action-btn ghost" onclick="openNetworkShareModal('${esc(reqId)}')">👥 Broker ko bhejein</button>
+          </div>
+          <div style="padding:10px;background:#fff;border:1px solid var(--clr-border);border-radius:8px">
+            <div style="font-size:12px;font-weight:700;color:var(--clr-brown)">4. Options check karke client ko bhejein</div>
+            <div style="font-size:11.5px;color:#6b7280;margin:5px 0 8px">Shortlist mein options compare karein; wahin se WhatsApp aur site visit karein.</div>
+            <button class="need-action-btn ghost" onclick="toggleShortlist('${esc(reqId)}')">⭐ Options dekhein</button>
+          </div>
+          <div style="padding:10px;background:#fff;border:1px solid var(--clr-border);border-radius:8px">
+            <div style="font-size:12px;font-weight:700;color:var(--clr-brown)">5. Visit se deal aur commission tak</div>
+            <div style="font-size:11.5px;color:#6b7280;margin:5px 0 8px">Visit, negotiation, token, deal aur commission ka record dekhein.</div>
+            <button class="need-action-btn ghost" onclick="openSiteVisitsContext('${esc(reqId)}')">🏠 Visits</button>
+            <button class="need-action-btn ghost" onclick="openDealsContext()">🤝 Deals</button>
+          </div>
+        </div>
+      </section>
+
       <div class="need-card-footer">
         <button class="need-action-btn primary" data-testid="req-update-${esc(reqId)}" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Update</button>
         <button class="need-action-btn ghost"   data-testid="req-matches-${esc(reqId)}" onclick="toggleSmartMatches('${esc(reqId)}')">🎯 Smart Match</button>
@@ -3718,6 +3751,26 @@ table td,table th{border-color:var(--v2-line)!important}
       renderSiteVisitsTab(); // full render (already filtered by lead)
     }
     svPane.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function openDealsContext() {
+    const toggle = document.getElementById('details-toggle');
+    const inner = document.getElementById('details-inner');
+    if (!inner || !toggle) return;
+    if (!inner.classList.contains('open')) {
+      inner.classList.add('open');
+      toggle.classList.add('open');
+    }
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    const dealsTab = document.querySelector('.tab[data-tab="deals"]');
+    const dealsPane = document.getElementById('tab-deals');
+    if (dealsTab) dealsTab.classList.add('active');
+    if (dealsPane) {
+      dealsPane.classList.add('active');
+      renderDealsTab();
+      dealsPane.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function setupTabs() {
