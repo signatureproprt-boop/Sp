@@ -322,15 +322,15 @@ html body{background-image:none!important;background:#f7f7f5!important}
 
 <div class="page">
   <header class="page-header project-header">
-    <div><div class="workspace-eyebrow">SIGNATURE PROPERTIES / PROJECT DIRECTORY</div><h1 class="page-title">Builder Projects</h1><p class="page-sub">Find the right project. Explore by category, neighbourhood and builder.</p></div>
+    <div><div class="workspace-eyebrow">SIGNATURE PROPERTIES / PROJECT DIRECTORY</div><h1 class="page-title">Builder Projects</h1><p class="page-sub">Search Surat projects by category, area, builder, BHK and sqft. Open a project for its full details and brochure status.</p></div>
     <div class="project-primary-actions">      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Brochure Log</button>
       <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button></div>
   </header>
   <section class="project-overview" aria-label="Project overview">
     <div class="overview-item"><span>Matching projects</span><strong id="overview-projects">—</strong><small id="overview-scope">Loading directory</small></div>
-    <div class="overview-item"><span>Locations</span><strong id="overview-locations">—</strong><small>Explore your neighbourhoods</small></div>
-    <div class="overview-item"><span>Builder groups</span><strong id="overview-builders">—</strong><small>Organised in one place</small></div>
-    <div class="overview-item"><span>Brochure ready</span><strong id="overview-brochures">—</strong><small>Projects with stored PDFs</small></div>
+    <div class="overview-item"><span>Areas on this page</span><strong id="overview-locations">—</strong><small>Across the visible projects</small></div>
+    <div class="overview-item"><span>Builders on this page</span><strong id="overview-builders">—</strong><small>Across the visible projects</small></div>
+    <div class="overview-item"><span>Brochures on this page</span><strong id="overview-brochures">—</strong><small>Projects with a stored PDF</small></div>
   </section>
   <details class="project-tools" id="project-tools"><summary><span>⚙ Project management</span><span class="tools-description">Imports, Drive linking &amp; data maintenance</span></summary><div class="project-tools-body"><div class="project-tool-actions">      <button class="btn btn-accent" id="karma-scrape-btn" data-testid="karma-scrape-btn" onclick="startKarmaScrape()">🔄 Scrape Karma Group</button>
       <button class="btn btn-ghost" id="karma-scrape-resume-btn" data-testid="karma-scrape-resume-btn" onclick="resumeKarmaScrape()" style="display:none">▶ Resume saved scrape</button>
@@ -1397,7 +1397,19 @@ html body{background-image:none!important;background:#f7f7f5!important}
     const catColor = catColors[category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
-      groupedConfigDetails(p.ConfigDetails).forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK) + ' bhk') ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : 'Carpet: not provided', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : 'Saleable / super built-up: not provided', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
+      groupedConfigDetails(p.ConfigDetails).forEach(c => {
+        const type = String(c.Type || '').trim();
+        const hasBhkInType = /\\b\\d+(?:\\.5)?\\s*bhk\\b/i.test(type);
+        const layout = [c.BHK != null && !hasBhkInType ? `${c.BHK} BHK` : '', type].filter(Boolean).join(' ');
+        const areas = [
+          c.AreaSqft != null ? `${c.AreaSqft} sqft` : '',
+          c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '',
+          c.BuiltUpAreaSqft != null ? `${c.BuiltUpAreaSqft} built-up sqft` : '',
+          c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '',
+          c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} terrace sqft` : ''
+        ].filter(Boolean);
+        facts.push([c.Tower ? `Tower ${c.Tower}` : '', c.FlatType ? `Unit ${c.FlatType}` : '', layout, ...areas, c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : ''].filter(Boolean).join(' · '));
+      });
     } else if (Array.isArray(p.Configurations) && p.Configurations.length) {
       facts.push(p.Configurations.join(' / '));
       if (p.AreaRange && (p.AreaRange.min || p.AreaRange.max)) facts.push(`${p.AreaRange.min ?? '?'}–${p.AreaRange.max ?? '?'} sqft`);
