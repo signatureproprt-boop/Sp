@@ -17,8 +17,10 @@ function buildQuery(){
  const sourceTab=document.getElementById('sourceTab').value; if(sourceTab)p.set('sourceTab',sourceTab);
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
  if(CLIENT_BUCKET==='activeRequirements')p.set('view','activeRequirements');
+ if(CLIENT_BUCKET==='contactPending')p.set('view','contactPending');
  if(CLIENT_BUCKET==='all')p.set('view','all');
  if(!CLIENT_BUCKET && status==='New')p.set('view','newLeads');
+ if(!CLIENT_BUCKET && status==='Follow-up')p.set('view','followUpsDue');
  const cat=document.getElementById('category').value, txn=FILTER_TXN, bud=document.getElementById('budget').value;
  const loc=document.getElementById('location').value.trim(), source=document.getElementById('source').value, type=document.getElementById('clientType').value;
  if(!status && CLIENT_BUCKET!=='all')p.set('excludeLost','true');
@@ -95,7 +97,14 @@ async function load(resetPage=false){
    document.getElementById('pager').innerHTML='';
  }finally{if(version===clientLoadVersion)queryState.loading=false}
 }
-function updateStats(total,summary={}){document.getElementById('s-total').textContent=Number(summary.totalClients??total??queryState.total??0);document.getElementById('s-req').textContent=Number(summary.activeNeeds??0);document.getElementById('s-txn').textContent=Number(summary.openTransactions??0);document.getElementById('s-hot').textContent=Number(summary.hotCount??0)}
+function updateStats(total,summary={}){
+ document.getElementById('s-total').textContent=Number(summary.totalClients??total??queryState.total??0);
+ document.getElementById('s-req').textContent=Number(summary.activeNeeds??0);
+ document.getElementById('s-txn').textContent=Number(summary.openTransactions??0);
+ document.getElementById('s-hot').textContent=Number(summary.hotCount??0);
+ const counts=summary.queueCounts||{};
+ document.querySelectorAll('[data-queue-count]').forEach(el=>{const value=counts[el.dataset.queueCount];if(value!==undefined)el.textContent=Number(value).toLocaleString('en-IN')});
+}
 let CLIENT_VIEW='card';
 function setView(view){
  CLIENT_VIEW=view==='list'?'list':'card';
@@ -111,7 +120,7 @@ function setStatus(status){
 }
 function setBucket(bucket){
  CLIENT_BUCKET=bucket;
- document.getElementById('status').value='';
+ document.getElementById('status').value=bucket==='contactPending'?'Contacted':'';
  document.querySelectorAll('[data-status]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false')});
  document.querySelectorAll('[data-bucket]').forEach(b=>{const active=b.dataset.bucket===bucket;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
  load(true);
@@ -119,7 +128,8 @@ function setBucket(bucket){
 function renderList(rows){
  const body=rows.map(c=>{
   const r=firstNeed(c),phone=c.PrimaryMobile||c.Phone,status=norm(c.ClientStatus||c.LeadStatus);
-  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(status)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="tel:'+enc(safePhone(phone))+'">☎ Call</a>':'')+'</div></td></tr>';
+  const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status;
+  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(statusLabel)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="tel:'+enc(safePhone(phone))+'">☎ Call</a>':'')+'</div></td></tr>';
  }).join('');
  return '<table class="client-table" aria-label="Clients list"><thead><tr><th scope="col">Client</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col">Property details</th><th scope="col">Next follow-up</th><th scope="col">Actions</th></tr></thead><tbody>'+body+'</tbody></table>';
 }
@@ -152,10 +162,10 @@ function render(){
  if(!rows.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No clients found for the selected filters.</div>';return}
  if(CLIENT_VIEW==='list'){grid.innerHTML=renderList(rows);return}
  grid.innerHTML=rows.map(c=>{
-  const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
+  const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status,score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
   const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'',cat=needValue(r,['Category','category'])||'';
   const stamp=c._lastContact;
-  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(status)+'</span></div>'+
+  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(statusLabel)+'</span></div>'+
   '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source" style="background:#f3e8ff;color:#6b21a8">Investor</span>':'')+'</div>'+
   '<div class="phone">📞 '+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</div>'+
   '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</div>'+

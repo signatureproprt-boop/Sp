@@ -1288,6 +1288,8 @@ class V2Router {
       result = result.filter(l => activeRequirementLeadIds.has(l.LeadID));
     } else if (filters.clientBucket === 'newLeads') {
       result = result.filter(l => !activeRequirementLeadIds.has(l.LeadID));
+    } else if (filters.clientBucket === 'contactPending') {
+      result = result.filter(l => !activeRequirementLeadIds.has(l.LeadID));
     }
 
     if (filters.clientStatus) {
@@ -1352,7 +1354,23 @@ class V2Router {
     }
 
     const visible = actor ? this.accessSvc.filterReadableLeads(result, actor) : result;
-    visible.sort((a, b) => new Date(b.UpdatedAt || b.CreatedAt || 0).getTime() - new Date(a.UpdatedAt || a.CreatedAt || 0).getTime());
+    const updatedAt = row => new Date(row.UpdatedAt || row.CreatedAt || 0).getTime();
+    if (filters.clientBucket === 'followUpsDue') {
+      const dueAt = row => {
+        const value = row.NextFollowUpAt || row.NextFollowupAt || row.FollowUpAt || row.NextActionAt;
+        const parsed = value ? new Date(value).getTime() : NaN;
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+      visible.sort((a, b) => {
+        const da = dueAt(a), db = dueAt(b);
+        if (da === null && db !== null) return 1;
+        if (da !== null && db === null) return -1;
+        if (da !== null && db !== null && da !== db) return da - db;
+        return updatedAt(b) - updatedAt(a);
+      });
+    } else {
+      visible.sort((a, b) => updatedAt(b) - updatedAt(a));
+    }
 
     const total = visible.length;
     const visibleLeadIds = new Set(visible.map(l => l.LeadID));
@@ -1362,6 +1380,26 @@ class V2Router {
       const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
       return !status || status === 'ACTIVE';
     }).length;
+    const countableLeads = actor ? this.accessSvc.filterReadableLeads(leads, actor) : leads;
+    const countableIds = new Set(countableLeads.map(l => l.LeadID));
+    const activeReqIds = new Set(reqs
+      .filter(r => {
+        const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
+        return countableIds.has(r.LeadID) && (!status || status === 'ACTIVE');
+      })
+      .map(r => r.LeadID));
+    const leadStatus = l => String(l.ClientStatus || l.LeadStatus || 'New').trim();
+    const isLost = l => ['Lost','Inactive','Blacklisted'].includes(leadStatus(l));
+    const queueCounts = {
+      newLeads: countableLeads.filter(l => leadStatus(l) === 'New' && !activeReqIds.has(l.LeadID)).length,
+      followUpsDue: countableLeads.filter(l => leadStatus(l) === 'Follow-up' && !isLost(l)).length,
+      contactedPending: countableLeads.filter(l => ['Contacted','Verified'].includes(leadStatus(l)) && !activeReqIds.has(l.LeadID)).length,
+      activeRequirements: [...activeReqIds].filter(id => {const lead=countableLeads.find(l=>l.LeadID===id);return lead && !isLost(lead)}).length,
+      siteVisit: countableLeads.filter(l => leadStatus(l) === 'Site Visit').length,
+      negotiation: countableLeads.filter(l => leadStatus(l) === 'Negotiation').length,
+      lost: countableLeads.filter(isLost).length,
+      all: countableLeads.filter(l => !l.MergedIntoClientID && l.ClientStatus !== 'Merged').length
+    };
     const openTransactions = txns.filter(t => visibleLeadIds.has(t.LeadID) && !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length;
     const page = Math.max(1, Number(filters.page || 1) || 1);
     const limit = Math.min(100, Math.max(1, Number(filters.limit || 24) || 24));
@@ -1374,7 +1412,7 @@ class V2Router {
       data: enriched,
       count: enriched.length,
       totalCount: total,
-      summary: { totalClients: total, hotCount, activeNeeds, openTransactions },
+      summary: { totalClients: total, hotCount, activeNeeds, openTransactions, queueCounts },
       pagination: {
         page,
         limit,
