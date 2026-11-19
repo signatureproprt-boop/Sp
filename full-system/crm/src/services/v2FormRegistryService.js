@@ -260,10 +260,13 @@ class V2FormRegistryService {
       if (seenKeysLower.has(fKey.toLowerCase())) return;
       seenKeysLower.add(fKey.toLowerCase());
       const meta = fieldConfigMap[fKey] || fieldConfigMap[Object.keys(fieldConfigMap).find(k => k.toLowerCase() === fKey.toLowerCase())] || {};
-      // If V2FieldConfig meta has Options + Type=Autocomplete, promote FieldType to Autocomplete
+      // The category form is authoritative for its fields and dropdown choices.
+      // V2FieldConfig may enrich labels/validation, but legacy global option lists
+      // must not replace category-specific choices (e.g. Office Use/Furnishing).
       const metaOpts = Array.isArray(meta.Options) && meta.Options.length ? meta.Options : null;
+      const formOpts = Array.isArray(f.options) && f.options.length ? f.options : null;
       let fieldType = f.fieldType || meta.FieldType || 'Text';
-      if (metaOpts && (meta.FieldType === 'Autocomplete' || fieldType === 'Text')) {
+      if (!formOpts && metaOpts && (meta.FieldType === 'Autocomplete' || fieldType === 'Text')) {
         fieldType = 'Autocomplete';
       }
       resolvedFieldMap.set(fKey, {
@@ -273,8 +276,8 @@ class V2FormRegistryService {
         FieldType:     fieldType,
         Tier:          meta.Tier          || 'OPTIONAL',
         RequiredMode:  meta.RequiredMode  || 'OPTIONAL',
-        Section:       meta.Section       || 'Property Details',
-        Options:       metaOpts || (f.options || []),
+        Section:       f.section || meta.Section || 'Property Details',
+        Options:       formOpts || metaOpts || [],
         Validation:    f.validation   || meta.Validation   || null,
         DisplayOrder:  f.displayOrder || meta.DisplayOrder || 99,
         Required:      f.required     || false,
@@ -284,17 +287,17 @@ class V2FormRegistryService {
       });
     });
 
-    // 3b. Auto-include additional V2FieldConfig entries that match this context.
-    // Rule: if a FieldConfig row's TransactionType/Category are null (global) OR match the current
-    // form's context, AND the field is Active and not already included, add it.
-    // This makes the form FULLY DYNAMIC — add rows to V2FieldConfig and they appear here.
+    // 3b. Auto-include only fields explicitly scoped to this category.
+    // Unscoped legacy V2FieldConfig rows describe shared metadata, not fields for
+    // every property form; adding them globally caused unrelated controls and
+    // duplicate area/office fields to appear on category-specific forms.
     for (const fc of allFieldConfig) {
       if (fc.Active === false) continue;
       if (seenKeysLower.has(fc.FieldKey.toLowerCase())) continue;
       const txnMatch = !fc.TransactionType || fc.TransactionType === txnType;
-      const catMatch = !fc.Category        || fc.Category        === category;
-      const subMatch = !fc.SubCategory     || fc.SubCategory     === subCategory;
-      if (txnMatch && catMatch && subMatch) {
+      const catMatch = fc.Category === category;
+      const subMatch = !fc.SubCategory || fc.SubCategory === subCategory;
+      if (catMatch && txnMatch && subMatch) {
         seenKeysLower.add(fc.FieldKey.toLowerCase());
         resolvedFieldMap.set(fc.FieldKey, {
           FieldKey:      fc.FieldKey,
