@@ -1304,7 +1304,13 @@ table td,table th{border-color:var(--v2-line)!important}
     const common = ['budgetMin','budgetMax','BudgetMin','BudgetMax','Location1','Location2'];
     if (/plot/i.test(sub) || category === 'Land') return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
     if (category === 'Residential') return new Set([...common,'BHKMin','BHKMax','AreaMin','AreaMax','Furnishing','PropertySource','CompletionStatus','MoveInDate']);
-    if (category === 'Commercial') return new Set([...common,'AreaMin','AreaMax','BusinessType']);
+    if (category === 'Commercial') {
+      const core = new Set([...common,'AreaMin','AreaMax','BusinessType']);
+      if (['Office', 'Co-working Space'].includes(sub)) {
+        ['Furnishing','OfficeSeatsMin','OfficeSeatsMax'].forEach(key => core.add(key));
+      }
+      return core;
+    }
     if (category === 'Industrial') return new Set([...common,'AreaMin','AreaMax','ZoneType','PowerLoad']);
     if (category === 'Land') return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
     if (category === 'Agriculture') return new Set([...common,'TotalArea','SoilType','WaterSource']);
