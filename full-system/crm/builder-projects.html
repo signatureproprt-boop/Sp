@@ -1403,9 +1403,9 @@ html body{background-image:none!important;background:#f7f7f5!important}
         const layout = [c.BHK != null && !hasBhkInType ? `${c.BHK} BHK` : '', type].filter(Boolean).join(' ');
         const areas = [
           c.AreaSqft != null ? `${c.AreaSqft} sqft` : '',
-          c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : '',
+          c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : 'Carpet: not provided',
           c.BuiltUpAreaSqft != null ? `${c.BuiltUpAreaSqft} built-up sqft` : '',
-          c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : '',
+          c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : 'Saleable / super built-up: not provided',
           c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} terrace sqft` : ''
         ].filter(Boolean);
         facts.push([c.Tower ? `Tower ${c.Tower}` : '', c.FlatType ? `Unit ${c.FlatType}` : '', layout, ...areas, c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : ''].filter(Boolean).join(' · '));
@@ -2055,7 +2055,8 @@ html body{background-image:none!important;background:#f7f7f5!important}
       configRows = (typeof groupedConfigDetails === 'function' ? groupedConfigDetails(d.ConfigDetails) : d.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null, PriceMin: c.PriceMin ?? '', PriceMax: c.PriceMax ?? '', FloorPlanMediaID: '', ...retainedMetadata(c) }));
       renderConfigRowsUI();
     }
-    updateCategoryConfiguration();
+    if (typeof updateCategoryConfiguration === 'function') updateCategoryConfiguration();
+    else if (typeof renderConfigRowsUI === 'function') renderConfigRowsUI();
   }
 
   function closeProjectModal() { document.getElementById('project-modal').classList.add('hidden'); }
