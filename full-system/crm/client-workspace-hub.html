@@ -88,12 +88,13 @@ table td,table th{border-color:var(--v2-line)!important}
 <section class="head"><div><h1>Clients</h1><p>One client, one lifetime record — manage every purchase, sale, rent and property relationship from one workspace.</p></div><button class="primary" onclick="openNewClient()">＋ New Client</button></section>
 <section class="client-controls" aria-label="Client views and status">
 <div class="status-tabs" role="group" aria-label="Client status filters">
-<button class="chip active" data-status="" aria-pressed="true" onclick="setStatus('')">Active Clients</button>
+<button class="chip active" data-status="New" aria-pressed="true" onclick="setStatus('New')">New Leads</button>
 <button class="chip" data-status="Follow-up" aria-pressed="false" onclick="setStatus('Follow-up')">Follow-up</button>
+<button class="chip" data-bucket="activeRequirements" aria-pressed="false" onclick="setBucket('activeRequirements')">Active Requirements</button>
 <button class="chip" data-status="Site Visit" aria-pressed="false" onclick="setStatus('Site Visit')">Site Visit</button>
-<button class="chip" data-status="New" aria-pressed="false" onclick="setStatus('New')">New</button>
-<button class="chip" data-status="Contacted" aria-pressed="false" onclick="setStatus('Contacted')">Contacted</button>
+<button class="chip" data-status="Negotiation" aria-pressed="false" onclick="setStatus('Negotiation')">Negotiation</button>
 <button class="chip" data-status="Lost" aria-pressed="false" onclick="setStatus('Lost')">Lost</button>
+<button class="chip" data-bucket="all" aria-pressed="false" onclick="setBucket('all')">All Clients</button>
 </div>
 <div class="view-switch" role="group" aria-label="Display view"><button class="chip active" data-view="card" aria-pressed="true" onclick="setView('card')">Card View</button><button class="chip" data-view="list" aria-pressed="false" onclick="setView('list')">List View</button></div>
 </section>
@@ -114,7 +115,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="filters">
 <div class="filter-wrap"><label>Lead Sheet</label><select id="sourceTab" onchange="load(true)"><option value="">All Sheets</option><option value="Sale">Sale Sheet</option><option value="Comm">Comm Sheet</option><option value="Rent">Rent Sheet</option></select></div>
 <div class="filter-wrap"><label>Property Type</label><select id="category" onchange="load(true)"><option value="">All Types</option><option>Residential</option><option>Commercial</option><option>Industrial</option><option>Land</option><option>Agriculture</option></select></div>
-<div class="filter-wrap"><label>Status</label><select id="status" onchange="setStatus(this.value)"><option value="">Active Clients</option><option>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Site Visit</option><option>Negotiation</option><option>Won</option><option>Lost</option></select></div>
+<div class="filter-wrap"><label>Status</label><select id="status" onchange="setStatus(this.value)"><option value="">All statuses</option><option selected>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Site Visit</option><option>Negotiation</option><option>Won</option><option>Lost</option></select></div>
 <div class="filter-wrap"><label>Client Type</label><select id="clientType" onchange="load(true)"><option value="">All Clients</option><option value="investor">Investors</option><option value="normal">Non-Investors</option></select></div>
 <div class="filter-wrap"><label>Budget</label><select id="budget" onchange="load(true)"><option value="">Any Budget</option><option value="under50">Under ₹50L</option><option value="50to100">₹50L–₹1Cr</option><option value="100to200">₹1–2Cr</option><option value="over200">₹2Cr+</option></select></div>
 <div class="filter-wrap"><label>Location</label><input id="location" placeholder="Surat / area" oninput="scheduleLoad()"></div>
