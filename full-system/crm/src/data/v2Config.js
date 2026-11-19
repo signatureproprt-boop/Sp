@@ -321,8 +321,9 @@ for (const transactionType of TRANSACTION_TYPES) {
 
 function buildCommonFields(txnType) {
   const isMonthlyRent = txnType === 'Rent' || txnType === 'Rent Out';
-  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : 'Budget Min (₹)';
-  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : 'Budget Max (₹)';
+  const isLease = txnType === 'Lease' || txnType === 'Lease Out';
+  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : isLease ? 'Lease Budget Min (₹)' : 'Budget Min (₹)';
+  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : isLease ? 'Lease Budget Max (₹)' : 'Budget Max (₹)';
   return {
     budgetMin: field('budgetMin', budgetMinLabel, 'Number', false, 1, { validation: 'positive-number', budgetRole: 'min' }),
     budgetMax: field('budgetMax', budgetMaxLabel, 'Number', false, 2, { validation: 'positive-number', budgetRole: 'max' }),
@@ -360,7 +361,7 @@ function buildRentSpecificFields(txnType) {
 
 function buildPropertySourceFields(txnType) {
   return txnType === 'Purchase'
-    ? { propertySource: field('PropertySource', 'Property Type', 'Select', false, 12, { options: ['Resale', 'New Project', 'Both'] }) }
+    ? { propertySource: field('PropertySource', 'Project / Resale Preference', 'Select', false, 12, { options: ['Resale', 'New Project', 'Both'] }) }
     : {};
 }
 
@@ -377,13 +378,12 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
       ...buildCommonFields(txnType),
       ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       ...buildPropertySourceFields(txnType),
-      propertyCondition: field('PropertyCondition', 'Property Condition', 'Select', false, 13, { options: ['New', 'Resale - Ready to Move', 'Resale - Occupied', 'Needs Renovation', 'Under Construction', 'Unfinished / Incomplete'] }),
       bhkMin: field('BHKMin', 'BHK Min', 'Select', false, 20, { options: bhkOptions }),
       bhkMax: field('BHKMax', 'BHK Max', 'Select', false, 21, { options: bhkOptions }),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 22, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 23, { validation: 'positive-number' }),
       furnishing: field('Furnishing', 'Furnishing', 'Select', false, 24, { options: ['Unfurnished', 'Semi-Furnished', 'Fully Furnished', 'Any'] }),
-      completionStatus: field('CompletionStatus', 'Construction / Completion Status', 'Select', false, 24.5, { options: ['Ready to Move', 'Under Construction', 'New Launch', 'Unfinished / Incomplete', 'Renovation Required', 'Any'] }),
+      completionStatus: field('CompletionStatus', 'Property Condition / Construction Status', 'Select', false, 24.5, { options: ['Ready to Move', 'Under Construction', 'New Launch', 'Resale - Occupied', 'Unfinished / Incomplete', 'Renovation Required', 'Any'] }),
       propertyAge: field('PropertyAge', 'Property Age (years)', 'Number', false, 24.7, { validation: 'positive-number' }),
       facing: field('Facing', 'Facing', 'Select', false, 25, { options: ['East', 'West', 'North', 'South', 'North-East', 'North-West', 'South-East', 'South-West'] }),
       floor: field('Floor', 'Floor Preference', 'Select', false, 26, { options: ['Ground', 'Low (1-5)', 'Mid (6-15)', 'High (16+)', 'Any'] }),
