@@ -1302,7 +1302,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const category = config?.category || '';
     const sub = config?.subCategory || '';
     const common = ['budgetMin','budgetMax','BudgetMin','BudgetMax','Location1','Location2'];
-    if (category === 'Residential' && /plot/i.test(sub)) return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
+    if (/plot/i.test(sub) || category === 'Land') return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
     if (category === 'Residential') return new Set([...common,'BHKMin','BHKMax','AreaMin','AreaMax','Furnishing','PropertySource','CompletionStatus','MoveInDate']);
     if (category === 'Commercial') return new Set([...common,'AreaMin','AreaMax','BusinessType']);
     if (category === 'Industrial') return new Set([...common,'AreaMin','AreaMax','ZoneType','PowerLoad']);
