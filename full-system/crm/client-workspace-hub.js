@@ -256,7 +256,17 @@ async function createClient(){
  finally{creatingClient=false}
 }
 document.getElementById('grid')?.addEventListener('click',handleClientCardAction);
-document.getElementById('grid')?.addEventListener('change',function(event){if(event.target.matches('[data-call-outcome]')){const card=event.target.closest('.client-card');const wrap=card?.querySelector('[data-lost-reason-wrap]');if(wrap)wrap.hidden=!['NOT_INTERESTED','WRONG_NUMBER'].includes(event.target.value)}});
+document.getElementById('grid')?.addEventListener('change',function(event){
+ if(!event.target.matches('[data-call-outcome]'))return;
+ const card=event.target.closest('.client-card'),result=event.target.value;
+ const wrap=card?.querySelector('[data-lost-reason-wrap]'),save=card?.querySelector('[data-card-action="save-call"]');
+ if(wrap)wrap.hidden=!['NOT_INTERESTED','WRONG_NUMBER'].includes(result);
+ if(save)save.textContent=result==='CONNECTED_REQUIREMENT'?'Save & Add Requirement →':'Save call';
+ if(result==='CONNECTED_REQUIREMENT'){
+  const date=card.querySelector('[data-followup-date]'),time=card.querySelector('[data-followup-time]');
+  if(date)date.value='';if(time)time.value='';
+ }
+});
 
 async function handleClientCardAction(event){
  const button=event.target.closest('[data-card-action]');
@@ -354,6 +364,10 @@ async function saveCardCall(card,button){
    statusRes=await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(leadId)+'/lost',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LostReason:reason,LostNote:note||null})});
   }
   if(!statusRes.ok)throw new Error(statusRes.error||'Stage update failed');
+  if(outcome==='CONNECTED_REQUIREMENT'){
+   window.location.href='/client-workspace?id='+encodeURIComponent(leadId)+'&openRequirement=1';
+   return;
+  }
   error.textContent='Call log saved.';
   load(true);
  }catch(e){button.disabled=false;error.textContent='Save confirm nahi hua: '+e.message+'. Retry se pehle client ka Call Log check karein.'}
