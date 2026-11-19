@@ -849,9 +849,30 @@ table td,table th{border-color:var(--v2-line)!important}
         </div>
         <div class="form-group"><label>Transaction (optional)</label><select id="act-txn"></select></div>
         <div class="form-group"><label>Requirement (optional)</label><select id="act-req"></select></div>
-        <div class="form-group"><label>Outcome (optional)</label><input id="act-outcome" type="text" placeholder="Connected / voicemail / message drafted" /></div>
+        <div class="form-group full hidden" id="act-call-result-group"><label>Call result *</label>
+          <select id="act-call-result" onchange="updateCallResultFields()">
+            <option value="">Choose what happened</option>
+            <option value="CONNECTED_REQUIREMENT">Baat hui — requirement mili</option>
+            <option value="CONNECTED_NO_REQUIREMENT">Baat hui — abhi requirement nahi</option>
+            <option value="NO_ANSWER">Phone nahi uthaya</option>
+            <option value="PHONE_OFF">Phone band</option>
+            <option value="BUSY">Busy</option>
+            <option value="CALLBACK_REQUESTED">Callback bola</option>
+            <option value="NOT_INTERESTED">Interested nahi</option>
+            <option value="WRONG_NUMBER">Wrong number</option>
+          </select>
+          <small id="act-call-result-hint" style="color:var(--clr-text-light)"></small>
+        </div>
+        <div class="form-group full hidden" id="act-lost-reason-group"><label>Lost reason *</label>
+          <select id="act-lost-reason">
+            <option value="">Choose reason</option>
+            <option>Not interested</option><option>Wrong number</option><option>Bought elsewhere</option>
+            <option>Budget mismatch</option><option>Location mismatch</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group" id="act-outcome-group"><label>Outcome (optional)</label><input id="act-outcome" type="text" placeholder="Add a short note" /></div>
         <div class="form-group"><label>Next Action (optional)</label><input id="act-next-action" type="text" placeholder="Call again tomorrow" /></div>
-        <div class="form-group"><label>Follow-up Date (optional)</label><input id="act-followup-date" type="date" /></div>
+        <div class="form-group"><label id="act-followup-date-label">Follow-up Date (optional)</label><input id="act-followup-date" type="date" /></div>
         <div class="form-group"><label>Follow-up Time (optional)</label><input id="act-followup-time" type="time" /></div>
         <div class="form-group full"><label>Notes</label><textarea id="act-notes" rows="3" placeholder="What happened…"></textarea></div>
       </div>
@@ -1320,6 +1341,12 @@ table td,table th{border-color:var(--v2-line)!important}
     buildSourceSelects();
     await loadWorkspace();
     setupTabs();
+    const startCall = new URLSearchParams(location.search).get('startCall') === '1';
+    if (workspace?.lead && startCall) {
+      window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
+      await callClient();
+      return;
+    }
     if (workspace?.lead) openEditModal();
   }
 
@@ -2854,6 +2881,8 @@ table td,table th{border-color:var(--v2-line)!important}
     modal.dataset.activityId = options.activityId || '';
     modal.dataset.summary = options.summary || '';
     modal.dataset.mode = options.mode || 'manual';
+    modal.dataset.activityType = options.type || 'NOTE';
+    modal.dataset.followupRequestId = '';
     document.getElementById('activity-modal-title').textContent = options.title || (options.mode === 'interaction' ? 'Update Interaction' : 'Log Activity');
     populateActivitySelectors(options.transactionId || '', options.requirementId || '');
     document.getElementById('act-type').value = options.type || 'NOTE';
@@ -2862,11 +2891,59 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('act-notes').value = options.notes || '';
     document.getElementById('act-followup-date').value = options.followUpDate || '';
     document.getElementById('act-followup-time').value = options.followUpTime || '';
+    document.getElementById('act-call-result').value = options.callResult || '';
+    document.getElementById('act-lost-reason').value = '';
+    updateCallResultFields();
     const context = document.getElementById('act-context');
     context.textContent = options.context || '';
     context.classList.toggle('hidden', !options.context);
     document.getElementById('act-error').textContent = '';
     modal.classList.remove('hidden');
+  }
+
+  function updateCallResultFields() {
+    const modal = document.getElementById('activity-modal');
+    const isCallInteraction = modal.dataset.mode === 'interaction' && modal.dataset.activityType === 'CALL';
+    const result = document.getElementById('act-call-result').value;
+    document.getElementById('act-call-result-group').classList.toggle('hidden', !isCallInteraction);
+    document.getElementById('act-outcome-group').classList.toggle('hidden', isCallInteraction);
+    const lost = isCallInteraction && ['NOT_INTERESTED', 'WRONG_NUMBER'].includes(result);
+    document.getElementById('act-lost-reason-group').classList.toggle('hidden', !lost);
+    if (lost && !document.getElementById('act-lost-reason').value) {
+      document.getElementById('act-lost-reason').value = result === 'WRONG_NUMBER' ? 'Wrong number' : 'Not interested';
+    }
+    const needsFollowUp = isCallInteraction && ['NO_ANSWER', 'PHONE_OFF', 'BUSY', 'CALLBACK_REQUESTED'].includes(result);
+    document.getElementById('act-followup-date-label').textContent = needsFollowUp ? 'Next follow-up date *' : 'Follow-up Date (optional)';
+    const hint = document.getElementById('act-call-result-hint');
+    hint.textContent = needsFollowUp ? 'Follow-up date zaroor select karein; client Follow-up list mein jayega.' :
+      result === 'CONNECTED_REQUIREMENT' ? 'Save ke baad requirement form khulega.' :
+      result === 'CONNECTED_NO_REQUIREMENT' ? 'Client Contacted / Pending list mein jayega.' :
+      lost ? 'Lost reason save hoga aur client Lost list mein jayega.' : '';
+  }
+
+  async function updateCallResultClientStatus(nextStatus, followUpAt, nextAction) {
+    const rawStatus = String(workspace?.lead?.ClientStatus || workspace?.lead?.LeadStatus || 'New').trim();
+    const isLost = ['Lost', 'Inactive', 'Blacklisted'].includes(rawStatus);
+    const update = async (status, reactivation = false) => fetch(
+      reactivation
+        ? '/api/v2/clients/' + encodeURIComponent(LEAD_ID) + '/reactivate'
+        : '/api/v2/clients/' + encodeURIComponent(LEAD_ID),
+      {
+        method: reactivation ? 'POST' : 'PATCH',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          ClientStatus: status,
+          ...(followUpAt ? { NextFollowUpAt: followUpAt, NextActionType: 'Call', NextActionNote: nextAction || null } : {})
+        })
+      }
+    ).then(r => r.json());
+    if (isLost && nextStatus !== 'Lost') {
+      const reactivated = await update('Contacted', true);
+      if (!reactivated.ok) return reactivated;
+      if (nextStatus === 'Contacted') return reactivated;
+      return update(nextStatus);
+    }
+    return update(nextStatus);
   }
 
   async function saveActivity() {
@@ -2879,8 +2956,37 @@ table td,table th{border-color:var(--v2-line)!important}
     const transactionId = document.getElementById('act-txn').value || null;
     const requirementId = document.getElementById('act-req').value || null;
     const notes = document.getElementById('act-notes').value.trim();
-    const outcome = document.getElementById('act-outcome').value.trim();
+    const isInteraction = modal.dataset.mode === 'interaction';
+    const isCallInteraction = isInteraction && modal.dataset.activityType === 'CALL';
+    const callResult = isCallInteraction ? document.getElementById('act-call-result').value : '';
+    const callResultLabels = {
+      CONNECTED_REQUIREMENT: 'Baat hui — requirement mili',
+      CONNECTED_NO_REQUIREMENT: 'Baat hui — abhi requirement nahi',
+      NO_ANSWER: 'Phone nahi uthaya',
+      PHONE_OFF: 'Phone band',
+      BUSY: 'Busy',
+      CALLBACK_REQUESTED: 'Callback bola',
+      NOT_INTERESTED: 'Interested nahi',
+      WRONG_NUMBER: 'Wrong number'
+    };
+    const callOutcome = callResultLabels[callResult] || '';
+    const outcome = isCallInteraction ? callOutcome : document.getElementById('act-outcome').value.trim();
     const nextAction = document.getElementById('act-next-action').value.trim();
+    const followUpResults = ['NO_ANSWER', 'PHONE_OFF', 'BUSY', 'CALLBACK_REQUESTED'];
+    const lostResults = ['NOT_INTERESTED', 'WRONG_NUMBER'];
+    if (isCallInteraction && !callResult) {
+      document.getElementById('act-error').textContent = 'Call result choose karein';
+      return;
+    }
+    if (followUpResults.includes(callResult) && !followUpAt) {
+      document.getElementById('act-error').textContent = 'No answer / callback ke liye next follow-up date zaroori hai';
+      return;
+    }
+    const lostReason = lostResults.includes(callResult) ? document.getElementById('act-lost-reason').value : '';
+    if (lostResults.includes(callResult) && !lostReason) {
+      document.getElementById('act-error').textContent = 'Lost reason choose karein';
+      return;
+    }
     const basePayload = {
       LeadID: LEAD_ID,
       ActivityType: activityType,
@@ -2890,20 +2996,19 @@ table td,table th{border-color:var(--v2-line)!important}
       NextAction: nextAction || null,
       FollowUpDate: followUpAt || null
     };
-    const isInteraction = modal.dataset.mode === 'interaction';
-    const summary = modal.dataset.summary || (isInteraction
-      ? `${activityType === 'CALL' ? 'Call' : 'WhatsApp'} initiated`
-      : `${activityType.replace(/_/g, ' ')} logged`);
+    const summary = isCallInteraction
+      ? 'Call — ' + outcome
+      : (modal.dataset.summary || (isInteraction
+        ? (activityType === 'CALL' ? 'Call' : 'WhatsApp') + ' initiated'
+        : activityType.replace(/_/g, ' ') + ' logged'));
     const payload = modal.dataset.activityId
       ? { ...basePayload, Summary: summary }
       : { ...basePayload, Summary: summary, Notes: notes };
-    if (modal.dataset.activityId) {
-      payload.Notes = notes;
-    }
+    if (modal.dataset.activityId) payload.Notes = notes;
     try {
       let res;
       if (modal.dataset.activityId) {
-        res = await fetch(`/api/v2/activities/${encodeURIComponent(modal.dataset.activityId)}`, {
+        res = await fetch('/api/v2/activities/' + encodeURIComponent(modal.dataset.activityId), {
           method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
         }).then(r => r.json());
       } else {
@@ -2916,16 +3021,19 @@ table td,table th{border-color:var(--v2-line)!important}
         return;
       }
       if (followUpAt) {
+        const requestId = modal.dataset.followupRequestId || (modal.dataset.followupRequestId = crypto.randomUUID());
         const fuRes = await fetch('/api/v2/followups', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({
             LeadID: LEAD_ID,
+            ClientRequestID: requestId,
+            ActivityID: res.data?.ActivityID || modal.dataset.activityId || null,
             TransactionID: transactionId,
             RequirementID: requirementId,
             ActivityType: activityType,
             DueAt: followUpAt,
-            Notes: nextAction || notes || outcome || `${activityType.replace(/_/g, ' ')} follow-up`,
+            Notes: nextAction || notes || outcome || activityType.replace(/_/g, ' ') + ' follow-up',
             Priority: 'Medium'
           })
         }).then(r => r.json());
@@ -2934,8 +3042,27 @@ table td,table th{border-color:var(--v2-line)!important}
           return;
         }
       }
+      if (isCallInteraction) {
+        let statusResult = { ok: true };
+        if (followUpResults.includes(callResult)) {
+          statusResult = await updateCallResultClientStatus('Follow-up', followUpAt, nextAction || callOutcome);
+        } else if (callResult === 'CONNECTED_REQUIREMENT' || callResult === 'CONNECTED_NO_REQUIREMENT') {
+          statusResult = await updateCallResultClientStatus('Contacted', '', '');
+        } else if (lostResults.includes(callResult)) {
+          statusResult = await fetch('/api/v2/clients/' + encodeURIComponent(LEAD_ID) + '/lost', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ LostReason: lostReason, LostNote: notes || null })
+          }).then(r => r.json());
+        }
+        if (!statusResult.ok) {
+          document.getElementById('act-error').textContent = statusResult.error || 'Call result save failed';
+          return;
+        }
+      }
       closeModal('activity-modal');
       await loadWorkspace();
+      if (isCallInteraction && callResult === 'CONNECTED_REQUIREMENT') await openAddNeedModal();
     } catch(e) { document.getElementById('act-error').textContent = e.message; }
   }
 
