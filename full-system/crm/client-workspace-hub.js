@@ -304,7 +304,7 @@ async function loadCardBrokers(card,button){
 function brokerShareMessage(share){
  const url=location.origin+'/share/req/'+share.Token;
  const note=cardShareNote||'';
- return 'Signature Properties — Property Requirement\\n\\nHi '+(share.BrokerName||'')+',\\n\\nAapke network me matching property ho to is secure link se details dekhein aur property submit karein:\\n'+url+'\\n\\nClient ka naam, mobile aur email private rahenge. Aapko sirf requirement details dikhengi.'+(note?'\\n\\nNote: '+note:'');
+ return 'Signature Properties — Property Requirement\n\nHi '+(share.BrokerName||'')+',\n\nAapke network me matching property ho to is secure link se details dekhein aur property submit karein:\n'+url+'\n\nClient ka naam, mobile aur email private rahenge. Aapko sirf requirement details dikhengi.'+(note?'\n\nNote: '+note:'');
 }
 let cardShareNote='';
 async function sendCardRequirementToBrokers(card,button){
