@@ -1216,7 +1216,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
   function groupLabel(project, dimension) {
     const raw = String(project[dimension === 'category' ? 'Category' : dimension === 'location' ? 'Location1' : 'BuilderName'] || '').trim().replace(/\s+/g, ' ');
     if (!raw) return dimension === 'category' ? 'Uncategorized' : dimension === 'location' ? 'Location not set' : 'Unknown Builder';
-    if (dimension === 'category') return categoryLabel(raw) || 'Category needs review';
+    if (dimension === 'category') return ['Residential','Commercial','Industrial','Land','Agriculture'].find(category => category.toLowerCase() === raw.toLowerCase()) || 'Category needs review';
     if (dimension === 'location') return SURAT_AREAS.find(area => area.toLowerCase() === raw.toLowerCase()) || raw;
     return isUsableBuilderName(raw) ? raw : 'Builder name needs review';
   }
