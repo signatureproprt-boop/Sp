@@ -1399,7 +1399,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
       groupedConfigDetails(p.ConfigDetails).forEach(c => {
         const type = String(c.Type || '').trim();
-        const hasBhkInType = /\\b\\d+(?:\\.5)?\\s*bhk\\b/i.test(type);
+        const hasBhkInType = /\b\d+(?:\.5)?\s*bhk\b/i.test(type);
         const layout = [c.BHK != null && !hasBhkInType ? `${c.BHK} BHK` : '', type].filter(Boolean).join(' ');
         const areas = [
           c.AreaSqft != null ? `${c.AreaSqft} sqft` : '',
