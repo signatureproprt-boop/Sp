@@ -161,23 +161,58 @@ function render(){
  grid.classList.toggle('list-view',CLIENT_VIEW==='list');
  if(!rows.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No clients found for the selected filters.</div>';return}
  if(CLIENT_VIEW==='list'){grid.innerHTML=renderList(rows);return}
- grid.innerHTML=rows.map(c=>{
-  const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status,score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
-  const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'',cat=needValue(r,['Category','category'])||'';
-  const stamp=c._lastContact;
-  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(statusLabel)+'</span></div>'+
-  '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source" style="background:#f3e8ff;color:#6b21a8">Investor</span>':'')+'</div>'+
-  '<div class="phone">📞 '+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</div>'+
-  '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</div>'+
-  '<div style="font-size:10px;color:var(--muted);margin-bottom:7px">'+
-    (c.Priority?('Priority: '+esc(c.Priority)):'')+
-    (c.NextActionType?(' · Next: '+esc(c.NextActionType)):'')+
-    (c.NextFollowUpAt?(' · '+esc(new Date(c.NextFollowUpAt).toLocaleString('en-IN'))):'')+
-  '</div>'+
-  '<div class="meta"><div><span>Active needs</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open deals</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
-  '<div style="font-size:10px;color:var(--muted);margin-top:9px">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
-  '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
- }).join('')
+ grid.innerHTML=rows.map(renderClientCard).join('');
+}
+function localDateInput(value){
+ if(!value)return '';
+ const d=new Date(value);
+ if(Number.isNaN(d.getTime()))return '';
+ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+function localTimeInput(value){
+ if(!value)return '';
+ const d=new Date(value);
+ if(Number.isNaN(d.getTime()))return '';
+ return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(11,16);
+}
+function renderClientCard(c){
+ const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus);
+ const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status;
+ const statusClass=String(statusLabel||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+ const leadId=String(c.LeadID||''),needId=String(needValue(r,['RequirementID','requirementId','ReqID'])||'');
+ const txn=needValue(r,['TransactionType','transactionType','Transaction'])||c.RequirementType||'';
+ const cat=needValue(r,['SubCategory','Category','category'])||c.PropertyType||'';
+ const loc=needValue(r,['Location1','Location','location'])||c.Area||c.Location1||'';
+ const budget=fmtBudget(r),stamp=c._lastContact;
+ const phone=safePhone(c.PrimaryMobile||c.Phone);
+ const summary=(r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending');
+ const next=c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'Follow-up not scheduled';
+ const lost=status==='Lost';
+ const lostReason=c.LostReason||c.LossReason||c.ReasonLost||'Reason not recorded';
+ const lostDate=c.LostAt||c.LostDate||c.UpdatedAt||'';
+ const head='<div class="card-head client-card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(leadId)+'</div></div><span class="status status-'+esc(statusClass)+'">'+esc(statusLabel)+'</span></div>'+
+  '<div class="client-tags">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source investor-tag">Investor</span>':'')+'</div>'+
+  '<div class="client-requirement"><div class="client-requirement-label">Requirement</div><div class="client-requirement-text">'+esc(summary)+'</div><div class="client-detail-line">'+(budget!=='—'?'<span>Budget: '+esc(budget)+'</span>':'')+(loc?'<span>Location: '+esc(loc)+'</span>':'')+'</div></div>';
+ if(lost){
+  return '<article class="card client-card" data-lead-id="'+esc(leadId)+'">'+head+
+   '<div class="client-lost-meta"><div><b>Lost reason</b><span>'+esc(lostReason)+'</span></div><div><b>Lost date</b><span>'+esc(lostDate?new Date(lostDate).toLocaleDateString('en-IN'):'—')+'</span></div></div>'+
+   '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="reopen">↻ Reopen</button><a class="client-action" href="/client-workspace?id='+enc(leadId)+'">Open Workspace</a></div></article>';
+ }
+ return '<article class="card client-card" data-lead-id="'+esc(leadId)+'" data-requirement-id="'+esc(needId)+'">'+head+
+  '<div class="client-next"><span class="client-next-label">Next follow-up</span><span>'+esc(next)+'</span></div>'+
+  '<div class="client-last-contact">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
+  '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="toggle-call">☎ Call Log</button><button class="client-action" type="button" data-card-action="toggle-share">↗ Share Requirement</button><button class="client-action" type="button" data-card-action="quick-update">✎ Quick Update</button></div>'+
+  '<a class="client-workspace-link" href="/client-workspace?id='+enc(leadId)+'">Open Workspace →</a>'+
+  '<section class="client-popover client-call-popover" data-client-popover="call" hidden><div class="client-popover-head"><b>Log a call</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
+   '<label>Call outcome<select data-call-outcome><option value="">Choose result</option><option value="CONNECTED_REQUIREMENT">Baat hui — requirement mili</option><option value="CONNECTED_NO_REQUIREMENT">Baat hui — abhi requirement nahi</option><option value="NO_ANSWER">Phone nahi uthaya</option><option value="PHONE_OFF">Phone band</option><option value="BUSY">Busy</option><option value="CALLBACK_REQUESTED">Callback bola</option><option value="NOT_INTERESTED">Interested nahi</option><option value="WRONG_NUMBER">Wrong number</option></select></label>'+
+   '<label data-lost-reason-wrap hidden>Lost reason<select data-lost-reason><option value="">Choose reason</option><option>Not interested</option><option>Wrong number</option><option>Budget mismatch</option><option>Bought elsewhere</option><option>Requirement fulfilled</option><option>Other</option></select></label>'+
+   '<label>Call note <textarea data-call-note rows="2" placeholder="Short note about the call"></textarea></label>'+
+   '<div class="client-followup-fields"><label>Next date<input type="date" data-followup-date value="'+esc(localDateInput(c.NextFollowUpAt))+'"></label><label>Time<input type="time" data-followup-time value="'+esc(localTimeInput(c.NextFollowUpAt))+'"></label></div>'+
+   '<div class="client-popover-error" role="alert" data-call-error></div><div class="client-popover-actions"><button type="button" class="client-action primary-action" data-card-action="save-call">Save call</button><a class="client-phone-link" '+(phone?'href="tel:'+esc(phone)+'"':'aria-disabled="true"')+'>'+ (phone?'Call client':'Phone unavailable')+'</a></div></section>'+
+  '<section class="client-popover client-share-popover" data-client-popover="share" hidden><div class="client-popover-head"><b>Share requirement</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
+   '<div class="client-share-options"><a class="client-share-option" href="/client-workspace?id='+enc(leadId)+'">⌂ Match in Inventory <small>Open Smart Match for this requirement</small></a><button type="button" class="client-share-option" data-card-action="load-brokers">♧ Send to Broker Network <small>Only requirement details are shared</small></button><button type="button" class="client-share-option" data-card-action="copy-requirement">▣ Copy Requirement Summary <small>No client name or phone is copied</small></button></div>'+
+   '<div class="client-broker-panel" data-broker-panel hidden><div data-broker-list>Loading active brokers…</div><label>Optional note<textarea rows="2" data-broker-note placeholder="Add a short note for brokers"></textarea></label><div class="client-popover-error" role="alert" data-broker-error></div><button type="button" class="client-action primary-action" data-card-action="send-brokers">Create secure share links</button><div data-broker-results></div></div></section>'+
+  '<section class="client-popover client-quick-popover" data-client-popover="quick" hidden><div class="client-popover-head"><b>Quick update</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div><p>Requirement details aur stage history ke liye client workspace kholen.</p><a class="client-action primary-action" href="/client-workspace?id='+enc(leadId)+'">Open Workspace</a></section></article>';
 }
 function renderPager(){
  const el=document.getElementById('pager'),p=queryState;
@@ -220,6 +255,110 @@ async function createClient(){
  }catch(e){err.textContent=e.responseReceived&&e.statusCode<500?e.message:('Save could not be confirmed: '+e.message+'. Search this mobile before retrying; the request may still complete.')}
  finally{creatingClient=false}
 }
+document.getElementById('grid')?.addEventListener('click',handleClientCardAction);
+document.getElementById('grid')?.addEventListener('change',function(event){if(event.target.matches('[data-call-outcome]')){const card=event.target.closest('.client-card');const wrap=card?.querySelector('[data-lost-reason-wrap]');if(wrap)wrap.hidden=!['NOT_INTERESTED','WRONG_NUMBER'].includes(event.target.value)}});
+
+async function handleClientCardAction(event){
+ const button=event.target.closest('[data-card-action]');
+ if(!button)return;
+ const card=button.closest('.client-card');
+ if(!card)return;
+ const action=button.dataset.cardAction;
+ const hidePanels=()=>{card.querySelectorAll('[data-client-popover]').forEach(p=>p.hidden=true);card.classList.remove('is-open')};
+ if(action==='close-popovers'){hidePanels();return}
+ if(action==='toggle-call'||action==='toggle-share'||action==='quick-update'){
+  const name=action==='toggle-call'?'call':action==='toggle-share'?'share':'quick';
+  const panel=card.querySelector('[data-client-popover="'+name+'"]'),wasOpen=panel&&!panel.hidden;
+  hidePanels();if(panel&&!wasOpen){panel.hidden=false;card.classList.add('is-open')}
+  return;
+ }
+ if(action==='reopen'){
+  button.disabled=true;
+  try{await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(card.dataset.leadId)+'/reactivate',{method:'POST',credentials:'include'});load(true)}
+  catch(e){button.disabled=false;alert('Client reopen nahi hua: '+e.message)}
+  return;
+ }
+ if(action==='load-brokers'){await loadCardBrokers(card,button);return}
+ if(action==='send-brokers'){await sendCardRequirementToBrokers(card,button);return}
+ if(action==='copy-requirement'){await copyCardRequirement(card);return}
+ if(action==='save-call'){await saveCardCall(card,button);return}
+}
+async function loadCardBrokers(card,button){
+ const panel=card.querySelector('[data-broker-panel]'),list=card.querySelector('[data-broker-list]'),error=card.querySelector('[data-broker-error]');
+ panel.hidden=!panel.hidden;
+ if(panel.hidden)return;
+ error.textContent='';
+ const reqId=card.dataset.requirementId;
+ if(!reqId){list.textContent='Confirmed requirement nahi mili. Pehle Quick Update / Workspace mein requirement save karein.';return}
+ if(list.dataset.loaded==='true')return;
+ button.disabled=true;
+ try{
+  const j=await fetchJsonWithTimeout('/api/v2/broker-network?active=true',{credentials:'include'});
+  const brokers=Array.isArray(j.data)?j.data:[];
+  if(!brokers.length){list.innerHTML='<div class="client-empty-brokers">Active broker nahi mile. Broker Network mein broker add karein.</div>';return}
+  list.innerHTML=brokers.map(b=>'<label class="client-broker-row"><input type="checkbox" value="'+esc(b.NetworkBrokerID)+'"><span><b>'+esc(b.Name||'Broker')+'</b><small>'+esc(b.Agency||'Independent broker')+' · '+esc(b.TrustLevel||'')+'</small></span></label>').join('');
+  list.dataset.loaded='true';
+ }catch(e){error.textContent='Broker list load nahi hui: '+e.message}
+ finally{button.disabled=false}
+}
+function brokerShareMessage(share){
+ const url=location.origin+'/share/req/'+share.Token;
+ const note=cardShareNote||'';
+ return 'Signature Properties — Property Requirement\n\nHi '+(share.BrokerName||'')+',\n\nAapke network me matching property ho to is secure link se details dekhein aur property submit karein:\n'+url+'\n\nClient ka naam, mobile aur email private rahenge. Aapko sirf requirement details dikhengi.'+(note?'\n\nNote: '+note:'');
+}
+let cardShareNote='';
+async function sendCardRequirementToBrokers(card,button){
+ const reqId=card.dataset.requirementId,error=card.querySelector('[data-broker-error]'),list=card.querySelector('[data-broker-list]'),results=card.querySelector('[data-broker-results]');
+ const selected=Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map(x=>x.value);
+ if(!reqId){error.textContent='Confirmed requirement nahi mili. Pehle requirement save karein.';return}
+ if(!selected.length){error.textContent='Kam se kam ek broker select karein.';return}
+ button.disabled=true;error.textContent='';results.textContent='Share links ban rahe hain…';
+ try{
+  cardShareNote=card.querySelector('[data-broker-note]').value.trim();
+  const j=await fetchJsonWithTimeout('/api/v2/requirements/'+encodeURIComponent(reqId)+'/network-share',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({brokerIds:selected,message:cardShareNote,expiresInDays:30})});
+  const shares=j.data?.shares||[];
+  results.innerHTML=shares.length?'<div class="client-share-success">Secure links ready. Client details private rahenge.</div>'+shares.map(s=>{const ph=String(s.BrokerPhone||'').replace(/\D/g,'');const msg=encodeURIComponent(brokerShareMessage(s));const url=ph?'https://wa.me/'+ph+'?text='+msg:'https://wa.me/?text='+msg;return '<div class="client-share-result"><b>'+esc(s.BrokerName||'Broker')+'</b><a href="'+url+'" target="_blank" rel="noopener">Open WhatsApp</a></div>'}).join(''):'No share links returned.';
+ }catch(e){results.textContent='';error.textContent='Requirement share nahi hui: '+e.message}
+ finally{button.disabled=false}
+}
+async function copyCardRequirement(card){
+ const summary=card.querySelector('.client-requirement-text')?.textContent||'';
+ const details=Array.from(card.querySelectorAll('.client-detail-line span')).map(x=>x.textContent).join(' · ');
+ const text='Property requirement: '+summary+(details?' · '+details:'');
+ try{await navigator.clipboard.writeText(text);alert('Requirement summary copied. Client details copy nahi hue.')}
+ catch(e){alert('Copy nahi hua. Workspace se summary copy karein.')}
+}
+async function saveCardCall(card,button){
+ const leadId=card.dataset.leadId,select=card.querySelector('[data-call-outcome]'),outcome=select.value;
+ const error=card.querySelector('[data-call-error]'),note=card.querySelector('[data-call-note]').value.trim();
+ const date=card.querySelector('[data-followup-date]').value,time=card.querySelector('[data-followup-time]').value;
+ const reasonWrap=card.querySelector('[data-lost-reason-wrap]'),reason=card.querySelector('[data-lost-reason]').value;
+ const followResults=['NO_ANSWER','PHONE_OFF','BUSY','CALLBACK_REQUESTED'],lostResults=['NOT_INTERESTED','WRONG_NUMBER'];
+ const followAt=date&&time?new Date(date+'T'+time).toISOString():'';
+ if(!outcome){error.textContent='Call ka result select karein.';return}
+ if(followResults.includes(outcome)&&!followAt){error.textContent='Phone nahi uthaya/phone band ho to next follow-up date aur time set karein.';return}
+ if(lostResults.includes(outcome)&&!reason){reasonWrap.hidden=false;error.textContent='Lost reason choose karein.';return}
+ button.disabled=true;error.textContent='Saving…';
+ const labels={CONNECTED_REQUIREMENT:'Baat hui — requirement mili',CONNECTED_NO_REQUIREMENT:'Baat hui — abhi requirement nahi',NO_ANSWER:'Phone nahi uthaya',PHONE_OFF:'Phone band',BUSY:'Busy',CALLBACK_REQUESTED:'Callback bola',NOT_INTERESTED:'Interested nahi',WRONG_NUMBER:'Wrong number'};
+ try{
+  const activity=await fetchJsonWithTimeout('/api/v2/activities',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LeadID:leadId,ActivityType:'CALL',Summary:'Call — '+labels[outcome],Outcome:labels[outcome],Notes:note||null,FollowUpDate:followAt||null,NextAction:followAt?'Call back':null})});
+  if(followAt){
+   await fetchJsonWithTimeout('/api/v2/followups',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LeadID:leadId,ClientRequestID:(crypto.randomUUID?crypto.randomUUID():String(Date.now())),ActivityID:activity.data?.ActivityID||null,ActivityType:'CALL',DueAt:followAt,Notes:note||labels[outcome],Priority:'Medium'})});
+  }
+  let statusRes={ok:true};
+  if(followResults.includes(outcome)){
+   statusRes=await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(leadId),{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({ClientStatus:'Follow-up',NextFollowUpAt:followAt,NextActionType:'Call',NextActionNote:note||labels[outcome]})});
+  }else if(outcome==='CONNECTED_REQUIREMENT'||outcome==='CONNECTED_NO_REQUIREMENT'){
+   statusRes=await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(leadId),{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({ClientStatus:'Contacted',NextFollowUpAt:followAt||null,NextActionType:followAt?'Call':'',NextActionNote:note||null})});
+  }else if(lostResults.includes(outcome)){
+   statusRes=await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(leadId)+'/lost',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LostReason:reason,LostNote:note||null})});
+  }
+  if(!statusRes.ok)throw new Error(statusRes.error||'Stage update failed');
+  error.textContent='Call log saved.';
+  load(true);
+ }catch(e){button.disabled=false;error.textContent='Save confirm nahi hua: '+e.message+'. Retry se pehle client ka Call Log check karein.'}
+}
+
 window.__signatureClientsBooted = true;
 try {
   load();
