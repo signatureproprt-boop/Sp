@@ -1298,6 +1298,19 @@ table td,table th{border-color:var(--v2-line)!important}
     return `<div class="${groupClass}"><label>${esc(lbl)}${tierBadge}</label>${input}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
   }
 
+  function needCoreFieldKeys(config) {
+    const category = config?.category || '';
+    const sub = config?.subCategory || '';
+    const common = ['budgetMin','budgetMax','BudgetMin','BudgetMax','Location1','Location2'];
+    if (category === 'Residential' && /plot/i.test(sub)) return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
+    if (category === 'Residential') return new Set([...common,'BHKMin','BHKMax','AreaMin','AreaMax','Furnishing','PropertySource','CompletionStatus','MoveInDate']);
+    if (category === 'Commercial') return new Set([...common,'AreaMin','AreaMax','BusinessType']);
+    if (category === 'Industrial') return new Set([...common,'AreaMin','AreaMax','ZoneType','PowerLoad']);
+    if (category === 'Land') return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
+    if (category === 'Agriculture') return new Set([...common,'TotalArea','SoilType','WaterSource']);
+    return new Set(common);
+  }
+
   function rerenderDynamicForm(mode, savedValues = null) {
     const state = dynamicFormState[mode];
     if (!state?.config) return;
@@ -1309,19 +1322,22 @@ table td,table th{border-color:var(--v2-line)!important}
       const depState = visibleStates[f.FieldKey] || 'RELEVANT';
       return depState === 'RELEVANT' || depState === 'VISIBLE';
     });
-    const bySection = {};
+    const coreKeys = mode === 'need' ? needCoreFieldKeys(state.config) : null;
+    const groups = { primary: {}, advanced: {} };
     fields.forEach(f => {
       const section = f.Section || 'Details';
-      if (!bySection[section]) bySection[section] = [];
-      bySection[section].push(f);
+      const bucket = !coreKeys || coreKeys.has(f.FieldKey) ? 'primary' : 'advanced';
+      if (!groups[bucket][section]) groups[bucket][section] = [];
+      groups[bucket][section].push(f);
     });
-    const order = ['Budget','Location','Property','Legal','Client','Details'];
-    let html = '';
-    Object.keys(bySection).sort((a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b))).forEach(section => {
-      html += `<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#7a6355;margin:6px 0 8px;padding-bottom:4px;border-bottom:1px solid #e8ddd0">${esc(section)}</div><div class="form-grid">`;
-      bySection[section].forEach(f => { html += renderDynamicFieldInput(f, state.prefix, values); });
-      html += '</div></div>';
-    });
+    const order = ['Budget','Location','Property','Legal','Client','Details','Transaction','Timing','Extras','Property Details'];
+    const renderSections = (sections) => Object.keys(sections)
+      .sort((a, b) => (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 99 : order.indexOf(b)))
+      .map(section => `<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#7a6355;margin:6px 0 8px;padding-bottom:4px;border-bottom:1px solid #e8ddd0">${esc(section)}</div><div class="form-grid">${sections[section].map(f => renderDynamicFieldInput(f, state.prefix, values)).join('')}</div></div>`)
+      .join('');
+    let html = renderSections(groups.primary);
+    const advancedCount = Object.values(groups.advanced).reduce((n, list) => n + list.length, 0);
+    if (advancedCount) html += `<details class="need-extra-details" style="margin-top:14px;border:1px solid #e8ddd0;border-radius:8px;padding:0 12px"><summary style="cursor:pointer;padding:12px 0;font-weight:700;color:#5c3317">More requirement details (${advancedCount})</summary><div style="padding:0 0 12px">${renderSections(groups.advanced)}</div></details>`;
     html += asArray(state.config.fields).filter(f => f && f.FieldType === 'Autocomplete' && Array.isArray(f.Options) && f.Options.length)
       .map(f => `<datalist id="${escAttr(state.prefix)}dl-${escAttr(f.FieldKey)}">${f.Options.map(o => `<option value="${escAttr(o)}">`).join('')}</datalist>`).join('');
     document.getElementById(state.containerId).innerHTML = html || '<div style="padding:12px;color:#7a6355;font-size:13px">No additional questions for this requirement yet.</div>';
@@ -2197,7 +2213,7 @@ table td,table th{border-color:var(--v2-line)!important}
       ]);
       if (loadVersion !== needFormLoadVersion) return;
       if (!res.ok || !res.data) { dyn.innerHTML = needBasicFields(); return; }
-      const HEADER = new Set(['TransactionType','Category','SubCategory','LeadSource','ClientName','PrimaryMobile','Email','City']);
+      const HEADER = new Set(['TransactionType','Category','SubCategory','LeadSource','ClientName','PrimaryMobile','Email','City','PropertyPreference','WhoIsSpeaking','ContactMobile','ContactEmail']);
       const fields = asArray(res.data.fields).filter(f => f && f.Active !== false && !HEADER.has(f.FieldKey));
       const prefill = getLeadRequirementPrefill(txnType, cat, sub);
       dynamicFormState.need = {
