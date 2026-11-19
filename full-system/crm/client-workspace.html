@@ -2952,7 +2952,9 @@ table td,table th{border-color:var(--v2-line)!important}
       document.getElementById('act-followup-date').value,
       document.getElementById('act-followup-time').value
     );
-    const activityType = document.getElementById('act-type').value || 'NOTE';
+    const activityType = modal.dataset.mode === 'interaction' && modal.dataset.activityType === 'CALL'
+      ? 'CALL'
+      : (document.getElementById('act-type').value || 'NOTE');
     const transactionId = document.getElementById('act-txn').value || null;
     const requirementId = document.getElementById('act-req').value || null;
     const notes = document.getElementById('act-notes').value.trim();
