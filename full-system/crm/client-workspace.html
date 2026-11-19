@@ -2213,7 +2213,7 @@ table td,table th{border-color:var(--v2-line)!important}
       ]);
       if (loadVersion !== needFormLoadVersion) return;
       if (!res.ok || !res.data) { dyn.innerHTML = needBasicFields(); return; }
-      const HEADER = new Set(['TransactionType','Category','SubCategory','LeadSource','ClientName','PrimaryMobile','Email','City','PropertyPreference','WhoIsSpeaking','ContactMobile','ContactEmail']);
+      const HEADER = new Set(['TransactionType','Category','SubCategory','LeadSource','ClientName','PrimaryMobile','Email','City','PropertyPreference','PropertyCondition','WhoIsSpeaking','ContactMobile','ContactEmail']);
       const fields = asArray(res.data.fields).filter(f => f && f.Active !== false && !HEADER.has(f.FieldKey));
       const prefill = getLeadRequirementPrefill(txnType, cat, sub);
       dynamicFormState.need = {
