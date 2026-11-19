@@ -1388,7 +1388,7 @@ class V2Router {
         return countableIds.has(r.LeadID) && (!status || status === 'ACTIVE');
       })
       .map(r => r.LeadID));
-    const leadStatus = l => String(l.ClientStatus || l.LeadStatus || 'New').trim();
+    const leadStatus = l => String(l.ClientStatus || l.LeadStatus || '').trim();
     const isLost = l => ['Lost','Inactive','Blacklisted'].includes(leadStatus(l));
     const queueCounts = {
       newLeads: countableLeads.filter(l => leadStatus(l) === 'New' && !activeReqIds.has(l.LeadID)).length,
