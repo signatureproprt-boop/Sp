@@ -77,7 +77,7 @@
     /* Modal */
     .modal-overlay { position: fixed; inset: 0; background: rgba(28,10,0,.55); display: flex; align-items: flex-start; justify-content: center; padding: 5vh 20px; z-index: 100; overflow-y: auto; }
     .modal-overlay.hidden { display: none; }
-    .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 700px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
+    .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 920px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
     .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--clr-border); }
     .modal-title { font-size: 17px; font-weight: 800; color: var(--clr-brown); }
     .modal-close { background: none; border: 0; font-size: 24px; color: var(--clr-text-light); cursor: pointer; }
@@ -89,6 +89,13 @@
     .form-group label { font-size: 11px; font-weight: 700; color: var(--clr-text-light); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
     .form-group input, .form-group select, .form-group textarea { padding: 8px 10px; border: 1px solid var(--clr-border); border-radius: 6px; font-size: 13.5px; font-family: inherit; }
     .form-error { color: var(--clr-danger); font-size: 12.5px; margin-top: 8px; }
+    .category-guidance { grid-column:1/-1; display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border:1px solid #eadfc7; border-radius:10px; background:#fdf9ef; color:#5c4328; }
+    .category-guidance strong { display:block; font-size:12px; margin-bottom:3px; }
+    .category-guidance p { font-size:12px; line-height:1.5; color:#786853; }
+    .config-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px; border:1px solid var(--clr-border); border-radius:9px; background:#fff; }
+    .config-row input,.config-row select { min-width:0; padding:8px 9px; border:1px solid var(--clr-border); border-radius:6px; font-size:12px; }
+    .config-row .config-main { flex:1 1 160px; }
+    @media(max-width:700px){ .category-guidance{grid-column:auto}.config-row input,.config-row select{flex:1 1 42%;width:auto!important}.config-row .config-main{flex-basis:100%} }
     .toast { position: fixed; bottom: 24px; right: 24px; background: var(--clr-brown-dark); color: #fff; padding: 12px 20px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.2); opacity: 0; transform: translateY(10px); transition: all .3s; z-index: 300; }
     .toast.show { opacity: 1; transform: translateY(0); }
     .toast.error { background: var(--clr-danger); }
@@ -528,11 +535,12 @@ html body{background-image:none!important;background:#f7f7f5!important}
         </div>
         <div class="form-group">
           <label>Category</label>
-          <select id="f-category" data-testid="f-category">
+          <select id="f-category" data-testid="f-category" onchange="updateCategoryConfiguration()">
             <option>Residential</option>
             <option>Commercial</option>
             <option>Industrial</option>
             <option>Land</option>
+            <option>Agriculture</option>
           </select>
         </div>
         <div class="form-group">
@@ -554,11 +562,12 @@ html body{background-image:none!important;background:#f7f7f5!important}
         <div class="form-group"><label>Floor-to-floor Height (ft)</label><input id="f-floor-height" type="number" min="0" step="0.01" placeholder="e.g. 10.5" /></div>
         <div class="form-group"><label>Sales person name</label><input id="f-sales-name" type="text" autocomplete="name" placeholder="Project sales contact" /></div>
         <div class="form-group"><label>Sales person mobile</label><input id="f-sales-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="10-digit mobile number" /></div>
+        <div class="category-guidance" id="category-guidance" role="status" aria-live="polite"><span aria-hidden="true">🏗️</span><div><strong id="category-guidance-title">Residential project details</strong><p id="category-guidance-text">Add one row for each unit type. Record BHK and carpet, built-up, super built-up and private terrace areas separately. Keep penthouses, terrace flats, bungalows and plots as separate types.</p></div></div>
         <div class="form-group full">
-          <label>Configurations & Sizes (sqft)</label>
-          <div style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add one row per distinct layout/size. Combine matching towers (A/B/C); keep different layouts, penthouses and terrace flats separate. Fill BHK, Carpet, Super Built-up and Private Terrace sqft separately; add parking and servant room where known.</div>
+          <label id="config-section-label">Unit types & sizes (sqft)</label>
+          <div id="config-section-help" style="font-size:11px;color:var(--clr-text-light);margin-bottom:6px">Add one row per distinct layout/size. Combine matching towers (A/B/C); keep different layouts separate. Furnishing is recorded in Inventory, not on the builder project.</div>
           <div id="config-rows" data-testid="config-rows" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
-          <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:5px 12px;font-size:12px">+ Add Config</button>
+          <button type="button" class="btn btn-ghost" data-testid="add-config-row-btn" onclick="addConfigRow()" style="align-self:flex-start;padding:7px 12px;font-size:12px">＋ Add unit / plot type</button>
         </div>
         <div class="form-group">
           <label>Price Min (₹)</label>
@@ -1704,7 +1713,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     document.getElementById('media-section').style.display = 'none';
     document.getElementById('media-hint').style.display = 'block';
     configRows = [];
-    renderConfigRowsUI();
+    updateCategoryConfiguration();
     document.getElementById('project-modal').classList.remove('hidden');
   }
 
@@ -1741,7 +1750,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     configRows = (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length)
       ? groupedConfigDetails(p.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null, PriceMin: c.PriceMin ?? '', PriceMax: c.PriceMax ?? '', FloorPlanMediaID: c.FloorPlanMediaID || '' }))
       : (p.Configurations || []).map(t => ({ Tower: '', FlatType: '', SuperBuiltUpAreaSqft: '', Type: t, BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }));
-    renderConfigRowsUI();
+    updateCategoryConfiguration();
     document.getElementById('media-hint').style.display = 'none';
     document.getElementById('media-section').style.display = 'block';
     renderMediaSection(p);
@@ -1750,27 +1759,85 @@ html body{background-image:none!important;background:#f7f7f5!important}
 
   // ── Configuration & Size rows ─────────────────────────────────────────
   let configRows = [];
+  function updateCategoryConfiguration() {
+    const category = document.getElementById('f-category')?.value || 'Residential';
+    const guidance = {
+      Residential: {
+        title: 'Residential project details',
+        text: 'Apartment / flat, penthouse, terrace flat, bungalow / villa, row house, studio or residential plot ko alag unit type rakhein. BHK aur carpet, built-up, super built-up aur private terrace area alag bharein.',
+        help: 'Har distinct layout/size ke liye ek row. Matching towers combine karein; penthouse aur terrace flat alag rakhein. Furnishing Inventory mein record hoti hai.',
+        types: ['Apartment / Flat','Studio','1 BHK','1.5 BHK','2 BHK','2.5 BHK','3 BHK','3.5 BHK','4 BHK','4.5 BHK','5 BHK','Penthouse','Terrace Flat','Bungalow / Villa','Row House','Residential Plot']
+      },
+      Commercial: {
+        title: 'Commercial project details',
+        text: 'Office, shop, showroom, retail unit, coworking, clinic, restaurant ya commercial plot ko alag type rakhein. Har unit ka floor / unit number, carpet, built-up aur super built-up sqft bharein.',
+        help: 'Har alag unit type/size ke liye ek row. Building / wing aur floor ya unit number likhein; office/shop ka area aur available parking alag note karein.',
+        types: ['Office','Shop','Showroom','Retail Unit','Coworking Office','Clinic','Restaurant / Cafe','Commercial Unit','Warehouse / Godown','Commercial Plot']
+      },
+      Industrial: {
+        title: 'Industrial project details',
+        text: 'Factory, industrial shed, warehouse ya industrial plot ko alag type rakhein. Unit / shed ka floor, built-up area aur available utility details verify karke likhein.',
+        help: 'Har distinct industrial unit ke liye ek row. Building / shed, unit number, carpet aur built-up area alag bharein.',
+        types: ['Factory','Industrial Shed','Warehouse / Godown','Industrial Unit','Industrial Plot']
+      },
+      Land: {
+        title: 'Land project details',
+        text: 'Plot ka use (residential / commercial / industrial), plot area aur layout ko clearly record karein.',
+        help: 'Har plot size ya use ke liye alag row. Plot area sqft ko record karein; confirmed na ho to estimate na bharein.',
+        types: ['Residential Plot','Commercial Plot','Industrial Plot','NA Plot','Township Plot','Other Plot']
+      },
+      Agriculture: {
+        title: 'Agriculture project details',
+        text: 'Agricultural land, farm plot, orchard ya farmhouse land ka area aur project location clearly record karein.',
+        help: 'Har alag plot / land parcel ke liye ek row. Area sqft field mein tabhi bharein jab source sqft mein ho; acre/hectare ka unit Project Land Area mein likhein.',
+        types: ['Agricultural Land','Farm Plot','Orchard','Farmhouse Plot','Other Agricultural Land']
+      }
+    }[category] || null;
+    const title = document.getElementById('category-guidance-title');
+    const text = document.getElementById('category-guidance-text');
+    const help = document.getElementById('config-section-help');
+    const types = document.getElementById('dl-config-types');
+    if (!guidance) return;
+    if (title) title.textContent = guidance.title;
+    if (text) text.textContent = guidance.text;
+    if (help) help.textContent = guidance.help;
+    if (types) types.innerHTML = guidance.types.map(type => '<option value="' + esc(type) + '"></option>').join('');
+    const label = document.getElementById('config-section-label');
+    if (label) label.textContent = category === 'Land' || category === 'Agriculture' ? 'Plot / land parcel details' : category + ' unit types & sizes (sqft)';
+    renderConfigRowsUI();
+  }
+
   function renderConfigRowsUI() {
     const el = document.getElementById('config-rows');
+    if (!el) return;
+    const category = document.getElementById('f-category')?.value || 'Residential';
+    const residential = category === 'Residential';
+    const land = category === 'Land' || category === 'Agriculture';
     const planPhotos = (allProjects.find(p=>p.ProjectID===editingId)?.Photos || []).filter(isStoredPhoto);
+    const typePlaceholder = category === 'Residential' ? 'Apartment / Penthouse / Bungalow / Plot'
+      : category === 'Commercial' ? 'Office / Shop / Showroom / Warehouse'
+      : category === 'Industrial' ? 'Factory / Shed / Warehouse / Plot' : 'Plot / land type';
+    const buildingPlaceholder = land ? 'Survey / parcel' : category === 'Commercial' ? 'Building / wing' : 'Tower / building';
+    const unitPlaceholder = land ? 'Plot / survey no.' : category === 'Commercial' ? 'Floor / unit no.' : 'Flat / unit no.';
     el.innerHTML = configRows.length ? configRows.map((row, i) => `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap" data-testid="config-row-${i}">
-        <input type="text" value="${esc(row.Tower||'')}" placeholder="Tower A / B" aria-label="Tower" data-testid="config-tower-${i}" oninput="updateConfigRow(${i},'Tower',this.value)" style="width:110px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
-        <input type="text" value="${esc(row.FlatType||'')}" placeholder="Flat no. / type" aria-label="Flat number / type" data-testid="config-flat-${i}" oninput="updateConfigRow(${i},'FlatType',this.value)" style="width:120px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
-        <input type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="Apartment / Penthouse / Terrace Flat" aria-label="Unit type" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" style="flex:1;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <input type="number" min="0" max="20" step="1" value="${row.BHK ?? ''}" placeholder="BHK" aria-label="Bedrooms / BHK" data-testid="config-bhk-${i}" oninput="updateConfigRow(${i},'BHK',this.value)" style="width:75px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <input type="number" min="0" value="${row.CarpetAreaSqft ?? ''}" placeholder="Carpet sqft" aria-label="Carpet area sqft" data-testid="config-carpet-${i}" oninput="updateConfigRow(${i},'CarpetAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <input type="number" min="0" value="${row.SuperBuiltUpAreaSqft ?? ''}" placeholder="Super built-up sqft" aria-label="Super built-up area sqft" data-testid="config-super-built-up-${i}" oninput="updateConfigRow(${i},'SuperBuiltUpAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <input type="number" min="0" value="${row.TerraceAreaSqft ?? ''}" placeholder="Private terrace sqft" aria-label="Private terrace area sqft" data-testid="config-terrace-${i}" oninput="updateConfigRow(${i},'TerraceAreaSqft',this.value)" style="width:115px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <input type="number" min="0" step="1" value="${row.ParkingAllotted ?? ''}" placeholder="Parking" aria-label="Allotted parking spaces" data-testid="config-parking-${i}" oninput="updateConfigRow(${i},'ParkingAllotted',this.value)" style="width:95px;padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px" />
-        <select aria-label="Servant room" data-testid="config-servant-${i}" onchange="updateConfigRow(${i},'ServantRoom',this.value)" style="padding:7px 9px;border:1px solid var(--clr-border);border-radius:6px;font-size:13px"><option value="" ${row.ServantRoom == null ? 'selected' : ''}>Servant room?</option><option value="yes" ${row.ServantRoom === true || row.ServantRoom === 'yes' ? 'selected' : ''}>Yes</option><option value="no" ${row.ServantRoom === false || row.ServantRoom === 'no' ? 'selected' : ''}>No</option></select>
-        ${row.CarpetAreaSqft == null || row.CarpetAreaSqft === '' || row.SuperBuiltUpAreaSqft == null || row.SuperBuiltUpAreaSqft === '' ? '<small style="width:100%;color:var(--clr-text-light)">Carpet / super built-up value missing — check PDF source and warnings in Notes; room dimensions are not a total area.</small>' : ''}
-        ${row.AreaSqft !== '' && row.AreaSqft != null ? `<small title="Legacy area without confirmed type">Legacy ${esc(row.AreaSqft)} sqft</small>` : ''}
-        <input type="number" min="0" value="${row.PriceMin ?? ''}" placeholder="Layout price from ₹" aria-label="Layout price minimum INR" oninput="updateConfigRow(${i},'PriceMin',this.value)" style="width:145px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
-        <input type="number" min="0" value="${row.PriceMax ?? ''}" placeholder="Layout price to ₹" aria-label="Layout price maximum INR" oninput="updateConfigRow(${i},'PriceMax',this.value)" style="width:145px;padding:7px;border:1px solid var(--clr-border);border-radius:6px" />
-        <select aria-label="Layout floor plan image" onchange="updateConfigRow(${i},'FloorPlanMediaID',this.value)" style="max-width:240px;padding:7px;border:1px solid var(--clr-border);border-radius:6px"><option value="">Choose stored floor plan image</option>${planPhotos.map(photo=>'<option value="'+esc(photo.MediaID)+'" '+(row.FloorPlanMediaID===photo.MediaID?'selected':'')+'>'+esc(photo.Filename || photo.FileName || photo.MediaID)+'</option>').join('')}</select>
-        <button type="button" data-testid="config-remove-${i}" onclick="removeConfigRow(${i})" style="background:none;border:none;color:var(--clr-danger);font-size:17px;cursor:pointer">×</button>
-      </div>`).join('') : '<span style="font-size:12px;color:var(--clr-text-light)">No configurations added yet</span>';
+      <div class="config-row" data-testid="config-row-${i}">
+        <input type="text" value="${esc(row.Tower||'')}" placeholder="${buildingPlaceholder}" aria-label="Building, tower or parcel" data-testid="config-tower-${i}" oninput="updateConfigRow(${i},'Tower',this.value)" style="width:118px" />
+        <input type="text" value="${esc(row.FlatType||'')}" placeholder="${unitPlaceholder}" aria-label="Floor, unit or plot number" data-testid="config-flat-${i}" oninput="updateConfigRow(${i},'FlatType',this.value)" style="width:126px" />
+        <input class="config-main" type="text" list="dl-config-types" value="${esc(row.Type||'')}" placeholder="${typePlaceholder}" aria-label="Project unit or plot type" data-testid="config-type-${i}" oninput="updateConfigRow(${i},'Type',this.value)" />
+        ${residential ? `<input type="number" min="0" max="20" step="1" value="${row.BHK ?? ''}" placeholder="BHK" aria-label="Bedrooms / BHK" data-testid="config-bhk-${i}" oninput="updateConfigRow(${i},'BHK',this.value)" style="width:76px" />` : ''}
+        ${land ? `<input type="number" min="0" value="${row.AreaSqft ?? ''}" placeholder="Plot area sqft" aria-label="Plot area sqft" data-testid="config-area-${i}" oninput="updateConfigRow(${i},'AreaSqft',this.value)" style="width:120px" />` : `
+          <input type="number" min="0" value="${row.CarpetAreaSqft ?? ''}" placeholder="Carpet sqft" aria-label="Carpet area sqft" data-testid="config-carpet-${i}" oninput="updateConfigRow(${i},'CarpetAreaSqft',this.value)" style="width:112px" />
+          <input type="number" min="0" value="${row.BuiltUpAreaSqft ?? ''}" placeholder="Built-up sqft" aria-label="Built-up area sqft" data-testid="config-built-up-${i}" oninput="updateConfigRow(${i},'BuiltUpAreaSqft',this.value)" style="width:112px" />
+          <input type="number" min="0" value="${row.SuperBuiltUpAreaSqft ?? ''}" placeholder="Super built-up sqft" aria-label="Super built-up area sqft" data-testid="config-super-built-up-${i}" oninput="updateConfigRow(${i},'SuperBuiltUpAreaSqft',this.value)" style="width:125px" />
+          `}
+        ${residential ? `<input type="number" min="0" value="${row.TerraceAreaSqft ?? ''}" placeholder="Private terrace sqft" aria-label="Private terrace area sqft" data-testid="config-terrace-${i}" oninput="updateConfigRow(${i},'TerraceAreaSqft',this.value)" style="width:125px" />` : ''}
+        ${!land ? `<input type="number" min="0" step="1" value="${row.ParkingAllotted ?? ''}" placeholder="Parking" aria-label="Allotted parking spaces" data-testid="config-parking-${i}" oninput="updateConfigRow(${i},'ParkingAllotted',this.value)" style="width:92px" />` : ''}
+        ${residential ? `<select aria-label="Servant room" data-testid="config-servant-${i}" onchange="updateConfigRow(${i},'ServantRoom',this.value)" style="max-width:132px"><option value="" ${row.ServantRoom == null ? 'selected' : ''}>Servant room?</option><option value="yes" ${row.ServantRoom === true || row.ServantRoom === 'yes' ? 'selected' : ''}>Yes</option><option value="no" ${row.ServantRoom === false || row.ServantRoom === 'no' ? 'selected' : ''}>No</option></select>` : ''}
+        <input type="number" min="0" value="${row.PriceMin ?? ''}" placeholder="Price from ₹" aria-label="Layout price minimum INR" oninput="updateConfigRow(${i},'PriceMin',this.value)" style="width:125px" />
+        <input type="number" min="0" value="${row.PriceMax ?? ''}" placeholder="Price to ₹" aria-label="Layout price maximum INR" oninput="updateConfigRow(${i},'PriceMax',this.value)" style="width:125px" />
+        <select aria-label="Layout floor plan image" onchange="updateConfigRow(${i},'FloorPlanMediaID',this.value)" style="max-width:210px"><option value="">Choose floor plan image</option>${planPhotos.map(photo=>'<option value="'+esc(photo.MediaID)+'" '+(row.FloorPlanMediaID===photo.MediaID?'selected':'')+'>'+esc(photo.Filename || photo.FileName || photo.MediaID)+'</option>').join('')}</select>
+        <button type="button" data-testid="config-remove-${i}" onclick="removeConfigRow(${i})" aria-label="Remove this row" style="background:none;border:none;color:var(--clr-danger);font-size:17px;cursor:pointer">×</button>
+      </div>`).join('') : '<span style="font-size:12px;color:var(--clr-text-light)">No unit types added yet</span>';
   }
   function addConfigRow() { configRows.push({ Tower: '', FlatType: '', SuperBuiltUpAreaSqft: '', Type: '', BHK: '', AreaSqft: '', CarpetAreaSqft: '', BuiltUpAreaSqft: '', TerraceAreaSqft: '', ParkingAllotted: '', ServantRoom: null }); renderConfigRowsUI(); }
   function updateConfigRow(i, key, val) { if (configRows[i]) configRows[i][key] = val; }
@@ -1976,6 +2043,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
       configRows = (typeof groupedConfigDetails === 'function' ? groupedConfigDetails(d.ConfigDetails) : d.ConfigDetails).map(c => ({ Tower: c.Tower || '', FlatType: c.FlatType || '', SuperBuiltUpAreaSqft: c.SuperBuiltUpAreaSqft ?? '', Type: c.Type || (c.BHK ? `${c.BHK} BHK` : 'Apartment'), BHK: c.BHK ?? '', AreaSqft: c.AreaSqft ?? '', CarpetAreaSqft: c.CarpetAreaSqft ?? '', BuiltUpAreaSqft: c.BuiltUpAreaSqft ?? '', TerraceAreaSqft: c.TerraceAreaSqft ?? '', ParkingAllotted: c.ParkingAllotted ?? '', ServantRoom: c.ServantRoom ?? null, PriceMin: c.PriceMin ?? '', PriceMax: c.PriceMax ?? '', FloorPlanMediaID: '', ...retainedMetadata(c) }));
       renderConfigRowsUI();
     }
+    updateCategoryConfiguration();
   }
 
   function closeProjectModal() { document.getElementById('project-modal').classList.add('hidden'); }
