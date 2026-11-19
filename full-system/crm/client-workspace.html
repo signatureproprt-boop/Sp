@@ -1302,18 +1302,30 @@ table td,table th{border-color:var(--v2-line)!important}
     const category = config?.category || '';
     const sub = config?.subCategory || '';
     const common = ['budgetMin','budgetMax','BudgetMin','BudgetMax','Location1','Location2'];
-    if (/plot/i.test(sub) || category === 'Land') return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
-    if (category === 'Residential') return new Set([...common,'BHKMin','BHKMax','AreaMin','AreaMax','Furnishing','PropertySource','CompletionStatus','MoveInDate']);
-    if (category === 'Commercial') {
-      const core = new Set([...common,'AreaMin','AreaMax','BusinessType']);
-      if (['Office', 'Co-working Space'].includes(sub)) {
-        ['Furnishing','OfficeSeatsMin','OfficeSeatsMax'].forEach(key => core.add(key));
-      }
-      return core;
+    if (/plot/i.test(sub) || category === 'Land') {
+      return new Set([...common,'PlotAreaMin','PlotAreaMax','PlotAreaUnit','Zoning']);
     }
-    if (category === 'Industrial') return new Set([...common,'AreaMin','AreaMax','ZoneType','PowerLoad']);
-    if (category === 'Land') return new Set([...common,'PlotAreaMin','PlotAreaMax','Zoning']);
-    if (category === 'Agriculture') return new Set([...common,'TotalArea','SoilType','WaterSource']);
+    if (category === 'Residential') {
+      const core = [...common,'AreaMin','AreaMax','AreaType','PropertySource','Furnishing','CompletionStatus'];
+      if (!['Studio'].includes(sub)) core.push('BHKMin','BHKMax');
+      if (['Villa','Row House','Bungalow','Independent House'].includes(sub)) core.push('PlotAreaMin','PlotAreaMax');
+      return new Set(core);
+    }
+    if (category === 'Commercial') {
+      const core = [...common,'AreaMin','AreaMax','AreaType','BusinessType','PropertySource'];
+      if (['Office','Co-working Space'].includes(sub)) core.push('Furnishing','OfficeSeatsMin','OfficeSeatsMax');
+      if (['Shop','Showroom'].includes(sub)) core.push('FrontageWidth','ShopFloor');
+      if (sub === 'Warehouse') core.push('ClearHeight','LoadingBaysCount');
+      if (sub === 'Restaurant') core.push('SeatingCapacity');
+      if (sub === 'Clinic') core.push('MedicalUse','ConsultationRooms');
+      return new Set(core);
+    }
+    if (category === 'Industrial') {
+      return new Set([...common,'AreaMin','AreaMax','AreaType','ZoneType','PowerLoad','PowerSupply']);
+    }
+    if (category === 'Agriculture') {
+      return new Set([...common,'TotalArea','AreaUnit','AgriculturalUse','SoilType','WaterSource']);
+    }
     return new Set(common);
   }
 
