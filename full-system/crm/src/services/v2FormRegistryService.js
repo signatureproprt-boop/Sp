@@ -287,37 +287,9 @@ class V2FormRegistryService {
       });
     });
 
-    // 3b. Auto-include only fields explicitly scoped to this category.
-    // Unscoped legacy V2FieldConfig rows describe shared metadata, not fields for
-    // every property form; adding them globally caused unrelated controls and
-    // duplicate area/office fields to appear on category-specific forms.
-    for (const fc of allFieldConfig) {
-      if (fc.Active === false) continue;
-      if (seenKeysLower.has(fc.FieldKey.toLowerCase())) continue;
-      const txnMatch = !fc.TransactionType || fc.TransactionType === txnType;
-      const categoryMatch = fc.Category === category;
-      const subCategoryMatch = fc.SubCategory === subCategory;
-      if (categoryMatch && subCategoryMatch && txnMatch) {
-        seenKeysLower.add(fc.FieldKey.toLowerCase());
-        resolvedFieldMap.set(fc.FieldKey, {
-          FieldKey:      fc.FieldKey,
-          FieldLabel:    fc.FieldLabel   || fc.FieldKey,
-          QuestionLabel: fc.QuestionLabel || fc.FieldLabel || `What is ${fc.FieldKey}?`,
-          FieldType:     fc.FieldType    || 'Text',
-          Tier:          fc.Tier          || 'OPTIONAL',
-          RequiredMode:  fc.RequiredMode  || 'OPTIONAL',
-          Section:       fc.Section       || 'Property Details',
-          Options:       Array.isArray(fc.Options) ? fc.Options : [],
-          Validation:    fc.Validation    || null,
-          DisplayOrder:  fc.DisplayOrder  || 99,
-          Required:      false,
-          Active:        true,
-          HelpText:      fc.HelpText      || null,
-          Placeholder:   fc.Placeholder   || null
-        });
-      }
-    }
-
+    // 3b. The versioned form registry is the source of truth for the fields shown.
+    // V2FieldConfig enriches registered fields above, but auto-injecting old rows
+    // adds duplicate or unrelated controls (for example, extra office seating fields).
     const resolvedFields = Array.from(resolvedFieldMap.values())
       .sort((a, b) => (a.DisplayOrder || 99) - (b.DisplayOrder || 99));
 
