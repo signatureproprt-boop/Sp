@@ -575,9 +575,7 @@ function buildLandForm(txnType, category, subCategory) {
         soilType: field('SoilType', 'Soil Type', 'Select', false, 21, { options: ['Black', 'Red', 'Alluvial', 'Sandy', 'Loamy', 'Mixed', 'Unknown'] }),
         waterSource: field('WaterSource', 'Water Source', 'MultiSelect', false, 21.1, { options: ['Well', 'Borewell', 'Canal', 'River', 'Rainwater', 'None'] }),
         irrigationAvailable: field('IrrigationAvailable', 'Irrigation Available', 'Boolean', false, 21.2),
-        cropType: field('CropType', 'Current / Preferred Crop', 'Text', false, 21.3),
-        plotAreaMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', false, 21.4, { validation: 'positive-number' }),
-        plotAreaMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', false, 21.5, { validation: 'positive-number' })
+        cropType: field('CropType', 'Current / Preferred Crop', 'Text', false, 21.3)
       } : {
         plotMin: field('PlotAreaMin', 'Plot Area Min', 'Number', false, 20, { validation: 'positive-number' }),
         plotMax: field('PlotAreaMax', 'Plot Area Max', 'Number', false, 21, { validation: 'positive-number' }),
