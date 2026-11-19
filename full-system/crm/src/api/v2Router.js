@@ -1277,15 +1277,17 @@ class V2Router {
       result = result.filter(l => !['Lost', 'Inactive', 'Blacklisted'].includes(l.ClientStatus || l.LeadStatus));
     }
 
+    const activeRequirementLeadIds = new Set(reqs
+      .filter(r => {
+        const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
+        return !status || status === 'ACTIVE';
+      })
+      .map(r => r.LeadID)
+      .filter(Boolean));
     if (filters.clientBucket === 'activeRequirements') {
-      const activeLeadIds = new Set(reqs
-        .filter(r => {
-          const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
-          return !status || status === 'ACTIVE';
-        })
-        .map(r => r.LeadID)
-        .filter(Boolean));
-      result = result.filter(l => activeLeadIds.has(l.LeadID));
+      result = result.filter(l => activeRequirementLeadIds.has(l.LeadID));
+    } else if (filters.clientBucket === 'newLeads') {
+      result = result.filter(l => !activeRequirementLeadIds.has(l.LeadID));
     }
 
     if (filters.clientStatus) {
