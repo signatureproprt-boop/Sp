@@ -47,7 +47,9 @@ test('client form keeps identity and edits a dynamic requirement without a trans
   await page.locator('.sp-next').click();
   await expect(page.locator('#need-fld-BHKMin')).toBeVisible();
   await page.locator('#need-fld-BHKMin').fill('2');
+  await page.locator('.sp-back').click();
   await page.getByTestId('need-category').selectOption('Commercial');
+  await page.locator('.sp-next').click();
   await expect(page.locator('#need-fld-BusinessType')).toBeVisible();
   await expect(page.locator('#need-fld-BHKMin')).toHaveCount(0);
   await page.locator('#need-fld-BusinessType').fill('Office');
