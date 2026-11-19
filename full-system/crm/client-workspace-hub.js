@@ -1,5 +1,6 @@
 
 let clients=[];
+let CLIENT_BUCKET='';
 let queryState={page:1,limit:24,total:0,totalPages:1,loading:false};
 let searchTimer=null;
 let clientLoadVersion=0;
@@ -15,9 +16,11 @@ function buildQuery(){
  const p=new URLSearchParams();
  const sourceTab=document.getElementById('sourceTab').value; if(sourceTab)p.set('sourceTab',sourceTab);
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
+ if(CLIENT_BUCKET==='activeRequirements')p.set('view','activeRequirements');
+ if(CLIENT_BUCKET==='all')p.set('view','all');
  const cat=document.getElementById('category').value, txn=FILTER_TXN, bud=document.getElementById('budget').value;
  const loc=document.getElementById('location').value.trim(), source=document.getElementById('source').value, type=document.getElementById('clientType').value;
- if(!status)p.set('excludeLost','true');
+ if(!status && CLIENT_BUCKET!=='all')p.set('excludeLost','true');
  if(q)p.set('q',q); if(status)p.set('status',status); if(cat)p.set('category',cat); if(txn)p.set('transactionType',txn);
  if(loc)p.set('location',loc); if(source)p.set('source',source); if(type)p.set('clientType',type);
  const [min,max]=budgetRange(bud); if(min!=null)p.set('budgetMin',String(min)); if(max!=null)p.set('budgetMax',String(max));
@@ -99,8 +102,17 @@ function setView(view){
  render();
 }
 function setStatus(status){
+ CLIENT_BUCKET='';
  document.getElementById('status').value=status;
  document.querySelectorAll('[data-status]').forEach(b=>{const active=b.dataset.status===status;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
+ document.querySelectorAll('[data-bucket]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false')});
+ load(true);
+}
+function setBucket(bucket){
+ CLIENT_BUCKET=bucket;
+ document.getElementById('status').value='';
+ document.querySelectorAll('[data-status]').forEach(b=>{b.classList.remove('active');b.setAttribute('aria-pressed','false')});
+ document.querySelectorAll('[data-bucket]').forEach(b=>{const active=b.dataset.bucket===bucket;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
  load(true);
 }
 function renderList(rows){
