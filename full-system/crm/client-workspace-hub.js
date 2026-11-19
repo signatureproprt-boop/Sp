@@ -18,6 +18,7 @@ function buildQuery(){
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
  if(CLIENT_BUCKET==='activeRequirements')p.set('view','activeRequirements');
  if(CLIENT_BUCKET==='all')p.set('view','all');
+ if(!CLIENT_BUCKET && status==='New')p.set('view','newLeads');
  const cat=document.getElementById('category').value, txn=FILTER_TXN, bud=document.getElementById('budget').value;
  const loc=document.getElementById('location').value.trim(), source=document.getElementById('source').value, type=document.getElementById('clientType').value;
  if(!status && CLIENT_BUCKET!=='all')p.set('excludeLost','true');
