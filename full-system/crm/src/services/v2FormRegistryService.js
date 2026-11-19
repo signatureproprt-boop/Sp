@@ -295,9 +295,9 @@ class V2FormRegistryService {
       if (fc.Active === false) continue;
       if (seenKeysLower.has(fc.FieldKey.toLowerCase())) continue;
       const txnMatch = !fc.TransactionType || fc.TransactionType === txnType;
-      const catMatch = fc.Category === category;
-      const subMatch = !fc.SubCategory || fc.SubCategory === subCategory;
-      if (catMatch && txnMatch && subMatch) {
+      const categoryMatch = fc.Category === category;
+      const subCategoryMatch = fc.SubCategory === subCategory;
+      if (categoryMatch && subCategoryMatch && txnMatch) {
         seenKeysLower.add(fc.FieldKey.toLowerCase());
         resolvedFieldMap.set(fc.FieldKey, {
           FieldKey:      fc.FieldKey,
