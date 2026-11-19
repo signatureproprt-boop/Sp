@@ -1318,7 +1318,7 @@ table td,table th{border-color:var(--v2-line)!important}
       const core = [...common,'AreaMin','AreaMax','AreaType','BusinessType','PropertySource'];
       if (['Office','Co-working Space'].includes(sub)) core.push('Furnishing','OfficeSeatsMin','OfficeSeatsMax');
       if (['Shop','Showroom'].includes(sub)) core.push('FrontageWidth','ShopFloor');
-      if (sub === 'Warehouse') core.push('ClearHeight','LoadingBaysCount');
+      if (sub === 'Warehouse') core.push('ClearHeight','LoadingBays');
       if (sub === 'Restaurant') core.push('SeatingCapacity');
       if (sub === 'Clinic') core.push('MedicalUse','ConsultationRooms');
       return new Set(core);
