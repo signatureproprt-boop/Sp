@@ -400,6 +400,40 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
 }
 
 function buildCommercialForm(txnType, category, subCategory) {
+  const isOffice = subCategory === 'Office' || subCategory === 'Co-working Space';
+  const isShopfront = ['Shop', 'Showroom'].includes(subCategory);
+  const officeFields = isOffice ? {
+    furnishing: field('Furnishing', 'Furnishing', 'Select', false, 23, {
+      Section: 'Office Details',
+      options: ['Fully Furnished', 'Part Furnished', 'Unfurnished', 'Bare Shell', 'Managed / Co-working']
+    }),
+    officeSeatsMin: field('OfficeSeatsMin', 'Seats Min', 'Number', false, 24, { Section: 'Office Details', validation: 'positive-number' }),
+    officeSeatsMax: field('OfficeSeatsMax', 'Seats Max', 'Number', false, 25, { Section: 'Office Details', validation: 'positive-number' }),
+    workstationsMin: field('WorkstationsMin', 'Workstations Min', 'Number', false, 26, { Section: 'Office Layout', validation: 'positive-number' }),
+    workstationsMax: field('WorkstationsMax', 'Workstations Max', 'Number', false, 27, { Section: 'Office Layout', validation: 'positive-number' }),
+    cabins: field('Cabins', 'Private Cabins', 'Number', false, 28, { Section: 'Office Layout', validation: 'positive-number' }),
+    meetingRooms: field('MeetingRooms', 'Meeting / Conference Rooms', 'Number', false, 29, { Section: 'Office Layout', validation: 'positive-number' }),
+    floorPreference: field('FloorPreference', 'Floor Preference', 'Select', false, 30, {
+      Section: 'Office Details',
+      options: ['Ground', 'Low (1-5)', 'Mid (6-15)', 'High (16+)', 'Any']
+    }),
+    buildingGrade: field('BuildingGrade', 'Building / Park Type', 'Select', false, 31, {
+      Section: 'Office Details',
+      options: ['Grade A', 'Grade B', 'Grade C', 'IT Park', 'Business Park', 'Any']
+    }),
+    airConditioning: field('AirConditioning', 'Air Conditioning', 'Select', false, 32, {
+      Section: 'Facilities',
+      options: ['Central AC', 'Split AC', 'VRV / VRF', 'Not Required', 'Any']
+    }),
+    powerBackup: field('PowerBackup', 'Power Backup', 'Select', false, 33, {
+      Section: 'Facilities',
+      options: ['Full Backup', 'Common Areas Only', 'Not Required', 'Any']
+    }),
+    officeAmenities: field('OfficeAmenities', 'Office Facilities', 'MultiSelect', false, 34, {
+      Section: 'Facilities',
+      options: ['Reception', 'Pantry', 'Private Washroom', 'Internet / Fiber', 'Server Room', 'Visitor Parking', 'Security / Access Control']
+    })
+  } : {};
   return {
     formKey: `${txnType}|${category}|${subCategory}`,
     formVersion: FORM_REGISTRY_VERSION,
@@ -414,16 +448,25 @@ function buildCommercialForm(txnType, category, subCategory) {
       ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
-      businessType: field('BusinessType', 'Business Type', 'Select', true, 22, { options: ['Retail', 'Office', 'Hospitality', 'Healthcare', 'Education', 'IT/ITES', 'Other'] }),
-      powerLoad: field('PowerLoad', 'Power Load (KW)', 'Number', false, 23),
-      fireNoc: field('FireNOC', 'Fire NOC Required', 'Boolean', false, 24),
-      frontageWidth: field('FrontageWidth', 'Frontage Width (ft)', 'Number', false, 25),
-      parkingSlots: field('ParkingSlots', 'Parking Slots', 'Number', false, 26),
-      liftRequired: field('LiftRequired', 'Lift Required', 'Boolean', false, 27)
+      businessType: field('BusinessType', isOffice ? 'Office Use' : 'Business Type', 'Select', false, 22, {
+        options: isOffice
+          ? ['Corporate Office', 'IT / ITES', 'Consulting / Professional Services', 'Finance', 'Back Office', 'Branch Office', 'Other']
+          : ['Retail', 'Office', 'Hospitality', 'Healthcare', 'Education', 'IT/ITES', 'Other']
+      }),
+      ...officeFields,
+      powerLoad: field('PowerLoad', 'Power Load (KW)', 'Number', false, 35),
+      fireNoc: field('FireNOC', 'Fire NOC Required', 'Boolean', false, 36),
+      ...(isShopfront ? { frontageWidth: field('FrontageWidth', 'Frontage Width (ft)', 'Number', false, 37) } : {}),
+      parkingSlots: field('ParkingSlots', 'Parking Slots', 'Number', false, 38),
+      liftRequired: field('LiftRequired', 'Lift Required', 'Boolean', false, 39)
     },
     dependencies: [
       { field: 'AreaMax', dependsOn: 'AreaMin', rule: 'gte', errorMessage: 'Area Max must be ≥ Area Min' },
-      { field: 'budgetMax', dependsOn: 'budgetMin', rule: 'gte', errorMessage: 'Budget Max must be ≥ Budget Min' }
+      { field: 'budgetMax', dependsOn: 'budgetMin', rule: 'gte', errorMessage: 'Budget Max must be ≥ Budget Min' },
+      ...(isOffice ? [
+        { field: 'OfficeSeatsMax', dependsOn: 'OfficeSeatsMin', rule: 'gte', errorMessage: 'Seats Max must be ≥ Seats Min' },
+        { field: 'WorkstationsMax', dependsOn: 'WorkstationsMin', rule: 'gte', errorMessage: 'Workstations Max must be ≥ Workstations Min' }
+      ] : [])
     ]
   };
 }
