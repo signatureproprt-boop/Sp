@@ -407,6 +407,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-commercial" onclick="setCategoryFilter(this, 'Commercial')">Commercial</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-industrial" onclick="setCategoryFilter(this, 'Industrial')">Industrial</button>
     <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-land" onclick="setCategoryFilter(this, 'Land')">Land</button>
+    <button type="button" class="chip" aria-pressed="false" data-testid="filter-cat-agriculture" onclick="setCategoryFilter(this, 'Agriculture')">Agriculture</button>
     <label style="margin-left:auto">Group projects <select id="project-grouping" class="btn" aria-label="Group projects" onchange="setProjectGrouping(this.value)"><option value="category-location-builder">Category → Location → Builder</option><option value="location-category-builder">Location → Category → Builder</option><option value="builder-category">Builder → Category</option><option value="builder-category-location">Builder → Category → Location</option><option value="none" selected>Project cards</option></select></label>
   </div>
 
@@ -885,7 +886,8 @@ html body{background-image:none!important;background:#f7f7f5!important}
       const response = await fetch('/api/v2/builder-projects/builders');
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Builder list unavailable');
-      select.innerHTML = '<option value="">All builders</option>' + result.data.map(row =>
+      const builders = (Array.isArray(result.data) ? result.data : []).filter(row => isUsableBuilderName(row.name));
+      select.innerHTML = '<option value="">All builders</option>' + builders.map(row =>
         `<option value="${esc(row.name)}">${esc(row.name)} (${Number(row.count) || 0})</option>`).join('');
       select.value = currentBuilder;
     } catch (error) {
@@ -1142,8 +1144,26 @@ html body{background-image:none!important;background:#f7f7f5!important}
       pollKarmaScrape();
     }
   }
+  function isUsableBuilderName(value) {
+    const name = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!name || /^unknown builder(?:\s*\(\d+\))?$/i.test(name)) return false;
+    if (name.length > 100 || name.split(' ').length > 9) return false;
+    return !/\b(?:that combines|details for|land is typically|typically delivered|upon completion|make it an appealing|appealing choice for|the project offers|features include|designed to provide)\b/i.test(name)
+      && !/[!?;]/.test(name);
+  }
+
+  function categoryLabel(value) {
+    const raw = String(value || '').replace(/\s+/g, ' ').trim();
+    return ['Residential','Commercial','Industrial','Land','Agriculture'].find(category => category.toLowerCase() === raw.toLowerCase()) || raw;
+  }
+
+  function builderDisplayName(value) {
+    const name = String(value || '').replace(/\s+/g, ' ').trim();
+    return !name ? 'Unknown Builder' : isUsableBuilderName(name) ? name : 'Builder name needs review';
+  }
+
   function updateBuilderNameOptions() {
-    const names = Array.from(new Set(allProjects.map(p => p.BuilderName).filter(Boolean))).sort();
+    const names = Array.from(new Set(allProjects.map(p => String(p.BuilderName || '').trim()).filter(isUsableBuilderName))).sort((a,b) => a.localeCompare(b));
     document.getElementById('dl-builder-names').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
   }
 
@@ -1196,9 +1216,9 @@ html body{background-image:none!important;background:#f7f7f5!important}
   function groupLabel(project, dimension) {
     const raw = String(project[dimension === 'category' ? 'Category' : dimension === 'location' ? 'Location1' : 'BuilderName'] || '').trim().replace(/\s+/g, ' ');
     if (!raw) return dimension === 'category' ? 'Uncategorized' : dimension === 'location' ? 'Location not set' : 'Unknown Builder';
-    if (dimension === 'category') return ['Residential','Commercial','Industrial','Land'].find(category => category.toLowerCase() === raw.toLowerCase()) || 'Category needs review';
+    if (dimension === 'category') return categoryLabel(raw) || 'Category needs review';
     if (dimension === 'location') return SURAT_AREAS.find(area => area.toLowerCase() === raw.toLowerCase()) || raw;
-    return raw;
+    return isUsableBuilderName(raw) ? raw : 'Builder name needs review';
   }
 
   function renderProjectGroups(items, dimensions) {
@@ -1213,7 +1233,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
       const icon = dimension === 'category' ? '🏘' : dimension === 'location' ? '📍' : '🏢';
       return `<details class="builder-group group-${dimension}" data-group-dimension="${dimension}">
         <summary><span class="group-icon" aria-hidden="true">${icon}</span><span class="group-label">${esc(label)}</span><span class="group-count">${rows.length} projects</span><span class="group-arrow" aria-hidden="true">↗</span></summary>
-        ${dimension === 'builder' ? `<button class="btn btn-ghost" data-builder="${esc(label)}" onclick="openBuilderBrochureStatus(this)" style="margin-top:8px">📋 Brochure & missing details</button>` : ''}
+        ${dimension === 'builder' && isUsableBuilderName(label) ? `<button class="btn btn-ghost" data-builder="${esc(label)}" onclick="openBuilderBrochureStatus(this)" style="margin-top:8px">📋 Brochure & missing details</button>` : ''}
         ${renderProjectGroups(rows, rest)}
       </details>`;
     }).join('');
@@ -1363,8 +1383,9 @@ html body{background-image:none!important;background:#f7f7f5!important}
 
   function renderCard(p) {
     const statusClass = 'st-' + String(p.ProjectStatus || 'Under Construction').replace(/\s+/g, '-');
-    const catColors = { Residential: '#dbeafe', Commercial: '#fef3c7', Industrial: '#fee2e2', Land: '#dcfce7' };
-    const catColor = catColors[p.Category] || '#f1f5f9';
+    const category = categoryLabel(p.Category) || 'Residential';
+    const catColors = { Residential: '#dbeafe', Commercial: '#fef3c7', Industrial: '#fee2e2', Land: '#dcfce7', Agriculture: '#ecfccb' };
+    const catColor = catColors[category] || '#f1f5f9';
     const facts = [];
     if (Array.isArray(p.ConfigDetails) && p.ConfigDetails.length) {
       groupedConfigDetails(p.ConfigDetails).forEach(c => facts.push([c.Tower ? 'Tower ' + c.Tower : '', c.FlatType ? 'Flat ' + c.FlatType : '', c.Type, c.BHK != null && !String(c.Type || '').toLowerCase().includes(String(c.BHK) + ' bhk') ? `${c.BHK} BHK` : '', c.CarpetAreaSqft != null ? `${c.CarpetAreaSqft} carpet sqft` : 'Carpet: not provided', c.SuperBuiltUpAreaSqft != null ? `${c.SuperBuiltUpAreaSqft} super built-up sqft` : 'Saleable / super built-up: not provided', c.TerraceAreaSqft != null ? `${c.TerraceAreaSqft} private terrace sqft` : '', c.ParkingAllotted != null ? `${c.ParkingAllotted} parking` : '', c.ServantRoom === true ? 'Servant room' : '', c.AreaSqft != null && c.CarpetAreaSqft == null && c.BuiltUpAreaSqft == null ? `${c.AreaSqft} sqft (unlabeled)` : ''].filter(Boolean).join(' · ')));
@@ -1392,11 +1413,11 @@ html body{background-image:none!important;background:#f7f7f5!important}
       <div class="card-top">
         <span class="card-status ${statusClass}">${esc(p.ProjectStatus || '—')}</span>
         <button class="card-project" style="background:none;border:0;color:inherit;text-align:left;padding:0;cursor:pointer" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">${esc(p.ProjectName || 'Untitled')} ↗</button>
-        <div class="card-builder">${esc(p.BuilderName || '—')}</div>
+        <div class="card-builder" title="${isUsableBuilderName(p.BuilderName) ? '' : 'Imported builder value needs review'}">${esc(builderDisplayName(p.BuilderName))}</div>
         <div class="card-loc">📍 ${esc(p.Location1 || '—')}</div>
       </div>
       <div class="card-body">
-        <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(p.Category || 'Residential')}</span>
+        <span class="card-fact" style="background:${catColor};color:#1c0a00;font-weight:700;margin-bottom:8px;display:inline-block" data-testid="cat-badge-${esc(p.ProjectID)}">${esc(category)}</span>
         <div class="card-price">${priceText === '—' ? 'Price on request' : priceText}</div><button class="btn btn-secondary" style="width:100%;margin:8px 0 12px" data-testid="detail-${esc(p.ProjectID)}" onclick="openProjectDetail(${esc(JSON.stringify(p.ProjectID))})">View project details →</button>
         <div class="card-facts">${facts.slice(0,3).map(f => `<span class="card-fact">${esc(f)}</span>`).join('')}
           ${p.SalesPersonName || p.SalesPersonPhone ? `<span class="card-fact">Sales: ${esc([p.SalesPersonName, p.SalesPersonPhone].filter(Boolean).join(' · '))}</span>` : ''}
