@@ -163,19 +163,18 @@ function render(){
  if(CLIENT_VIEW==='list'){grid.innerHTML=renderList(rows);return}
  grid.innerHTML=rows.map(c=>{
   const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus),statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status,score=typeof c.ClientScore==='object'?c.ClientScore?.total:c.ClientScore;
+  const statusClass=String(statusLabel||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   const txn=needValue(r,['TransactionType','transactionType','Transaction'])||'',cat=needValue(r,['Category','category'])||'';
   const stamp=c._lastContact;
-  return '<article class="card"><div class="card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status">'+esc(statusLabel)+'</span></div>'+
-  '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source" style="background:#f3e8ff;color:#6b21a8">Investor</span>':'')+'</div>'+
-  '<div class="phone">📞 '+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</div>'+
-  '<div style="font-size:11px;color:var(--brown2);font-weight:700;margin:5px 0 2px">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</div>'+
-  '<div style="font-size:10px;color:var(--muted);margin-bottom:7px">'+
-    (c.Priority?('Priority: '+esc(c.Priority)):'')+
-    (c.NextActionType?(' · Next: '+esc(c.NextActionType)):'')+
-    (c.NextFollowUpAt?(' · '+esc(new Date(c.NextFollowUpAt).toLocaleString('en-IN'))):'')+
-  '</div>'+
-  '<div class="meta"><div><span>Active needs</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open deals</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
-  '<div style="font-size:10px;color:var(--muted);margin-top:9px">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
+  const nextParts=[c.Priority?('Priority: '+c.Priority):'',c.NextActionType?('Next: '+c.NextActionType):'',c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'): ''].filter(Boolean);
+  const requirementSummary=(r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending');
+  return '<article class="card client-card"><div class="card-head client-card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(c.LeadID||'')+'</div></div><span class="status status-'+esc(statusClass)+'">'+esc(statusLabel)+'</span></div>'+
+  '<div class="client-tags">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source investor-tag">Investor</span>':'')+'</div>'+
+  '<div class="client-phone"><span class="client-phone-icon" aria-hidden="true">☎</span><span>'+esc(phoneLabel(c.PrimaryMobile||c.Phone))+'</span></div>'+
+  '<div class="client-requirement"><div class="client-requirement-label">Requirement</div><div class="client-requirement-text">'+esc(requirementSummary)+'</div></div>'+
+  '<div class="client-next"><span class="client-next-label">Next</span><span>'+esc(nextParts.length?nextParts.join(' · '):'No next action saved')+'</span></div>'+
+  '<div class="meta client-metrics"><div><span>Active needs</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open deals</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
+  '<div class="client-last-contact">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
   '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
  }).join('')
 }
