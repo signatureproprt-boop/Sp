@@ -25,9 +25,11 @@ for (const source of ['manual', 'sheet']) {
       await page.locator('#need-category').selectOption('Commercial');
       await page.locator('#need-subcategory').selectOption('Office');
     }
+    await page.locator('.sp-next').click();
     await expect(page.locator('#need-fld-BudgetMax')).toBeVisible();
     await expect(page.locator('#need-txn-type')).toHaveValue('Sale');
     await expect(page.locator('#need-subcategory')).toHaveValue('Office');
+    await page.locator('.sp-next').click();
     await page.getByRole('button',{name:'Add Requirement',exact:true}).click();
     await expect(page.locator('#edit-requirements-list')).toContainText('Sale · Commercial');
     expect(writes).toHaveLength(1);
