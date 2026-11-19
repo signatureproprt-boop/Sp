@@ -1253,8 +1253,7 @@ table td,table th{border-color:var(--v2-line)!important}
         const values = collectDynamicValues(mode);
         const visibleStates = evaluateFieldVisibility(state.config, state.rules, values);
         const nextKeys = asArray(state.config?.fields).filter(f => f && (
-          ['RELEVANT', 'VISIBLE'].includes(visibleStates[f.FieldKey] || 'RELEVANT') ||
-          values[f.FieldKey] !== undefined
+          ['RELEVANT', 'VISIBLE'].includes(visibleStates[f.FieldKey] || 'RELEVANT')
         )).map(f => f.FieldKey).sort();
         const renderedKeys = Array.from(root.querySelectorAll('[data-field-key]'))
           .map(input => input.dataset.fieldKey).sort();
@@ -1308,7 +1307,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const fields = asArray(state.config.fields).filter(f => {
       if (!f) return false;
       const depState = visibleStates[f.FieldKey] || 'RELEVANT';
-      return depState === 'RELEVANT' || depState === 'VISIBLE' || values[f.FieldKey] !== undefined;
+      return depState === 'RELEVANT' || depState === 'VISIBLE';
     });
     const bySection = {};
     fields.forEach(f => {
