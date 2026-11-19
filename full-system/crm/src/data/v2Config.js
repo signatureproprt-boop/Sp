@@ -321,8 +321,9 @@ for (const transactionType of TRANSACTION_TYPES) {
 
 function buildCommonFields(txnType) {
   const isMonthlyRent = txnType === 'Rent' || txnType === 'Rent Out';
-  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : 'Budget Min (₹)';
-  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : 'Budget Max (₹)';
+  const isLease = txnType === 'Lease' || txnType === 'Lease Out';
+  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : isLease ? 'Lease Budget Min (₹)' : 'Budget Min (₹)';
+  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : isLease ? 'Lease Budget Max (₹)' : 'Budget Max (₹)';
   return {
     budgetMin: field('budgetMin', budgetMinLabel, 'Number', false, 1, { validation: 'positive-number', budgetRole: 'min' }),
     budgetMax: field('budgetMax', budgetMaxLabel, 'Number', false, 2, { validation: 'positive-number', budgetRole: 'max' }),
