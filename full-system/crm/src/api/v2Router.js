@@ -1224,7 +1224,8 @@ class V2Router {
       needSource: source,
       sourceTab: url.searchParams.get('sourceTab') || undefined,
       clientStatus, lifecycle, source, tag, agentId, clientType, page, limit,
-      excludeLost: url.searchParams.get('excludeLost') === 'true'
+      excludeLost: url.searchParams.get('excludeLost') === 'true',
+      clientBucket: url.searchParams.get('view') || ''
     }, actor);
   }
 
@@ -1274,6 +1275,17 @@ class V2Router {
 
     if (filters.excludeLost && !filters.clientStatus) {
       result = result.filter(l => !['Lost', 'Inactive', 'Blacklisted'].includes(l.ClientStatus || l.LeadStatus));
+    }
+
+    if (filters.clientBucket === 'activeRequirements') {
+      const activeLeadIds = new Set(reqs
+        .filter(r => {
+          const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
+          return !status || status === 'ACTIVE';
+        })
+        .map(r => r.LeadID)
+        .filter(Boolean));
+      result = result.filter(l => activeLeadIds.has(l.LeadID));
     }
 
     if (filters.clientStatus) {
