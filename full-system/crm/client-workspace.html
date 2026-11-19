@@ -2684,7 +2684,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const whatsappLink = document.getElementById('client-form-whatsapp');
     const phoneForCall = safePhone(lead.PrimaryMobile || lead.Phone);
     if (callLink) {
-      callLink.href = phoneForCall ? `tel:${phoneForCall}` : '#';
+      callLink.href = '#';
       callLink.setAttribute('aria-disabled', phoneForCall ? 'false' : 'true');
       callLink.style.opacity = phoneForCall ? '' : '.55';
     }
