@@ -1341,10 +1341,17 @@ table td,table th{border-color:var(--v2-line)!important}
     buildSourceSelects();
     await loadWorkspace();
     setupTabs();
-    const startCall = new URLSearchParams(location.search).get('startCall') === '1';
+    const initParams = new URLSearchParams(location.search);
+    const startCall = initParams.get('startCall') === '1';
+    const openRequirement = initParams.get('openRequirement') === '1';
     if (workspace?.lead && startCall) {
       window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
       await callClient();
+      return;
+    }
+    if (workspace?.lead && openRequirement) {
+      window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
+      await openAddNeedModal();
       return;
     }
     if (workspace?.lead) openEditModal();
