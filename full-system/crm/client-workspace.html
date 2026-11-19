@@ -1302,8 +1302,11 @@ table td,table th{border-color:var(--v2-line)!important}
     const category = config?.category || '';
     const sub = config?.subCategory || '';
     const common = ['budgetMin','budgetMax','BudgetMin','BudgetMax','Location1','Location2'];
-    if (/plot/i.test(sub) || category === 'Land') {
+    if (/plot/i.test(sub) || (category === 'Land' && sub !== 'Agricultural Land')) {
       return new Set([...common,'PlotAreaMin','PlotAreaMax','PlotAreaUnit','Zoning']);
+    }
+    if (category === 'Land' && sub === 'Agricultural Land') {
+      return new Set([...common,'TotalArea','AreaUnit','SoilType','WaterSource','Zoning']);
     }
     if (category === 'Residential') {
       const core = [...common,'AreaMin','AreaMax','AreaType','PropertySource','Furnishing','CompletionStatus'];
