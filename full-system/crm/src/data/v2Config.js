@@ -547,13 +547,16 @@ function buildAgricultureForm(txnType, category, subCategory) {
 }
 
 function buildLandForm(txnType, category, subCategory) {
-  const zoningOptions = subCategory === 'Residential Plot'
-    ? ['Residential', 'Mixed Use', 'Any']
-    : subCategory === 'Commercial Plot'
-      ? ['Commercial', 'Mixed Use', 'Any']
-      : subCategory === 'Industrial Plot'
-        ? ['Industrial', 'Commercial', 'Any']
-        : ['Agricultural', 'Residential', 'Any'];
+  const isAgriculturalLand = subCategory === 'Agricultural Land';
+  const zoningOptions = isAgriculturalLand
+    ? ['Agricultural', 'Orchard / Plantation', 'Farm House', 'Any']
+    : subCategory === 'Residential Plot'
+      ? ['Residential', 'Mixed Use', 'Any']
+      : subCategory === 'Commercial Plot'
+        ? ['Commercial', 'Mixed Use', 'Any']
+        : subCategory === 'Industrial Plot'
+          ? ['Industrial', 'Commercial', 'Any']
+          : ['Agricultural', 'Residential', 'Any'];
   return {
     formKey: `${txnType}|${category}|${subCategory}`,
     formVersion: FORM_REGISTRY_VERSION,
@@ -566,10 +569,21 @@ function buildLandForm(txnType, category, subCategory) {
       ...buildCommonFields(txnType),
       ...buildPropertySourceFields(txnType),
       ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
-      plotMin: field('PlotAreaMin', 'Plot Area Min', 'Number', false, 20, { validation: 'positive-number' }),
-      plotMax: field('PlotAreaMax', 'Plot Area Max', 'Number', false, 21, { validation: 'positive-number' }),
-      plotAreaUnit: field('PlotAreaUnit', 'Plot Area Unit', 'Select', false, 21.1, { options: ['Sq. yard', 'Sq. ft', 'Sq. metre', 'Acre', 'Hectare', 'Bigha'] }),
-      zoning: field('Zoning', 'Zoning / Permitted Use', 'Select', false, 22, { options: zoningOptions }),
+      ...(isAgriculturalLand ? {
+        totalArea: field('TotalArea', 'Total Agricultural Area', 'Number', false, 20, { validation: 'positive-number' }),
+        areaUnit: field('AreaUnit', 'Area Unit', 'Select', false, 20.1, { options: ['Acre', 'Hectare', 'Bigha', 'Sq. yard', 'Sq. ft'] }),
+        soilType: field('SoilType', 'Soil Type', 'Select', false, 21, { options: ['Black', 'Red', 'Alluvial', 'Sandy', 'Loamy', 'Mixed', 'Unknown'] }),
+        waterSource: field('WaterSource', 'Water Source', 'MultiSelect', false, 21.1, { options: ['Well', 'Borewell', 'Canal', 'River', 'Rainwater', 'None'] }),
+        irrigationAvailable: field('IrrigationAvailable', 'Irrigation Available', 'Boolean', false, 21.2),
+        cropType: field('CropType', 'Current / Preferred Crop', 'Text', false, 21.3),
+        plotAreaMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', false, 21.4, { validation: 'positive-number' }),
+        plotAreaMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', false, 21.5, { validation: 'positive-number' })
+      } : {
+        plotMin: field('PlotAreaMin', 'Plot Area Min', 'Number', false, 20, { validation: 'positive-number' }),
+        plotMax: field('PlotAreaMax', 'Plot Area Max', 'Number', false, 21, { validation: 'positive-number' }),
+        plotAreaUnit: field('PlotAreaUnit', 'Plot Area Unit', 'Select', false, 21.1, { options: ['Sq. yard', 'Sq. ft', 'Sq. metre', 'Acre', 'Hectare', 'Bigha'] })
+      }),
+      zoning: field('Zoning', isAgriculturalLand ? 'Land Use / Permitted Use' : 'Zoning / Permitted Use', 'Select', false, 22, { options: zoningOptions }),
       frontage: field('PlotFrontage', 'Frontage (ft)', 'Number', false, 23, { validation: 'positive-number' }),
       depth: field('PlotDepth', 'Depth (ft)', 'Number', false, 24, { validation: 'positive-number' }),
       approachRoad: field('ApproachRoad', 'Approach Road Width (ft)', 'Number', false, 25, { validation: 'positive-number' }),
