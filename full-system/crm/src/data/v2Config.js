@@ -101,13 +101,13 @@ const ScoringConfig = {
 const WorkflowConfig = {
   leadStatus: {
     transitions: {
-      New: ['Contacted', 'Lost'],
+      New: ['Contacted', 'Follow-up', 'Lost'],
       Contacted: ['Follow-up', 'Qualified', 'Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'],
       'Follow-up': ['Qualified', 'Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'],
-      Qualified: ['Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'],
-      'Requirement Created': ['Site Visit', 'Negotiation', 'Won', 'Lost'],
-      'Site Visit': ['Negotiation', 'Won', 'Lost'],
-      Negotiation: ['Won', 'Lost'],
+      Qualified: ['Follow-up', 'Requirement Created', 'Site Visit', 'Negotiation', 'Won', 'Lost'],
+      'Requirement Created': ['Follow-up', 'Site Visit', 'Negotiation', 'Won', 'Lost'],
+      'Site Visit': ['Follow-up', 'Negotiation', 'Won', 'Lost'],
+      Negotiation: ['Follow-up', 'Won', 'Lost'],
       Won: [],
       Lost: ['Contacted']
     }

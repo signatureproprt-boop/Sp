@@ -129,7 +129,7 @@ function renderList(rows){
  const body=rows.map(c=>{
   const r=firstNeed(c),phone=c.PrimaryMobile||c.Phone,status=norm(c.ClientStatus||c.LeadStatus);
   const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status;
-  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(statusLabel)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="tel:'+enc(safePhone(phone))+'">☎ Call</a>':'')+'</div></td></tr>';
+  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(statusLabel)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'')+'</div></td></tr>';
  }).join('');
  return '<table class="client-table" aria-label="Clients list"><thead><tr><th scope="col">Client</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col">Property details</th><th scope="col">Next follow-up</th><th scope="col">Actions</th></tr></thead><tbody>'+body+'</tbody></table>';
 }
@@ -176,7 +176,7 @@ function render(){
   '</div>'+
   '<div class="meta"><div><span>Active needs</span><b>'+esc(c._activeNeeds||0)+'</b></div><div><span>Open deals</span><b>'+esc(c._openTransactions||0)+'</b></div><div><span>Latest Budget</span><b>'+esc(fmtBudget(r))+'</b></div><div><span>Score</span><b>'+esc(score==null?'—':score)+'</b></div></div>'+
   '<div style="font-size:10px;color:var(--muted);margin-top:9px">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
-  '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="tel:'+enc(safePhone(c.PrimaryMobile||c.Phone))+'">☎ Call</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
+  '<div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(c.PrimaryMobile||c.Phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'<a href="#" aria-disabled="true" style="opacity:.5;pointer-events:none">☎ Call unavailable</a>')+'</div></article>'
  }).join('')
 }
 function renderPager(){
