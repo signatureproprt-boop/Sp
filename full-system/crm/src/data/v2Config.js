@@ -319,10 +319,13 @@ for (const transactionType of TRANSACTION_TYPES) {
 
 // ─── Form Builders ────────────────────────────────────────────────────────────
 
-function buildCommonFields() {
+function buildCommonFields(txnType) {
+  const isMonthlyRent = txnType === 'Rent' || txnType === 'Rent Out';
+  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : 'Budget Min (₹)';
+  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : 'Budget Max (₹)';
   return {
-    budgetMin: field('budgetMin', 'Budget Min', 'Number', false, 1, { validation: 'positive-number', budgetRole: 'min' }),
-    budgetMax: field('budgetMax', 'Budget Max', 'Number', false, 2, { validation: 'positive-number', budgetRole: 'max' }),
+    budgetMin: field('budgetMin', budgetMinLabel, 'Number', false, 1, { validation: 'positive-number', budgetRole: 'min' }),
+    budgetMax: field('budgetMax', budgetMaxLabel, 'Number', false, 2, { validation: 'positive-number', budgetRole: 'max' }),
     budgetType: field('budgetType', 'Budget Type', 'Select', false, 3, { options: ['All Inclusive', 'Base Price', 'Negotiable'] }),
     budgetFlexibility: field('budgetFlexibility', 'Budget Flexibility', 'Select', false, 4, { options: ['Strict', 'Slightly Flexible', 'Very Flexible'] }),
     location1: field('Location1', 'Primary Location', 'Text', true, 5),
@@ -336,14 +339,23 @@ function buildCommonFields() {
   };
 }
 
-// Rent-specific fields — included in Rent / Rent Out forms only
-function buildRentSpecificFields() {
-  return {
-    tenantType:         field('TenantType',         'Tenant Type',              'Select',  false, 30, { options: ['Family', 'Bachelor', 'Company', 'Any'] }),
-    deposit:            field('Deposit',             'Security Deposit (months)', 'Number', false, 31, { validation: 'positive-number' }),
-    maintenanceCharges: field('MaintenanceCharges',  'Maintenance Charges (₹/mo)', 'Number', false, 32),
-    petAllowed:         field('PetAllowed',          'Pets Allowed',             'Boolean', false, 33)
+// Rental and lease fields are shared by tenant-side and owner-side transactions.
+function isRentalTransaction(txnType) {
+  return ['Rent', 'Rent Out', 'Lease', 'Lease Out'].includes(txnType);
+}
+
+function buildRentSpecificFields(txnType) {
+  const isOwnerSide = txnType === 'Rent Out' || txnType === 'Lease Out';
+  const fields = {
+    tenantType:         field('TenantType', isOwnerSide ? 'Preferred Tenant' : 'Tenant Type', 'Select', false, 30, { options: ['Family', 'Bachelor', 'Company', 'Any'] }),
+    deposit:            field('Deposit', 'Security Deposit (months)', 'Number', false, 31, { validation: 'positive-number' }),
+    maintenanceCharges: field('MaintenanceCharges', 'Maintenance Charges (₹/month)', 'Number', false, 32),
+    petAllowed:         field('PetAllowed', 'Pets Allowed', 'Boolean', false, 33)
   };
+  if (txnType === 'Lease' || txnType === 'Lease Out') {
+    fields.leaseTerm = field('LeaseTerm', 'Preferred Lease Term', 'Select', false, 34, { options: ['11 Months', '1 Year', '3 Years', '5 Years', 'Flexible'] });
+  }
+  return fields;
 }
 
 function buildPropertySourceFields(txnType) {
@@ -353,7 +365,6 @@ function buildPropertySourceFields(txnType) {
 }
 
 function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
-  const isRent = txnType === 'Rent' || txnType === 'Rent Out';
   return {
     formKey: `${txnType}|${category}|${subCategory}`,
     formVersion: FORM_REGISTRY_VERSION,
@@ -363,8 +374,8 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
     subCategory,
     isActive: true,
     fields: {
-      ...buildCommonFields(),
-      ...(isRent ? buildRentSpecificFields() : {}),
+      ...buildCommonFields(txnType),
+      ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       ...buildPropertySourceFields(txnType),
       propertyCondition: field('PropertyCondition', 'Property Condition', 'Select', false, 13, { options: ['New', 'Resale - Ready to Move', 'Resale - Occupied', 'Needs Renovation', 'Under Construction', 'Unfinished / Incomplete'] }),
       bhkMin: field('BHKMin', 'BHK Min', 'Select', false, 20, { options: bhkOptions }),
@@ -389,7 +400,6 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
 }
 
 function buildCommercialForm(txnType, category, subCategory) {
-  const isRent = txnType === 'Rent' || txnType === 'Rent Out';
   return {
     formKey: `${txnType}|${category}|${subCategory}`,
     formVersion: FORM_REGISTRY_VERSION,
@@ -399,9 +409,9 @@ function buildCommercialForm(txnType, category, subCategory) {
     subCategory,
     isActive: true,
     fields: {
-      ...buildCommonFields(),
+      ...buildCommonFields(txnType),
       ...buildPropertySourceFields(txnType),
-      ...(isRent ? buildRentSpecificFields() : {}),
+      ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
       businessType: field('BusinessType', 'Business Type', 'Select', true, 22, { options: ['Retail', 'Office', 'Hospitality', 'Healthcare', 'Education', 'IT/ITES', 'Other'] }),
@@ -428,8 +438,9 @@ function buildAgricultureForm(txnType, category, subCategory) {
     subCategory,
     isActive: true,
     fields: {
-      ...buildCommonFields(),
+      ...buildCommonFields(txnType),
       ...buildPropertySourceFields(txnType),
+      ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       totalArea:            field('TotalArea',            'Total Area (acres)',        'Number',  false, 20, { validation: 'positive-number' }),
       waterSource:          field('WaterSource',          'Water Source',             'Select',  false, 21, { options: ['Well', 'Borewell', 'Canal', 'River', 'None'] }),
       soilType:             field('SoilType',             'Soil Type',                'Select',  false, 22, { options: ['Black', 'Red', 'Alluvial', 'Sandy', 'Loamy', 'Mixed'] }),
@@ -454,8 +465,9 @@ function buildLandForm(txnType, category, subCategory) {
     subCategory,
     isActive: true,
     fields: {
-      ...buildCommonFields(),
+      ...buildCommonFields(txnType),
       ...buildPropertySourceFields(txnType),
+      ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       plotMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', false, 20, { validation: 'positive-number' }),
       plotMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', false, 21, { validation: 'positive-number' }),
       zoning: field('Zoning', 'Zoning', 'Select', true, 22, { options: ['Residential', 'Commercial', 'Mixed Use', 'Agricultural', 'Industrial'] }),
@@ -481,8 +493,9 @@ function buildIndustrialForm(txnType, category, subCategory) {
     subCategory,
     isActive: true,
     fields: {
-      ...buildCommonFields(),
+      ...buildCommonFields(txnType),
       ...buildPropertySourceFields(txnType),
+      ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
       zoneType: field('ZoneType', 'Zone Type', 'Select', true, 22, { options: ['Warehouse', 'Manufacturing', 'Logistics', 'Cold Storage', 'Data Center'] }),
