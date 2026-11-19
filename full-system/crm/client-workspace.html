@@ -2296,10 +2296,18 @@ table td,table th{border-color:var(--v2-line)!important}
         SubCategory: sub
       };
       const dynamicValues = collectDynamicValues('need');
-        Object.entries(dynamicValues).forEach(([key, val]) => {
-        // These values come from the visible scope selectors, never old
-        // client preferences retained in dynamic form state.
-        if (['TransactionType', 'transactionType', 'Category', 'category', 'SubCategory', 'subCategory'].includes(key)) return;
+      const formState = dynamicFormState.need;
+      const visibleStates = formState?.config
+        ? evaluateFieldVisibility(formState.config, formState.rules, dynamicValues)
+        : {};
+      const allowedFields = new Set(formState?.config
+        ? asArray(formState.config.fields)
+            .filter(f => f && ['RELEVANT', 'VISIBLE'].includes(visibleStates[f.FieldKey] || 'RELEVANT'))
+            .map(f => f.FieldKey)
+        : ['BudgetMax', 'Location1']);
+      Object.entries(dynamicValues).forEach(([key, val]) => {
+        // Only save fields belonging to this form scope that are currently relevant.
+        if (!allowedFields.has(key)) return;
         if (key.startsWith('__priority__')) return;
         if (!editingNeedId && (val === '' || val == null || (Array.isArray(val) && !val.length))) return;
         txnPayload[key] = val === '' ? null : val;
