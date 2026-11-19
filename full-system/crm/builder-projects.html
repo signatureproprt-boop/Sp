@@ -301,6 +301,50 @@ html body{background-image:none!important;background:#f7f7f5!important}
 </style>
   <link rel="stylesheet" href="/smart-shell.css">
   <script src="/smart-shell.js" defer></script>
+
+<style id="compact-project-list">
+/* Dense broker workspace: show more projects without hiding requirements or actions. */
+#grid.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+#grid>.card{display:grid;grid-template-columns:minmax(190px,1.05fr) minmax(0,1.8fr) minmax(220px,1.15fr);align-items:stretch;border-radius:10px!important}
+#grid>.card>.card-top{grid-column:1;grid-row:1;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+#grid>.card>.card-body{grid-column:2;grid-row:1;padding:13px 16px;min-width:0}
+#grid>.card>.card-footer{grid-column:3;grid-row:1;border-top:0;border-left:1px solid #eee8df;padding:12px 14px;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;min-width:0}
+#grid>.card>.card-footer>span{margin-bottom:8px;overflow-wrap:anywhere}
+#grid>.card>.card-footer>div{gap:7px 10px}
+#grid>.card>.card-footer .link{font-size:10.5px}
+#grid>.card .card-status{margin-bottom:7px}
+#grid>.card .card-project{font-size:15px;line-height:1.3}
+#grid>.card .card-loc{margin-top:7px}
+#grid>.card .card-price{font-size:17px}
+#grid>.card .card-body>.btn-secondary{display:inline-flex!important;width:auto!important;min-height:30px;padding:6px 10px;margin:6px 8px 8px 0!important;font-size:10.5px}
+#grid>.card .card-facts{margin-top:6px}
+#grid>.card .card-fact{font-size:10px;padding:3px 7px}
+#grid>.card .more-project-facts{margin-top:8px}
+#grid>.card:has(>.card-cover){grid-template-columns:120px minmax(180px,1.05fr) minmax(0,1.7fr) minmax(220px,1.1fr)}
+#grid>.card:has(>.card-cover)>.card-cover{grid-column:1;grid-row:1;width:120px;height:100%;min-height:150px;object-fit:cover}
+#grid>.card:has(>.card-cover)>.card-top{grid-column:2}
+#grid>.card:has(>.card-cover)>.card-body{grid-column:3}
+#grid>.card:has(>.card-cover)>.card-footer{grid-column:4}
+@media(max-width:1000px){
+  #grid>.card,#grid>.card:has(>.card-cover){grid-template-columns:minmax(160px,1fr) minmax(0,1.5fr)}
+  #grid>.card>.card-top,#grid>.card:has(>.card-cover)>.card-top{grid-column:1;grid-row:1}
+  #grid>.card>.card-body,#grid>.card:has(>.card-cover)>.card-body{grid-column:2;grid-row:1}
+  #grid>.card>.card-footer,#grid>.card:has(>.card-cover)>.card-footer{grid-column:1/-1;grid-row:2;border-left:0;border-top:1px solid #eee8df;flex-direction:row;justify-content:space-between;align-items:center}
+  #grid>.card:has(>.card-cover)>.card-cover{grid-column:1;grid-row:1;width:100%;height:100%;min-height:140px}
+  #grid>.card:has(>.card-cover)>.card-top{grid-column:2}
+  #grid>.card:has(>.card-cover)>.card-body{grid-column:3}
+  #grid>.card:has(>.card-cover){grid-template-columns:110px minmax(160px,1fr) minmax(0,1.4fr)}
+  #grid>.card:has(>.card-cover)>.card-footer{grid-column:1/-1}
+}
+@media(max-width:700px){
+  #grid.grid{grid-template-columns:minmax(0,1fr);gap:12px}
+  #grid>.card,#grid>.card:has(>.card-cover){display:flex;flex-direction:column}
+  #grid>.card>.card-top,#grid>.card>.card-body,#grid>.card>.card-footer{width:100%;grid-column:auto;grid-row:auto}
+  #grid>.card>.card-footer{border-left:0;border-top:1px solid #eee8df}
+  #grid>.card:has(>.card-cover)>.card-cover{width:100%;height:120px;min-height:0}
+}
+</style>
+
 </head>
 <body>
 <dialog id="project-detail" class="project-detail" aria-labelledby="pd-title"><div class="pd-topbar"><strong>Project details</strong><button class="btn btn-secondary" type="button" onclick="closeProjectDetail()" aria-label="Close project details">Close ×</button></div><div id="project-detail-content" class="pd-content"></div></dialog>
