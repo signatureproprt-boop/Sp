@@ -84,6 +84,7 @@ function normalizeBhkLabels(payload) {
   }
   return result;
 }
+
 function normalizeFieldPriority(value) {
   if (value == null || value === '') return null;
   const normalized = String(value).trim().toUpperCase().replace(/[\s-]+/g, '_');
