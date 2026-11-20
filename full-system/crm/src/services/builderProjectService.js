@@ -597,7 +597,10 @@ class BuilderProjectService {
     if (duplicate) return { ok: false, error: 'Duplicate builder project', duplicateProjectId: duplicate.ProjectID, data: duplicate };
     const changed = Object.entries(clean).some(([key, value]) => JSON.stringify(row[key]) !== JSON.stringify(value));
     Object.assign(row, clean, { UpdatedAt: new Date().toISOString() });
-    if (changed) row.FormReview = null;
+    if (changed) {
+      row.FormReview = null;
+      row.WorkReview = null;
+    }
     if (typeof mutateDb === 'function') mutateDb(db);
     this.repo.write(db);
     return { ok: true, data: row };
