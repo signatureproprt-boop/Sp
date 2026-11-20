@@ -75,8 +75,12 @@ function normalizeBhkLabels(payload) {
   for (const key of ['BHK', 'bhk', 'BHKMin', 'bhkMin', 'BHKMax', 'bhkMax']) {
     const value = result[key];
     if (typeof value !== 'string') continue;
-    const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(?:BHK|bedrooms?)$/i);
-    if (match) result[key] = Number(match[1]);
+    const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(?:BHK(\+)?|bedrooms?)$/i);
+    if (!match) continue;
+
+    const count = Number(match[1]);
+    // “5BHK+” means a lower bound of five, with no fixed upper limit.
+    result[key] = match[2] === '+' && /max$/i.test(key) ? null : count;
   }
   return result;
 }
@@ -929,6 +933,16 @@ class V2RequirementService {
       const raw = payload[key] !== undefined ? payload[key] : payload[key.charAt(0).toLowerCase() + key.slice(1)];
       if (raw === undefined || raw === null || raw === '') continue;
       if (typeof raw === 'object' && raw.value !== undefined) continue;
+
+      // Select labels such as “Studio” are not numeric. Their configured option
+      // membership is validated below; actual numeric values still get checked.
+      const configuredField = Object.values(formConfig?.fields || {}).find((field) =>
+        String(field.fieldId || '').toLowerCase() === String(key).toLowerCase()
+      );
+      if (configuredField && ['Select', 'MultiSelect'].includes(configuredField.fieldType) && typeof raw === 'string') {
+        continue;
+      }
+
       const n = Number(raw);
       if (!Number.isFinite(n) || n < 0) {
         return { ok: false, error: `${key} must be a positive number` };
