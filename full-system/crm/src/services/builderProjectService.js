@@ -617,6 +617,35 @@ class BuilderProjectService {
     return { ok: true, data: row[key] };
   }
 
+  setWorkReview(id, payload, userId) {
+    const db = this.repo.read();
+    const row = this._all(db).find((p) => p.ProjectID === id && p.Active !== false);
+    if (!row) return { ok: false, error: 'Project not found' };
+    const allowedStatus = new Set(['pending', 'in_progress', 'done_verified', 'needs_information', 'not_applicable']);
+    const allowedChecks = ['location', 'brochure', 'layouts', 'carpet', 'builtUp', 'notes', 'savedReloaded'];
+    const requested = String(payload?.status || 'pending');
+    if (!allowedStatus.has(requested)) return { ok: false, error: 'Invalid work status' };
+    const previous = row.WorkReview || {};
+    const checklist = Object.fromEntries(allowedChecks.map((key) => [key,
+      typeof payload?.checklist?.[key] === 'boolean' ? payload.checklist[key] : previous.checklist?.[key] === true
+    ]));
+    const note = String(payload?.note ?? previous.note ?? '').trim().slice(0, 1000);
+    if (requested === 'done_verified' && !allowedChecks.every((key) => checklist[key])) {
+      return { ok: false, error: 'Complete every checklist item, including save and reload verification, before marking Done & Verified.' };
+    }
+    if ((requested === 'needs_information' || requested === 'not_applicable') && !note) {
+      return { ok: false, error: 'Add a short note for Needs Information or Not Applicable.' };
+    }
+    const anyChecked = allowedChecks.some((key) => checklist[key]);
+    const status = requested === 'needs_information' || requested === 'not_applicable'
+      ? requested : requested === 'done_verified' ? 'done_verified'
+      : requested === 'in_progress' || anyChecked ? 'in_progress' : 'pending';
+    row.WorkReview = { status, checklist, note, updatedBy: userId, updatedAt: new Date().toISOString() };
+    row.UpdatedAt = row.WorkReview.updatedAt;
+    this.repo.write(db);
+    return { ok: true, data: row.WorkReview };
+  }
+
   remove(id) {
     const db = this.repo.read();
     const row = this._all(db).find((p) => p.ProjectID === id);
