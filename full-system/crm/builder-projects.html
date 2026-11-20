@@ -30,6 +30,15 @@
     .btn-ghost { color: var(--clr-brown); }
     .btn-accent { background: #d97706; color: #fff; border-color: #d97706; }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .work-tracker-panel{min-width:235px;max-width:320px;font-size:11px;color:var(--clr-text)}
+    .work-tracker-panel summary{cursor:pointer;text-transform:capitalize;font-weight:750;color:var(--clr-brown);padding:5px 0}
+    .work-tracker-panel>label{display:block;margin:5px 0}
+    .work-tracker-panel select,.work-tracker-panel textarea{width:100%;padding:5px;border:1px solid var(--clr-border);border-radius:5px;font:inherit}
+    .work-tracker-panel textarea{min-height:48px;resize:vertical}
+    .work-check{display:flex!important;align-items:center;gap:6px}
+    .work-check input{flex:0 0 auto}
+    #brochure-status-rows td{vertical-align:top}
+
 
     .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
     .search-input { flex: 1; min-width: 220px; padding: 9px 12px; border: 1px solid var(--clr-border); border-radius: 8px; background: #fff; font-size: 14px; }
@@ -367,7 +376,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
 <div class="page">
   <header class="page-header project-header">
     <div><div class="workspace-eyebrow">SIGNATURE PROPERTIES / PROJECT DIRECTORY</div><h1 class="page-title">Builder Projects</h1><p class="page-sub">Search Surat projects by category, area, builder, BHK and sqft. Open a project for its full details and brochure status.</p></div>
-    <div class="project-primary-actions">      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Brochure Log</button>
+    <div class="project-primary-actions">      <button class="btn btn-ghost" id="brochure-status-btn" onclick="openBrochureStatus()">📋 Project Work Tracker</button>
       <button class="btn btn-primary" data-testid="add-project-btn" onclick="openAddModal()">＋ Add Project</button></div>
   </header>
   <section class="project-overview" aria-label="Project overview">
@@ -427,11 +436,12 @@ html body{background-image:none!important;background:#f7f7f5!important}
           <select id="brochure-builder-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter builder"><option value="">All builders</option></select>
           <select id="brochure-category-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter category"><option value="">All categories</option><option>Residential</option><option>Commercial</option><option>Industrial</option></select>
           <select id="brochure-review-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter review"><option value="">All reviews</option><option value="unchecked">Brochure unchecked</option><option value="incomplete">Form incomplete</option><option value="unverified">Form unverified</option></select>
+          <select id="work-status-filter" onchange="renderBrochureStatus()" class="btn" aria-label="Filter project work status"><option value="">All work statuses</option><option value="pending">Work pending</option><option value="in_progress">Work in progress</option><option value="done_verified">Done &amp; verified</option><option value="needs_information">Needs information</option><option value="not_applicable">Not applicable</option></select>
           <input id="brochure-status-search" class="search-input" style="min-width:160px" placeholder="Search project or builder…" oninput="renderBrochureStatus()">
           <a class="btn btn-primary" href="/api/v2/builder-projects/brochure-status.csv" download>Download CSV log</a>
           <button class="btn btn-ghost" onclick="loadBrochureStatus()">↻ Refresh</button>
         </div>
-        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Status</th><th>PDF / Drive ID / Error</th><th>Form / Review</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
+        <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Project</th><th>Builder</th><th>Brochure</th><th>PDF / Drive ID / Error</th><th>Form / Review</th><th>Project work checklist</th></tr></thead><tbody id="brochure-status-rows"></tbody></table></div>
       </div>
     </div>
   </div>
@@ -829,11 +839,22 @@ html body{background-image:none!important;background:#f7f7f5!important}
     const builder = document.getElementById('brochure-builder-filter').value;
     const category = document.getElementById('brochure-category-filter').value;
     const query = document.getElementById('brochure-status-search').value.trim().toLowerCase();
-    const rows = brochureStatusRows.filter((row) => (!filter || row.status === filter) &&
-      (!builder || (row.builderName || 'Unknown Builder') === builder) && (!category || row.category === category) &&
-      (!review || review === 'unchecked' && !row.brochureChecked || review === 'incomplete' && !row.formComplete || review === 'unverified' && !row.formVerified) &&
-      (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query)));
-    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}<br><small>${esc(row.category || 'Uncategorized')}</small></td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds || row.failureReason)}</small></td><td><small>${row.formComplete ? 'Fields filled' : 'Missing: ' + esc((row.missingFields || []).join(', '))}</small><br><label><input type="checkbox" ${row.brochureChecked ? 'checked' : ''} ${row.status === 'Drive linked' ? '' : 'disabled title="Verified Drive PDF required"'} onchange="setProjectReview('${esc(row.projectId)}','brochure',this.checked)"> Brochure checked</label><br><label><input type="checkbox" ${row.formVerified ? 'checked' : ''} onchange="setProjectReview('${esc(row.projectId)}','form',this.checked)"> Form verified</label><br><button class="link" onclick="editFromBrochureLog('${esc(row.projectId)}')">Edit Form</button></td></tr>`).join('') || '<tr><td colspan="5">No matching projects</td></tr>';
+    const workFilter = document.getElementById('work-status-filter').value;
+    const rows = brochureStatusRows.filter((row) => {
+      const workStatus = row.workReview?.status || 'pending';
+      return (!filter || row.status === filter) &&
+        (!builder || (row.builderName || 'Unknown Builder') === builder) && (!category || row.category === category) &&
+        (!review || review === 'unchecked' && !row.brochureChecked || review === 'incomplete' && !row.formComplete || review === 'unverified' && !row.formVerified) &&
+        (!workFilter || workStatus === workFilter) &&
+        (!query || `${row.projectName} ${row.builderName} ${row.projectId}`.toLowerCase().includes(query));
+    });
+    const checks = [['location','Location / builder'],['brochure','Brochure reviewed'],['layouts','Layouts verified'],['carpet','Carpet entered'],['builtUp','Built-up entered'],['notes','Sources / conflicts noted'],['savedReloaded','Saved and reload checked']];
+    const workPanel = (row) => {
+      const work = row.workReview || {status:'pending',checklist:{},note:''};
+      const status = work.status || 'pending';
+      return `<details class="work-tracker-panel" data-work-panel data-work-project="${esc(row.projectId)}"><summary>${status.replaceAll('_',' ')} · ${checks.filter(([key])=>work.checklist?.[key]).length}/${checks.length} checked</summary><label>Status <select data-work-status onchange="saveProjectWork('${esc(row.projectId)}',this)"><option value="pending" ${status==='pending'?'selected':''}>Pending</option><option value="in_progress" ${status==='in_progress'?'selected':''}>In Progress</option><option value="done_verified" ${status==='done_verified'?'selected':''}>Done &amp; Verified</option><option value="needs_information" ${status==='needs_information'?'selected':''}>Needs Information</option><option value="not_applicable" ${status==='not_applicable'?'selected':''}>Not Applicable</option></select></label>${checks.map(([key,label])=>`<label class="work-check"><input type="checkbox" data-work-key="${key}" ${work.checklist?.[key]?'checked':''} onchange="saveProjectWork('${esc(row.projectId)}',this)"><span>${label}</span></label>`).join('')}<label>Note <textarea data-work-note maxlength="1000" placeholder="Missing source, conflict, or N/A reason" onblur="saveProjectWork('${esc(row.projectId)}',this)">${esc(work.note||'')}</textarea></label><small>Last updated: ${work.updatedAt?new Date(work.updatedAt).toLocaleString():'Not started'}</small></details>`;
+    };
+    document.getElementById('brochure-status-rows').innerHTML = rows.map((row) => `<tr><td>${esc(row.projectName)}<br><small>${esc(row.projectId)}</small></td><td>${esc(row.builderName)}<br><small>${esc(row.category || 'Uncategorized')}</small></td><td>${esc(row.status)}</td><td>${esc(row.filenames || '—')}<br><small>${esc(row.driveFileIds || row.failureReason)}</small></td><td><small>${row.formComplete ? 'Fields filled' : 'Missing: ' + esc((row.missingFields || []).join(', '))}</small><br><label><input type="checkbox" ${row.brochureChecked ? 'checked' : ''} ${row.status === 'Drive linked' ? '' : 'disabled title="Verified Drive PDF required"'} onchange="setProjectReview('${esc(row.projectId)}','brochure',this.checked)"> Brochure checked</label><br><label><input type="checkbox" ${row.formVerified ? 'checked' : ''} onchange="setProjectReview('${esc(row.projectId)}','form',this.checked)"> Form verified</label><br><button class="link" onclick="editFromBrochureLog('${esc(row.projectId)}')">Edit Form</button></td><td>${workPanel(row)}</td></tr>`).join('') || '<tr><td colspan="6">No matching projects</td></tr>';
   }
 
   async function retryFailedBrochures() {
@@ -865,6 +886,25 @@ html body{background-image:none!important;background:#f7f7f5!important}
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Review could not be saved');
+      await loadBrochureStatus();
+    } catch (error) { toast(error.message, true); await loadBrochureStatus(); }
+  }
+
+  async function saveProjectWork(projectId, sourceElement) {
+    const panel = sourceElement.closest('[data-work-panel]');
+    if (!panel) return;
+    const workReview = {
+      status: panel.querySelector('[data-work-status]').value,
+      note: panel.querySelector('[data-work-note]').value,
+      checklist: Object.fromEntries([...panel.querySelectorAll('[data-work-key]')].map(input => [input.dataset.workKey, input.checked]))
+    };
+    try {
+      const response = await fetch(`/api/v2/builder-projects/${encodeURIComponent(projectId)}/review`, {
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({kind:'work',workReview})
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Work status could not be saved');
       await loadBrochureStatus();
     } catch (error) { toast(error.message, true); await loadBrochureStatus(); }
   }
