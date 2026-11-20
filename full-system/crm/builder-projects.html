@@ -905,7 +905,10 @@ html body{background-image:none!important;background:#f7f7f5!important}
       });
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error(result.error || 'Work status could not be saved');
+      window.workTrackerOpenProjectId = projectId;
       await loadBrochureStatus();
+      const refreshedPanel = [...document.querySelectorAll('[data-work-panel]')].find(item => item.dataset.workProject === projectId);
+      if (refreshedPanel) refreshedPanel.open = true;
     } catch (error) { toast(error.message, true); await loadBrochureStatus(); }
   }
 
