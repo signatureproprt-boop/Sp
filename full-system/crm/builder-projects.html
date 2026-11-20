@@ -420,7 +420,7 @@ html body{background-image:none!important;background:#f7f7f5!important}
 
   <div class="modal-overlay hidden" id="brochure-status-modal">
     <div class="modal" style="max-width:1000px">
-      <div class="modal-header"><div class="modal-title">📋 Builder brochure log</div><button class="modal-close" onclick="document.getElementById('brochure-status-modal').classList.add('hidden')" aria-label="Close">×</button></div>
+      <div class="modal-header"><div class="modal-title">📋 Builder project work tracker &amp; brochure log</div><button class="modal-close" onclick="document.getElementById('brochure-status-modal').classList.add('hidden')" aria-label="Close">×</button></div>
       <div class="modal-body">
         <p style="font-size:12px;color:var(--clr-text-light);margin-bottom:12px">Live CRM status for every active builder project. “Drive linked” means a verified Drive file is recorded against that project.</p>
         <div id="brochure-status-summary" style="margin-bottom:12px">Loading…</div>
@@ -824,7 +824,12 @@ html body{background-image:none!important;background:#f7f7f5!important}
       builderSelect.innerHTML = '<option value="">All builders</option>' + builders.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
       if (builders.includes(selectedBuilder)) builderSelect.value = selectedBuilder;
       const c = report.counts;
-      document.getElementById('brochure-status-summary').textContent = `${c.totalProjects} active projects · ${c.driveLinked} Drive linked projects (${c.linkedFiles} PDFs) · ${c.failed} failed · ${c.storedOutsideDrive} stored elsewhere · ${c.pending} pending · ${c.noBrochureSource} without brochure source · Updated ${new Date(report.generatedAt).toLocaleString()}`;
+      const workCounts = brochureStatusRows.reduce((counts, row) => {
+        const status = row.workReview?.status || 'pending';
+        counts[status] = (counts[status] || 0) + 1;
+        return counts;
+      }, {});
+      document.getElementById('brochure-status-summary').textContent = `${workCounts.done_verified || 0} done & verified · ${workCounts.in_progress || 0} in progress · ${workCounts.pending || 0} pending · ${workCounts.needs_information || 0} need information · ${workCounts.not_applicable || 0} not applicable | ${c.totalProjects} active projects · Updated ${new Date(report.generatedAt).toLocaleString()}`;
       renderBrochureStatus();
       return true;
     } catch (error) {
