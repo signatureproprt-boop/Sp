@@ -26,7 +26,8 @@ function brochureStatusReport(projects, visible = () => true) {
       sourceUrls: [...new Set(sources)].join('; '), failureReason: linked.length ? '' : failureReason,
       missingFields, formComplete: missingFields.length === 0,
       brochureChecked, brochureCheckedBy: brochureChecked ? project.BrochureReview.checkedBy || '' : '', brochureCheckedAt: brochureChecked ? project.BrochureReview.checkedAt || '' : '',
-      formVerified: project.FormReview?.checked === true, formVerifiedBy: project.FormReview?.checkedBy || '', formVerifiedAt: project.FormReview?.checkedAt || ''
+      formVerified: project.FormReview?.checked === true, formVerifiedBy: project.FormReview?.checkedBy || '', formVerifiedAt: project.FormReview?.checkedAt || '',
+      workReview: project.WorkReview || null
     };
   }).sort((a, b) => a.projectName.localeCompare(b.projectName) || a.projectId.localeCompare(b.projectId));
   const counts = { totalProjects: rows.length, driveLinked: 0, storedOutsideDrive: 0, failed: 0, pending: 0, noBrochureSource: 0, linkedFiles: 0 };
@@ -41,7 +42,7 @@ function brochureStatusReport(projects, visible = () => true) {
   return { ok: true, generatedAt: new Date().toISOString(), counts, rows };
 }
 
-const CSV_COLUMNS = ['projectId', 'projectName', 'builderName', 'category', 'status', 'brochureCount', 'filenames', 'driveFileIds', 'sourceUrls', 'failureReason', 'missingFields', 'formComplete', 'brochureChecked', 'brochureCheckedBy', 'brochureCheckedAt', 'formVerified', 'formVerifiedBy', 'formVerifiedAt'];
+const CSV_COLUMNS = ['projectId', 'projectName', 'builderName', 'category', 'status', 'brochureCount', 'filenames', 'driveFileIds', 'sourceUrls', 'failureReason', 'missingFields', 'formComplete', 'brochureChecked', 'brochureCheckedBy', 'brochureCheckedAt', 'formVerified', 'formVerifiedBy', 'formVerifiedAt', 'workStatus', 'workNote', 'workUpdatedAt'];
 function reportCsv(report) {
   const quote = (value) => {
     const text = String(value ?? '');
@@ -49,7 +50,7 @@ function reportCsv(report) {
     const safe = /^[=+@\-\t\r]/.test(text) ? `'${text}` : text;
     return `"${safe.replace(/"/g, '""')}"`;
   };
-  return '\uFEFF' + [CSV_COLUMNS.join(','), ...report.rows.map((row) => CSV_COLUMNS.map((key) => quote(row[key])).join(','))].join('\r\n') + '\r\n';
+  return '\uFEFF' + [CSV_COLUMNS.join(','), ...report.rows.map((row) => CSV_COLUMNS.map((key) => quote(key === 'workStatus' ? row.workReview?.status || 'pending' : key === 'workNote' ? row.workReview?.note || '' : key === 'workUpdatedAt' ? row.workReview?.updatedAt || '' : row[key])).join(','))].join('\r\n') + '\r\n';
 }
 
 module.exports = { brochureStatusReport, reportCsv };

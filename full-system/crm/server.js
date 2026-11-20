@@ -2544,6 +2544,13 @@ async function handleApi(req, res, url) {
         const tenant = tenantCheck(project.data, actor);
         if (!tenant.ok) { sendJson(res, { ok: false, error: tenant.error }, tenant.statusCode || 403); return; }
         const kind = bodyForV2?.kind;
+        if (kind === 'work') {
+          if (!bodyForV2.workReview || typeof bodyForV2.workReview !== 'object') {
+            sendJson(res, { ok: false, error: 'workReview is required' }, 400); return;
+          }
+          sendJson(res, svc.setWorkReview(project.data.ProjectID, bodyForV2.workReview, actor.userId));
+          return;
+        }
         if (!['brochure', 'form'].includes(kind) || typeof bodyForV2?.checked !== 'boolean') {
           sendJson(res, { ok: false, error: 'kind and checked are required' }, 400); return;
         }
