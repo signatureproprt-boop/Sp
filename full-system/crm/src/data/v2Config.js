@@ -437,27 +437,32 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
 
 function buildCommercialForm(txnType, category, subCategory) {
   const isOffice = subCategory === 'Office' || subCategory === 'Co-working Space';
+  const isOwner = ['Sale', 'Rent Out', 'Lease Out'].includes(txnType);
+  const isLease = ['Lease', 'Lease Out'].includes(txnType);
+  const isRental = isRentalTransaction(txnType);
   const isShopfront = ['Shop', 'Showroom'].includes(subCategory);
   const isStorage = ['Warehouse'].includes(subCategory);
   const isHospitality = ['Restaurant'].includes(subCategory);
   const isClinic = ['Clinic'].includes(subCategory);
   const officeFields = isOffice ? {
     furnishing: field('Furnishing', 'Furnishing', 'Select', false, 23, { Section: 'Office Details', options: ['Fully Furnished', 'Part Furnished', 'Unfurnished', 'Bare Shell', 'Managed / Co-working'] }),
-    officeSeatsMin: field('OfficeSeatsMin', 'Seats Min', 'Number', false, 24, { Section: 'Office Details', validation: 'positive-number' }),
+    officeSeatsMin: field('OfficeSeatsMin', isOwner ? 'Available Seats Min' : 'Required Seats Min', 'Number', false, 24, { Section: 'Office Details', validation: 'positive-number' }),
     officeSeatsMax: field('OfficeSeatsMax', 'Seats Max', 'Number', false, 25, { Section: 'Office Details', validation: 'positive-number' }),
     workstationsMin: field('WorkstationsMin', 'Workstations Min', 'Number', false, 26, { Section: 'Office Layout', validation: 'positive-number' }),
     workstationsMax: field('WorkstationsMax', 'Workstations Max', 'Number', false, 27, { Section: 'Office Layout', validation: 'positive-number' }),
-    cabins: field('Cabins', 'Private Cabins', 'Number', false, 28, { Section: 'Office Layout', validation: 'positive-number' }),
+    cabins: field('Cabins', isOwner ? 'Available Private Cabins' : 'Required Private Cabins', 'Number', false, 28, { Section: 'Office Layout', validation: 'positive-number' }),
     meetingRooms: field('MeetingRooms', 'Meeting / Conference Rooms', 'Number', false, 29, { Section: 'Office Layout', validation: 'positive-number' }),
     floorPreference: field('FloorPreference', 'Floor Preference', 'Select', false, 30, { Section: 'Office Details', options: ['Ground', 'Low (1-5)', 'Mid (6-15)', 'High (16+)', 'Any'] }),
     buildingGrade: field('BuildingGrade', 'Building / Park Type', 'Select', false, 31, { Section: 'Office Details', options: ['Grade A', 'Grade B', 'Grade C', 'IT Park', 'Business Park', 'Any'] }),
     airConditioning: field('AirConditioning', 'Air Conditioning', 'Select', false, 32, { Section: 'Facilities', options: ['Central AC', 'Split AC', 'VRV / VRF', 'Not Required', 'Any'] }),
     powerBackup: field('PowerBackup', 'Power Backup', 'Select', false, 33, { Section: 'Facilities', options: ['Full Backup', 'Common Areas Only', 'Not Required', 'Any'] }),
-    officeAmenities: field('OfficeAmenities', 'Office Facilities', 'MultiSelect', false, 34, { Section: 'Facilities', options: ['Reception', 'Pantry', 'Private Washroom', 'Internet / Fiber', 'Server Room', 'Visitor Parking', 'Security / Access Control'] })
+    officeAmenities: field('OfficeAmenities', 'Office Facilities', 'MultiSelect', false, 34, { Section: 'Facilities', options: ['Reception', 'Pantry', 'Private Washroom', 'Internet / Fiber', 'Server Room', 'Security / Access Control'] })
   } : {};
   const shopFields = isShopfront ? {
     frontageWidth: field('FrontageWidth', 'Frontage Width (ft)', 'Number', false, 37, { validation: 'positive-number' }),
     frontageDirection: field('FrontageDirection', 'Frontage / Facing', 'Select', false, 37.1, { options: ['Main Road', 'Corner', 'Mall / High Street', 'Internal Road', 'Any'] }),
+    groundFloorPriority: field('GroundFloorPriority', 'Ground Floor', 'Select', false, 37.15, { options: ['Must Have', 'Preferred', 'Any'] }),
+    customerParkingPriority: field('CustomerParkingPriority', 'Customer Parking', 'Select', false, 37.16, { options: ['Must Have', 'Preferred', 'Any'] }),
     displayWindow: field('DisplayWindow', 'Display Window Required', 'Boolean', false, 37.2),
     footfall: field('Footfall', 'Preferred Footfall', 'Select', false, 37.3, { options: ['High', 'Medium', 'Low', 'Any'] }),
     shopFloor: field('ShopFloor', 'Preferred Floor', 'Select', false, 37.4, { options: ['Ground', 'First', 'Upper Floor', 'Mall Floor', 'Any'] })
@@ -472,12 +477,17 @@ function buildCommercialForm(txnType, category, subCategory) {
   const hospitalityFields = isHospitality ? {
     seatingCapacity: field('SeatingCapacity', 'Seating Capacity', 'Number', false, 45, { validation: 'positive-number' }),
     kitchenExhaust: field('KitchenExhaust', 'Kitchen Exhaust / Chimney', 'Boolean', false, 46),
+    kitchenSetup: field('KitchenSetup', 'Kitchen Setup', 'Select', false, 46.1, { options: ['Existing Kitchen', 'Space for Kitchen', 'Any'] }),
+    exhaustDuct: field('ExhaustDuct', 'Exhaust Duct Availability', 'Select', false, 46.2, { options: ['Available', 'Can Install', 'Unavailable', 'To Confirm'] }),
+    drainage: field('Drainage', 'Kitchen Drainage', 'Boolean', false, 46.3),
     gasConnection: field('GasConnection', 'Commercial Gas Connection', 'Boolean', false, 47),
     outdoorSeating: field('OutdoorSeating', 'Outdoor Seating', 'Boolean', false, 48)
   } : {};
   const clinicFields = isClinic ? {
     consultationRooms: field('ConsultationRooms', 'Consultation Rooms', 'Number', false, 45, { validation: 'positive-number' }),
     medicalUse: field('MedicalUse', 'Clinic / Diagnostic Use', 'Select', false, 46, { options: ['Clinic', 'Dental', 'Diagnostic', 'Day Care', 'Any'] }),
+    wheelchairAccess: field('WheelchairAccess', 'Wheelchair Access', 'Boolean', false, 46.1),
+    clinicUseAllowed: field('ClinicUseAllowed', 'Clinic Use Allowed', 'Select', false, 46.2, { options: ['Yes', 'No', 'To Confirm'] }),
     liftAccess: field('LiftAccess', 'Patient Lift Access', 'Boolean', false, 47)
   } : {};
   return {
@@ -492,6 +502,24 @@ function buildCommercialForm(txnType, category, subCategory) {
       ...buildCommonFields(txnType),
       ...buildPropertySourceFields(txnType),
       ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
+      priceBasis: field('CommercialPriceBasis', 'Price Basis', 'Select', false, 2.1, { Section: 'Budget', options: ['Total', 'Per sq ft', ...(subCategory === 'Co-working Space' ? ['Per Seat', 'Per Cabin'] : [])] }),
+      ...(isRental ? {
+        maintenanceBasis: field('MaintenanceBasis', 'Maintenance', 'Select', false, 32.1, { options: ['Included', 'Extra', 'To Confirm'] })
+      } : {}),
+      ...(isLease ? {
+        lockInMonths: field('LockInMonths', 'Lock-in (months)', 'Number', false, 34.1, { validation: 'positive-number' }),
+        fitOutDays: field('FitOutDays', 'Fit-out Period (days)', 'Number', false, 34.2, { validation: 'positive-number' }),
+        rentEscalation: field('RentEscalation', 'Rent Increase (%)', 'Number', false, 34.3, { validation: 'positive-number' })
+      } : {}),
+      ...(isOwner ? {
+        availableFrom: field('AvailableFrom', 'Available From', 'Date', false, 11.1),
+        occupancy: field('OwnerOccupancy', 'Property Occupancy', 'Select', false, 11.2, { options: ['Vacant', 'Owner Occupied', 'Tenant Occupied'] }),
+        currentRent: field('CurrentRent', 'Current Tenant Rent (₹/month)', 'Number', false, 11.3, { validation: 'positive-number' }),
+        leaseExpiry: field('LeaseExpiry', 'Current Lease Expiry', 'Date', false, 11.4)
+      } : {}),
+      commercialAmenities: field('CommercialAmenities', 'Amenities', 'MultiSelect', false, 49.5, {
+        options: ['Lift', 'Visitor Parking', 'Security', 'CCTV', 'Fire Safety', 'Internet / Fiber', 'Common Washroom', ...(isShopfront ? ['Signage', 'Loading Access', 'Display Window'] : [])]
+      }),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),
       areaType: field('AreaType', 'Area Type', 'Select', false, 21.5, { options: ['Carpet Area', 'Built-up Area', 'Super Built-up Area'] }),
@@ -506,7 +534,7 @@ function buildCommercialForm(txnType, category, subCategory) {
       parkingSlots: field('ParkingSlots', 'Parking Slots', 'Number', false, 49.2, { validation: 'positive-number' }),
       liftRequired: field('LiftRequired', 'Lift Required', 'Boolean', false, 49.3),
       washrooms: field('Washrooms', 'Washrooms', 'Number', false, 49.4, { validation: 'positive-number' }),
-      preferences: field('Preferences', 'Additional Preferences', 'Textarea', false, 50)
+      preferences: field('Preferences', 'Notes', 'Textarea', false, 50)
     },
     dependencies: [
       { field: 'AreaMax', dependsOn: 'AreaMin', rule: 'gte', errorMessage: 'Area Max must be ≥ Area Min' },
