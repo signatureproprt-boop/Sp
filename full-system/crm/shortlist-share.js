@@ -14,7 +14,7 @@ for(const [key,label] of [['brochures','Brochure'],['photos','Photo'],['videos',
 lines.push('Please reply with your preferred option to arrange a site visit. Price and availability are subject to confirmation.','— Signature Properties');return lines.join('\n');}
 async function renderCards(root,rows,lead={}) {
   root.replaceChildren();
-  const logo=new Image();logo.src='/assets/signature-mark.svg';
+  const logo=new Image();logo.src='/assets/signature-properties-sp-5d.png';
   await new Promise((resolve,reject)=>{logo.onload=resolve;logo.onerror=()=>reject(new Error('Firm logo could not be loaded. Please retry.'));});
   for(const [index,row] of rows.entries()) {
     const p=row.Property || {},canvas=document.createElement('canvas');canvas.width=1080;

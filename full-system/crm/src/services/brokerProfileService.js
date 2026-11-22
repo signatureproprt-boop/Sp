@@ -9,7 +9,7 @@ const DEFAULT_PROFILE = {
   Mobile: '+91 90000 00001',
   Email: 'admin@sig.realty',
   PhotoUrl: null,
-  LogoUrl: '/assets/signature-mark.svg'
+  LogoUrl: '/assets/signature-properties-sp-5d.png'
 };
 
 class BrokerProfileService {

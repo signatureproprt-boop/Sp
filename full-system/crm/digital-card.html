@@ -1,3 +1,5 @@
+        <div class="biz-services">BUY · SELL · RENT · LEASE</div>
+        <div class="biz-tagline">Your Property. Our Commitment.</div>
 <!doctype html>
 <html lang="en">
 <head>
@@ -8,8 +10,8 @@
 <script src="/vendor/html2canvas.min.js"></script>
 <style>
   :root {
-    --clr-brown: #5c3317; --clr-brown-dark: #2c1405; --clr-brown-mid: #7a4a28;
-    --clr-gold: #b8860b; --clr-gold-mid: #d4a017; --clr-gold-soft: #fdf8ec;
+    --clr-brown: #17254d; --clr-brown-dark: #06102e; --clr-brown-mid: #203664;
+    --clr-gold: #b8860b; --clr-gold-mid: #d9b65d; --clr-gold-soft: #fdf8ec;
     --clr-bg: #faf7f2; --clr-card: #ffffff; --clr-border: #e8ddd0;
     --clr-text: #1c0a00; --clr-text-light: #7a6355;
   }
@@ -30,13 +32,15 @@
   .card-wrap { flex: 0 0 340px; }
   .biz-card {
     width: 340px; border-radius: 20px; overflow: hidden;
-    background: linear-gradient(155deg, var(--clr-brown-dark) 0%, var(--clr-brown) 55%, var(--clr-brown-mid) 100%);
-    color: #f6ead7; box-shadow: 0 18px 40px rgba(44,20,5,.35); position: relative;
+    background: linear-gradient(155deg, #050a1d 0%, #0c1940 55%, #1b315d 100%);
+    color: #f6ead7; box-shadow: 0 18px 40px rgba(6,16,46,.35); position: relative;
   }
   .biz-card::before { content:''; position:absolute; inset:0; background-image: radial-gradient(circle at 85% 10%, rgba(212,160,23,.18), transparent 45%); }
   .biz-card-inner { position: relative; padding: 26px 24px 22px; }
-  .biz-logo { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; margin-bottom: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
-  .biz-agency { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--clr-gold-mid); font-weight: 700; }
+  .biz-logo { width: 62px; height: 62px; border-radius: 12px; object-fit: cover; margin-bottom: 12px; border: 1px solid rgba(217,182,93,.72); box-shadow: 0 3px 12px rgba(0,0,0,.35); }
+  .biz-agency { font-size: 14px; letter-spacing: .08em; text-transform: uppercase; color: #f2f4f8; font-weight: 800; }
+  .biz-services { margin-top: 5px; font-size: 9px; letter-spacing: .11em; color: #e4c56f; font-weight: 800; }
+  .biz-tagline { margin-top: 4px; font-size: 10px; letter-spacing: .025em; color: #d4d9e5; font-style: italic; }
   .biz-photo-row { display: flex; align-items: center; gap: 14px; margin: 14px 0 16px; }
   .biz-photo { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; border: 2px solid var(--clr-gold-mid); background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: var(--clr-gold-mid); }
   .biz-name { font-size: 19px; font-weight: 800; color: #fff; }
@@ -71,7 +75,7 @@
 <body>
 
 <nav class="topnav">
-  <span class="brand" style="display:inline-flex;align-items:center;gap:8px"><img src="/assets/signature-mark.svg" alt="logo" style="width:26px;height:26px;border-radius:50%;object-fit:cover" />Signature Properties</span>
+  <span class="brand" style="display:inline-flex;align-items:center;gap:8px"><img src="/assets/signature-properties-sp-5d.png" alt="logo" style="width:26px;height:26px;border-radius:50%;object-fit:cover" />Signature Properties</span>
   <a href="/">Dashboard</a>
   <a href="/clients">Clients</a>
   <a href="/inventory">Inventory</a>
@@ -163,7 +167,7 @@
   }
 
   function renderCard() {
-    document.getElementById('c-logo').src = profile.LogoUrl || '';
+    document.getElementById('c-logo').src = (!profile.LogoUrl || profile.LogoUrl === '/assets/signature-mark.svg') ? '/assets/signature-properties-sp-5d.png' : profile.LogoUrl;
     document.getElementById('c-agency').textContent = profile.Agency || 'Signature Properties';
     document.getElementById('c-name').textContent = profile.Name || '—';
     document.getElementById('c-role').textContent = profile.Designation || '';
