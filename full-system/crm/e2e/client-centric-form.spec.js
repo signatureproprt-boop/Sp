@@ -44,24 +44,24 @@ test('client form keeps identity and edits a dynamic requirement without a trans
   await page.getByTestId('edit-add-requirement').click();
   await page.getByTestId('need-txn-type').selectOption('Purchase');
   await page.getByTestId('need-category').selectOption('Residential');
-  await page.locator('.sp-next').click();
+
   await expect(page.locator('#need-fld-BHKMin')).toBeVisible();
   await page.locator('#need-fld-BHKMin').fill('2');
   await page.locator('.sp-back').click();
   await page.getByTestId('need-category').selectOption('Commercial');
-  await page.locator('.sp-next').click();
+
   await expect(page.locator('#need-fld-BusinessType')).toBeVisible();
   await expect(page.locator('#need-fld-BHKMin')).toHaveCount(0);
   await page.locator('#need-fld-BusinessType').fill('Office');
-  await page.locator('.sp-next').click();
+
   await page.getByTestId('save-need-btn').click();
   await expect(page.locator('#add-need-modal')).toHaveClass(/hidden/);
   await expect(page.locator('[data-edit-transaction="R1"]')).toBeVisible().catch(async error => { console.log('FORM DIAGNOSTIC', await page.locator('#workspace-error').textContent(), JSON.stringify(requirements), await page.locator('#edit-requirements-list').textContent()); throw error; });
   await page.locator('[data-edit-transaction="R1"]').click();
-  await page.locator('.sp-next').click();
+
   await expect(page.locator('#need-fld-BusinessType')).toHaveValue('Office');
   await page.locator('#need-fld-BudgetMax').fill('9000000');
-  await page.locator('.sp-next').click();
+
   await page.getByTestId('save-need-btn').click();
   await expect(page.locator('#add-need-modal')).toHaveClass(/hidden/);
   expect(requirements).toHaveLength(1);
@@ -93,8 +93,8 @@ test('Sheet details prefill an unsaved requirement and lifecycle actions are ava
     await route.fulfill({json:response});
   });
   await page.goto('/client-workspace.html?id=SHEET');
-  await page.getByRole('button',{name:'Use Sheet Details',exact:true}).click();
-  await page.locator('.sp-next').click();
+  await page.getByRole('button',{name:'Edit Sheet Requirement',exact:true}).click();
+
   await expect(page.locator('#need-txn-type')).toHaveValue('Rent');
   await expect(page.locator('#need-fld-BudgetMax')).toHaveValue('45000');
   await expect(page.locator('#need-fld-BHKMin')).toHaveValue('3');
