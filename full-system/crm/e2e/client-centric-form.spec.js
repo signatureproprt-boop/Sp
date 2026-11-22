@@ -24,7 +24,7 @@ test('client form keeps identity and edits a dynamic requirement without a trans
         {FieldKey: 'Location1', FieldLabel: 'Location', FieldType: 'Text', Active: true},
         {FieldKey: commercial ? 'BusinessType' : 'BHKMin', FieldLabel: commercial ? 'Business use' : 'BHK', FieldType: commercial ? 'Text' : 'Number', Active: true}
       ];
-      response = {ok: true, data: {fields}};
+      response = {ok: true, data: {category: url.searchParams.get('category'), fields}};
     }
     await route.fulfill({json: response});
   });
@@ -47,7 +47,6 @@ test('client form keeps identity and edits a dynamic requirement without a trans
 
   await expect(page.locator('#need-fld-BHKMin')).toBeVisible();
   await page.locator('#need-fld-BHKMin').fill('2');
-  await page.locator('.sp-back').click();
   await page.getByTestId('need-category').selectOption('Commercial');
 
   await expect(page.locator('#need-fld-BusinessType')).toBeVisible();
