@@ -22,6 +22,7 @@ const ARRAY_COLLECTION_KEYS = [
   'Matches',
   'Properties',
   'Shortlists',
+  'ShortlistShares',
   'SiteVisits',
   'Negotiations',
   'NegotiationHistory',

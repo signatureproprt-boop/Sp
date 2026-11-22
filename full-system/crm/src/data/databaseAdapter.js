@@ -102,6 +102,7 @@ class JsonDatabaseAdapter extends DatabaseAdapter {
       Inventory: ['PropertyID', 'Project', 'Location', 'OwnerID', 'BuilderID'],
       Matches: ['MatchID', 'RequirementID', 'PropertyID'],
       Shortlists: ['ShortlistID', 'RequirementID', 'PropertyID', 'LeadID'],
+      ShortlistShares: ['ShareID', 'TransactionID', 'LeadID', 'CreatedBy', 'Status', 'CreatedAt'],
       SiteVisits: ['VisitID', 'LeadID', 'PropertyID'],
       Negotiations: ['NegotiationID', 'LeadID', 'PropertyID', 'Status'],
       Tokens: ['TokenID', 'NegotiationID', 'Status'],

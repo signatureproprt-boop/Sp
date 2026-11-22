@@ -1354,6 +1354,32 @@ async function handleApi(req, res, url) {
       return;
     }
 
+    // Public bearer link for a client shortlist. It intentionally has no OTP;
+    // the unguessable token is the access credential.
+    const publicShortlistShare = pathname.match(/^\/api\/public\/shortlist-shares\/([a-f0-9]{64})\/?$/i);
+    if (publicShortlistShare) {
+      const tokenHash = crypto.createHash('sha256').update(publicShortlistShare[1]).digest('hex');
+      const share = runtime.repository.find('ShortlistShares', 'TokenHash', tokenHash);
+      if (!share || share.Status === 'Revoked' || Date.parse(share.ExpiresAt) <= Date.now()) { sendJson(res, { ok: false, error: 'Shortlist link expired or unavailable' }, 404); return; }
+      const now = new Date().toISOString();
+      if (req.method === 'GET') {
+        const sessionId = String(url.searchParams.get('session') || '').slice(0, 80);
+        const events = Array.isArray(share.Events) ? share.Events : [];
+        runtime.repository.update('ShortlistShares', 'TokenHash', tokenHash, { OpenCount: Number(share.OpenCount || 0) + 1, FirstOpenedAt: share.FirstOpenedAt || now, LastOpenedAt: now, Events: [...events, { Type: 'open', SessionID: sessionId || null, At: now }].slice(-5000) });
+        sendJson(res, { ok: true, data: { title: share.Title || 'Your property shortlist', properties: share.Properties || [], expiresAt: share.ExpiresAt } }, 200, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return;
+      }
+      if (req.method === 'POST') {
+        const body = bodyForV2 || {};
+        const type = ['property_view', 'brochure_click', 'site_visit_request', 'compare'].includes(body.type) ? body.type : null;
+        const sessionId = String(body.sessionId || '').slice(0, 80);
+        const propertyId = String(body.propertyId || '').slice(0, 100);
+        if (!type || !/^[a-zA-Z0-9_-]{8,80}$/.test(sessionId) || (propertyId && !(share.Properties || []).some((p) => p.PropertyID === propertyId))) { sendJson(res, { ok: false, error: 'Invalid tracking event' }, 400); return; }
+        runtime.repository.update('ShortlistShares', 'TokenHash', tokenHash, { Events: [...(Array.isArray(share.Events) ? share.Events : []), { Type: type, SessionID: sessionId, PropertyID: propertyId || null, At: now }].slice(-5000) });
+        sendJson(res, { ok: true }); return;
+      }
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405); return;
+    }
+
     if (/^\/api\/v2\/ai\/agent\/?$/i.test(pathname) && req.method === 'POST') {
       const actor = getAuthenticatedActor(req, url);
       if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
@@ -1677,10 +1703,61 @@ async function handleApi(req, res, url) {
 
     const { AccessControlService } = require('./src/services/accessControlService');
     const accessSvc = new AccessControlService(runtime.repository);
-    const isSensitiveV2Api = /^\/api\/v2\/(clients|requirements|followups|activities|site-visits|shortlists|matches|transactions|documents|builder-projects|broker-network|inventory|duplicates)(?:\/|$)/i.test(pathname);
+    const isSensitiveV2Api = /^\/api\/v2\/(clients|requirements|followups|activities|site-visits|shortlists|shortlist-shares|matches|transactions|documents|builder-projects|broker-network|inventory|duplicates)(?:\/|$)/i.test(pathname);
     if (isSensitiveV2Api && !getAuthenticatedActor(req, url)) {
       sendJson(res, { ok: false, error: 'Unauthorized' }, 401);
       return;
+    }
+    const shortlistShareRoute = pathname.match(/^\/api\/v2\/shortlist-shares\/([^/]+)(?:\/([^/]+)(?:\/(sent))?)?\/?$/i);
+    if (shortlistShareRoute) {
+      const actor = getAuthenticatedActor(req, url);
+      if (!actor?.userId) { sendJson(res, { ok: false, error: 'Unauthorized' }, 401); return; }
+      const transactionId = shortlistShareRoute[1];
+      const transaction = require('./src/services/clientWorkContext').resolveClientWork(runtime.repository, transactionId);
+      const permission = req.method === 'GET' ? ['SHORTLIST_VIEW', 'REQUIREMENTS_VIEW', 'REQUIREMENTS_READ', 'LEADS_VIEW', 'LEADS_READ'] : ['SHORTLIST_VIEW', 'REQUIREMENTS_EDIT', 'REQUIREMENTS_UPDATE', 'LEADS_EDIT', 'LEADS_UPDATE'];
+      const reqAccess = accessSvc.authorizeRequirement(actor, transaction, { permissions: permission });
+      if (!reqAccess.ok) { sendJson(res, { ok: false, error: reqAccess.error }, reqAccess.statusCode); return; }
+      const records = runtime.repository.list('ShortlistShares');
+      if (req.method === 'GET' && !shortlistShareRoute[2]) {
+        const data = records.filter((s) => s.TransactionID === transactionId && s.Status !== 'Revoked').sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt))).map((s) => {
+          const events = Array.isArray(s.Events) ? s.Events : [];
+          const sessions = [...new Set(events.map((e) => e.SessionID).filter(Boolean))];
+          return { ShareID: s.ShareID, CreatedAt: s.CreatedAt, ExpiresAt: s.ExpiresAt, SentAt: s.SentAt || null, OpenCount: s.OpenCount || 0, UniqueSessions: sessions.length, PossibleSharedLink: sessions.length > 1, EventCounts: events.reduce((out, e) => (out[e.Type] = (out[e.Type] || 0) + 1, out), {}) };
+        });
+        sendJson(res, { ok: true, data }); return;
+      }
+      if (req.method === 'POST' && !shortlistShareRoute[2]) {
+        const { ShortlistServiceV2 } = require('./src/services/shortlistServiceV2');
+        const svc = new ShortlistServiceV2(runtime.repository);
+        const rows = svc.list(transactionId, { status: 'Active' }).filter((row) => {
+          if (row.IsManual) return true;
+          const property = runtime.repository.find('Inventory', 'PropertyID', row.PropertyID);
+          return accessSvc.authorizeProperty(actor, property, { permissions: ['SHORTLIST_VIEW', 'INVENTORY_VIEW', 'INVENTORY_READ'], hideExistence: true }).ok;
+        });
+        if (!rows.length) { sendJson(res, { ok: false, error: 'Active shortlist is empty' }, 400); return; }
+        const properties = rows.map((row) => {
+          const p = row.Property || {};
+          return { PropertyID: String(row.PropertyID || '').slice(0, 100), Title: p.Title || p.ProjectName || row.PropertyID, BuilderName: p.BuilderName || null, Category: p.Category || null, SubCategory: p.SubCategory || null, Location: p.Location1 || p.SocietyName || null, Price: p.AskingPrice ?? null, Area: p.CarpetArea ?? p.Area ?? null, BHK: p.BHK || null, FurnishingType: p.FurnishingType || null, Status: p.Status || null, PhotoUrl: p.PhotoUrl || null, Brochures: (p.MediaLinks?.brochures || []).filter((u) => /^https:\/\//i.test(u)).slice(0, 5) };
+        }).filter((p) => p.PropertyID);
+        if (!properties.length) { sendJson(res, { ok: false, error: 'No shareable properties found' }, 400); return; }
+        const token = crypto.randomBytes(32).toString('hex');
+        const now = new Date();
+        const record = { ShareID: crypto.randomUUID(), TransactionID: transactionId, LeadID: transaction.LeadID || transaction.ClientID || null, CreatedBy: actor.userId, TokenHash: crypto.createHash('sha256').update(token).digest('hex'), Title: 'Your property shortlist', Properties: properties, Status: 'Active', CreatedAt: now.toISOString(), ExpiresAt: new Date(now.getTime() + 30 * 86400000).toISOString(), OpenCount: 0, Events: [] };
+        runtime.repository.create('ShortlistShares', record);
+        sendJson(res, { ok: true, data: { ShareID: record.ShareID, url: `/s/${token}`, expiresAt: record.ExpiresAt } }, 201); return;
+      }
+      const shareId = shortlistShareRoute[2];
+      const share = records.find((s) => s.ShareID === shareId && s.TransactionID === transactionId);
+      if (!share) { sendJson(res, { ok: false, error: 'Share not found' }, 404); return; }
+      if (req.method === 'PATCH' && shortlistShareRoute[3] === 'sent') {
+        const updated = runtime.repository.update('ShortlistShares', 'ShareID', shareId, { SentAt: share.SentAt || new Date().toISOString(), SentBy: actor.userId });
+        sendJson(res, { ok: true, data: { ShareID: updated.ShareID, SentAt: updated.SentAt } }); return;
+      }
+      if (req.method === 'DELETE') {
+        runtime.repository.update('ShortlistShares', 'ShareID', shareId, { Status: 'Revoked', RevokedAt: new Date().toISOString(), RevokedBy: actor.userId });
+        sendJson(res, { ok: true }); return;
+      }
+      sendJson(res, { ok: false, error: 'Method not supported' }, 405); return;
     }
     const legacyCapability = (() => {
       if (pathname === '/api/broker/share') return 'BROKER_NETWORK_CREATE';
@@ -5905,8 +5982,9 @@ appServer = http.createServer((req, res) => withWriteScope(async () => {
 
   const requestPath = url.pathname === '/' ? '/index.html' : url.pathname;
   const isNetworkSharePage = /^\/share\/req\/[A-Za-z0-9_-]+\/?$/.test(url.pathname);
-  let filePath = isNetworkSharePage ? '/share-req.html' : (V2_ROUTES[url.pathname] || requestPath);
-  const publicPages = new Set(['/index.html', '/login.html', '/share-req.html']);
+  const isClientShortlistShare = /^\/s\/[a-f0-9]{64}\/?$/i.test(url.pathname);
+  let filePath = isClientShortlistShare ? '/client-shortlist-share.html' : (isNetworkSharePage ? '/share-req.html' : (V2_ROUTES[url.pathname] || requestPath));
+  const publicPages = new Set(['/index.html', '/login.html', '/share-req.html', '/client-shortlist-share.html']);
   if (url.pathname === '/login') {
     res.writeHead(302, withSecurityHeaders({ Location: '/login.html' }));
     res.end();
@@ -5918,7 +5996,7 @@ appServer = http.createServer((req, res) => withWriteScope(async () => {
     res.end();
     return;
   }
-  if (filePath.endsWith('.html') && !publicPages.has(requestPath) && !isNetworkSharePage) {
+  if (filePath.endsWith('.html') && !publicPages.has(requestPath) && !isNetworkSharePage && !isClientShortlistShare) {
     const actor = resolveSessionActor(req, url);
     if (!actor) {
       const next = encodeURIComponent(url.pathname + (url.search || ''));
@@ -5955,6 +6033,10 @@ appServer = http.createServer((req, res) => withWriteScope(async () => {
     };
     if (ext === '.html') {
       headers['Cache-Control'] = 'no-store';
+    }
+    if (isClientShortlistShare) {
+      headers['Referrer-Policy'] = 'no-referrer';
+      headers['X-Robots-Tag'] = 'noindex, nofollow';
     }
     res.writeHead(200, withSecurityHeaders(headers, {
       includeCsp: ext === '.html',
