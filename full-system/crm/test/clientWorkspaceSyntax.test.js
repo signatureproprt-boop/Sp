@@ -29,6 +29,6 @@ test('client route opens as a prefilled form and separates unconfirmed Sheet bas
   assert.match(html, /SheetBasicRequirements/);
   assert.match(html, /Select after confirming with client/);
   assert.match(html, /Confirm it with the client before saving a property requirement/);
-  assert.match(html, /Confirmed Property Requirements/);
+  assert.match(html, /Current Requirements/);
   assert.match(html, /toggleClientHistory/);
 });

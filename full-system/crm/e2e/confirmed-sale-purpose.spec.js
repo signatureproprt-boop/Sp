@@ -25,7 +25,7 @@ for (const source of ['manual', 'sheet']) {
     await page.goto('/client-workspace.html?id=L1');
     if (source === 'sheet') await page.getByRole('button',{name:'Edit Sheet Requirement',exact:true}).click();
     else {
-      await page.getByRole('button',{name:'＋ Add Another Requirement',exact:true}).click();
+      await page.getByRole('button',{name:'＋ Add Requirement',exact:true}).click();
       await page.locator('#need-txn-type').selectOption('Sale');
       await page.locator('#need-category').selectOption('Commercial');
       await page.locator('#need-subcategory').selectOption('Office');
@@ -36,15 +36,15 @@ for (const source of ['manual', 'sheet']) {
     await expect(page.locator('#need-subcategory')).toHaveValue('Office');
 
     await page.getByRole('button',{name:source === 'sheet' ? 'Save & Confirm' : 'Add Requirement',exact:true}).click();
-    await expect(page.locator(source === 'sheet' ? '#sheet-basic-requirements' : '#edit-requirements-list')).toContainText('Sale · Commercial');
+    await expect(page.locator('#edit-requirements-list')).toContainText('Sale · Commercial');
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatchObject({TransactionType:'Sale',Category:'Commercial',SubCategory:'Office',PropertyType:'Office'});
     expect(writes[0].TransactionID).toBeUndefined();
     if (source === 'sheet') {
       await page.reload();
-      const card = page.locator('#sheet-basic-requirements');
-      await expect(card.getByRole('button', {name:'Edit Sheet Requirement'})).toHaveCount(0);
-      await card.getByRole('button', {name:/Edit Property Details/}).click();
+      const card = page.locator('#edit-requirements-list');
+      await expect(page.locator('#sheet-basic-panel')).toBeHidden();
+      await card.getByRole('button', {name:/^✏️ Edit$/}).click();
       const budget = page.locator('#need-fld-BudgetMax');
       await expect(budget).toHaveValue('2500');
       await budget.fill('5000');
