@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { V2FormRegistry } = require('../src/data/v2Config');
 
 test('residential form registry covers every property type for each transaction', () => {
@@ -45,4 +47,12 @@ test('terrace and independent-home fields only appear for matching house types',
   assert.ok(bungalow.floorsCount);
   assert.equal(flat.terraceRequired, undefined);
   assert.equal(flat.privateGarden, undefined);
+});
+
+test('client form labels sale, rent, and lease prices by deal direction', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../client-workspace.html'), 'utf8');
+  assert.match(html, /isSale = \/\^\(sale\|sell\)\$\/i\.test\(transaction\)/);
+  assert.match(html, /Expected Asking Price/);
+  assert.match(html, /Monthly Rent/);
+  assert.match(html, /Lease Budget/);
 });

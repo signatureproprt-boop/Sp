@@ -1290,9 +1290,12 @@ table td,table th{border-color:var(--v2-line)!important}
     const id   = `${prefix}${fk}`;
     const typ  = f.FieldType;
     const transaction = document.getElementById('need-txn-type').value;
-    const isRental = /^(rent|lease)( out)?$/i.test(transaction);
+    const isRent = /^(rent|rent out)$/i.test(transaction);
+    const isLease = /^(lease|lease out)$/i.test(transaction);
+    const isSale = /^(sale|sell)$/i.test(transaction);
+    const budgetUnit = isRent ? '₹/month' : needBudgetScale === 10000000 ? 'Crore' : needBudgetScale === 100000 ? 'Lakh' : '₹';
     const budgetLabel = /^budget(min|max)$/i.test(fk) && prefix === 'need-fld-'
-      ? `${isRental ? 'Monthly Rent' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${isRental ? '₹/month' : needBudgetScale === 10000000 ? 'Crore' : needBudgetScale === 100000 ? 'Lakh' : '₹'})`
+      ? `${isRent ? 'Monthly Rent' : isLease ? 'Lease Budget' : isSale ? 'Expected Asking Price' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${budgetUnit})`
       : null;
     const lbl = budgetLabel || f.FieldLabel;
     let opts = f.Options || [];
