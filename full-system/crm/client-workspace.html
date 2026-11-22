@@ -1260,6 +1260,13 @@ table td,table th{border-color:var(--v2-line)!important}
       fired.sort((a, b) => (DEP_STATE_RANK[a.state] || 99) - (DEP_STATE_RANK[b.state] || 99) || (a.priority || 99) - (b.priority || 99));
       defaultState[targetField] = fired[0].state;
     });
+    if (config?.category === 'Commercial') {
+      if (values.OwnerOccupancy !== 'Tenant Occupied') {
+        defaultState.CurrentRent = 'NOT_RELEVANT';
+        defaultState.LeaseExpiry = 'NOT_RELEVANT';
+      }
+      if (values.KitchenExhaust !== true) defaultState.ExhaustDuct = 'NOT_RELEVANT';
+    }
     return defaultState;
   }
 
@@ -1293,9 +1300,11 @@ table td,table th{border-color:var(--v2-line)!important}
     const isRent = /^(rent|rent out)$/i.test(transaction);
     const isLease = /^(lease|lease out)$/i.test(transaction);
     const isSale = /^(sale|sell)$/i.test(transaction);
+    const isOwnerRent = /^rent out$/i.test(transaction);
+    const isOwnerLease = /^lease out$/i.test(transaction);
     const budgetUnit = isRent ? '₹/month' : needBudgetScale === 10000000 ? 'Crore' : needBudgetScale === 100000 ? 'Lakh' : '₹';
     const budgetLabel = /^budget(min|max)$/i.test(fk) && prefix === 'need-fld-'
-      ? `${isRent ? 'Monthly Rent' : isLease ? 'Lease Budget' : isSale ? 'Expected Asking Price' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${budgetUnit})`
+      ? `${isOwnerRent || isOwnerLease ? 'Expected Monthly Rent' : isRent ? 'Monthly Rent' : isLease ? 'Lease Budget' : isSale ? 'Expected Asking Price' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${budgetUnit})`
       : null;
     const lbl = budgetLabel || f.FieldLabel;
     let opts = f.Options || [];
@@ -1362,12 +1371,15 @@ table td,table th{border-color:var(--v2-line)!important}
       return new Set(core);
     }
     if (category === 'Commercial') {
-      const core = [...common,'AreaMin','AreaMax','AreaType','BusinessType','PropertySource'];
-      if (['Office','Co-working Space'].includes(sub)) core.push('Furnishing','OfficeSeatsMin','OfficeSeatsMax','SeatingCapacity','CabinsRequired','CabinCount','ParkingRequired');
-      if (['Shop','Showroom'].includes(sub)) core.push('FrontageWidth','FrontageFeet','ShopFloor','GroundFloorRequired');
-      if (sub === 'Warehouse') core.push('ClearHeight','ClearHeightFeet','LoadingBays','LoadingDockRequired','TruckAccessRequired');
-      if (sub === 'Restaurant') core.push('SeatingCapacity');
-      if (sub === 'Clinic') core.push('MedicalUse','ConsultationRooms');
+      if (sub === 'Commercial Plot') {
+        return new Set([...common,'Location3','AvoidLocations','PlotAreaMin','PlotAreaMax','PlotAreaUnit','Zoning','PlotFrontage','PlotFacing','CornerPlot','PlotUtilities']);
+      }
+      const core = [...common,'Location3','AvoidLocations','AreaMin','AreaMax','AreaType','BusinessType','PropertySource','CommercialPriceBasis','OwnerOccupancy','AvailableFrom','Preferences'];
+      if (['Office','Co-working Space'].includes(sub)) core.push('Furnishing','OfficeSeatsMin','OfficeSeatsMax','SeatingCapacity','CabinsRequired','CabinCount','Cabins','ParkingRequired','ParkingSlots');
+      if (['Shop','Showroom'].includes(sub)) core.push('FrontageWidth','FrontageFeet','ShopFloor','GroundFloorRequired','FrontageDirection','GroundFloorPriority','CustomerParkingPriority');
+      if (sub === 'Warehouse') core.push('ClearHeight','ClearHeightFeet','LoadingBays','LoadingDockRequired','TruckAccessRequired','DockAccess');
+      if (sub === 'Restaurant') core.push('SeatingCapacity','KitchenSetup','KitchenExhaust');
+      if (sub === 'Clinic') core.push('MedicalUse','ConsultationRooms','LiftAccess','WheelchairAccess');
       return new Set(core);
     }
     if (category === 'Industrial') {
@@ -1404,8 +1416,9 @@ table td,table th{border-color:var(--v2-line)!important}
       .map(section => `<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#7a6355;margin:6px 0 8px;padding-bottom:4px;border-bottom:1px solid #e8ddd0">${esc(section)}</div><div class="form-grid">${sections[section].map(f => renderDynamicFieldInput(f, state.prefix, values)).join('')}</div></div>`)
       .join('');
     let html = renderSections(groups.primary);
+    const detailsOpen = document.getElementById(state.containerId)?.querySelector('details.need-extra-details')?.open;
     const advancedCount = Object.values(groups.advanced).reduce((n, list) => n + list.length, 0);
-    if (advancedCount) html += `<details class="need-extra-details" style="margin-top:14px;border:1px solid #e8ddd0;border-radius:8px;padding:0 12px"><summary style="cursor:pointer;padding:12px 0;font-weight:700;color:#5c3317">More requirement details (${advancedCount})</summary><div style="padding:0 0 12px">${renderSections(groups.advanced)}</div></details>`;
+    if (advancedCount) html += `<details class="need-extra-details" ${detailsOpen ? 'open' : ''} style="margin-top:14px;border:1px solid #e8ddd0;border-radius:8px;padding:0 12px"><summary style="cursor:pointer;padding:12px 0;font-weight:700;color:#5c3317">More requirement details (${advancedCount})</summary><div style="padding:0 0 12px">${renderSections(groups.advanced)}</div></details>`;
     html += asArray(state.config.fields).filter(f => f && f.FieldType === 'Autocomplete' && Array.isArray(f.Options) && f.Options.length)
       .map(f => `<datalist id="${escAttr(state.prefix)}dl-${escAttr(f.FieldKey)}">${f.Options.map(o => `<option value="${escAttr(o)}">`).join('')}</datalist>`).join('');
     document.getElementById(state.containerId).innerHTML = html || '<div style="padding:12px;color:#7a6355;font-size:13px">No additional questions for this requirement yet.</div>';
