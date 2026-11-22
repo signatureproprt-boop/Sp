@@ -2,7 +2,7 @@
 body.smart-shell{--sp-ink:#24170f;--sp-brown:#321a0b;--sp-gold:#b98716;--sp-bg:#f6f4f0;--sp-border:#e8e1d8;background:var(--sp-bg);color:var(--sp-ink);padding-left:252px;min-height:100vh}
 body.smart-shell .sp-sidebar{position:fixed;inset:0 auto 0 0;width:252px;background:#241307;color:#f7efe5;z-index:120;display:flex;flex-direction:column;padding:20px 14px 16px;box-shadow:5px 0 24px rgba(39,24,13,.08)}
 .sp-sidebar-brand{display:flex;align-items:center;gap:11px;padding:4px 10px 22px;color:#fff;text-decoration:none;font-size:16px;font-weight:800;line-height:1.15}
-.sp-sidebar-brand img{width:38px;height:38px;object-fit:cover;border-radius:12px;background:#fff}
+.sp-sidebar-brand img{width:42px;height:42px;object-fit:cover;border-radius:10px;background:#081333}.sp-sidebar-brand .sp-services{display:block;color:#e8c66f;font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin-top:6px;white-space:nowrap}.sp-sidebar-brand .sp-tagline{display:block;color:#d7dce8;font-size:9px;font-weight:500;letter-spacing:.01em;text-transform:none;margin-top:3px;white-space:nowrap}
 .sp-sidebar-brand small{display:block;color:#c9ad8b;font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;margin-top:4px}
 .sp-nav-label{padding:13px 11px 7px;color:#a98d6c;font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
 .sp-nav{display:grid;gap:4px}
@@ -16,7 +16,7 @@ body.smart-shell .topbar,body.smart-shell .topnav{z-index:60}
 body.smart-shell .topbar .nav,body.smart-shell .topnav .mobile-nav,body.smart-shell .topnav> a:not(.brand),body.smart-shell .topnav>.breadcrumb{display:none!important}
 body.smart-shell .topbar{padding-left:24px;padding-right:24px}
 body.smart-shell .topbar .brand{font-size:0;gap:0}
-body.smart-shell .topbar .brand img{width:30px;height:30px}
+body.smart-shell .topbar .brand img{width:32px;height:32px;border-radius:8px}
 body.smart-shell .topbar .page-name{border:0;padding-left:0;font-size:15px;font-weight:750;color:#493321}
 body.smart-shell .topnav{padding-left:24px;padding-right:24px;background:#fff;color:var(--sp-ink);box-shadow:0 1px 0 var(--sp-border)}
 body.smart-shell .topnav .brand{color:#321a0b;margin-right:0}

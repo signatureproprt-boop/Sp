@@ -7,13 +7,13 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#faf7f2",
-  "theme_color": "#2c1405",
+  "background_color": "#06102e",
+  "theme_color": "#06102e",
   "icons": [
     {
-      "src": "/assets/signature-mark.svg",
+      "src": "/assets/signature-properties-sp-5d.png",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ],
