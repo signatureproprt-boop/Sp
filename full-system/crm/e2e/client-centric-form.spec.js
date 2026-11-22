@@ -71,7 +71,7 @@ test('client form keeps identity and edits a dynamic requirement without a trans
   await expect(page.locator('#edit-mobile')).toHaveValue('9876543210');
 });
 
-test('Sheet details prefill an unsaved requirement and lifecycle actions are available in the main form', async ({page}) => {
+test('Legacy Sheet details are hidden when a confirmed requirement already exists', async ({page}) => {
   const lead={LeadID:'SHEET',ClientName:'Sheet Test',PrimaryMobile:'9876543210',SheetBasicRequirements:[{SourceTab:'Rent',TransactionType:'Rent',Category:'Residential',BudgetMax:45000,Location1:'Vesu',BHKMin:3}]};
   const requirements=[{RequirementID:'R1',LeadID:'SHEET',TransactionType:'Rent',Category:'Residential',RequirementStatus:'Active',BHKMin:3}];
   const writes=[];
@@ -92,13 +92,9 @@ test('Sheet details prefill an unsaved requirement and lifecycle actions are ava
     await route.fulfill({json:response});
   });
   await page.goto('/client-workspace.html?id=SHEET');
-  await page.getByRole('button',{name:'Edit Sheet Requirement',exact:true}).click();
-
-  await expect(page.locator('#need-txn-type')).toHaveValue('Rent');
-  await expect(page.locator('#need-fld-BudgetMax')).toHaveValue('45000');
-  await expect(page.locator('#need-fld-BHKMin')).toHaveValue('3');
+  await expect(page.locator('#sheet-basic-panel')).toBeHidden();
+  await expect(page.getByRole('button',{name:'Edit Sheet Requirement',exact:true})).toHaveCount(0);
   expect(writes).toHaveLength(0);
-  await page.getByTestId('cancel-need-btn').click();
   await expect(page.locator('#edit-requirements-list')).toContainText('BHK: 3');
   await page.locator('#edit-requirements-list').getByRole('button',{name:'Lost Requirement',exact:true}).click();
   await expect(page.locator('#mark-lost-modal')).not.toHaveClass(/hidden/);

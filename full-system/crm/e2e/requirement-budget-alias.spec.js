@@ -24,7 +24,7 @@ test('edited lower-case budget fields beat profile prefills and explicit clears 
  expect(writes[0]).toMatchObject({BudgetMin:1000,BudgetMax:2000,budgetMin:1000,budgetMax:2000});
  await expect(page.locator('#edit-requirements-list')).toContainText('₹1,000 – ₹2,000');
  await page.reload();await expect(page.locator('#edit-requirements-list')).toContainText('₹1,000 – ₹2,000');
- await page.getByRole('button',{name:'✏️ Edit Property Details',exact:true}).click();await expect(page.locator('#need-fld-budgetMax')).toHaveValue('2000');
+ await page.getByRole('button',{name:'✏️ Edit',exact:true}).click();await expect(page.locator('#need-fld-budgetMax')).toHaveValue('2000');
  await expect(page.locator('#need-fld-BHKMin')).toHaveValue('4BHK');
  await expect(page.locator('#need-fld-BHKMax')).toHaveValue('5BHK');
  await page.locator('#need-fld-budgetMax').fill('');await page.getByRole('button',{name:'Save Requirement',exact:true}).click();
