@@ -1,6 +1,6 @@
 const {test,expect}=require('@playwright/test');
 const path=require('node:path');
-test('Clients opens active view and Lost is requested explicitly',async({page})=>{
+test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
   const queries=[];
   await page.route('**/clients',r=>r.fulfill({path:path.join(__dirname,'../client-workspace-hub.html'),contentType:'text/html'}));
   await page.route('**/client-workspace-hub.js',r=>r.fulfill({path:path.join(__dirname,'../client-workspace-hub.js'),contentType:'application/javascript'}));
@@ -14,15 +14,15 @@ test('Clients opens active view and Lost is requested explicitly',async({page})=
   });
   await page.goto('/clients');
   await expect(page.locator('#grid')).toContainText('Active QA');
-  expect(queries.at(-1).get('excludeLost')).toBe('true');
-  await expect(page.locator('#status option:checked')).toHaveText('Active Clients');
+  expect(queries.at(-1).get('status')).toBe('New');
+  await expect(page.locator('#status option:checked')).toHaveText('New');
   await page.getByRole('button',{name:'List View',exact:true}).click();
   await expect(page.getByRole('table',{name:'Clients list'})).toContainText('Active QA');
   await expect(page.getByRole('button',{name:'List View',exact:true})).toHaveAttribute('aria-pressed','true');
-  await page.getByRole('button',{name:'Follow-up',exact:true}).click();
+  await page.getByRole('button',{name:/^Follow-up\b/}).click();
   await expect(page.locator('#status')).toHaveValue('Follow-up');
   await expect.poll(()=>queries.at(-1).get('status')).toBe('Follow-up');
-  await page.getByRole('button',{name:'Site Visit',exact:true}).click();
+  await page.getByRole('button',{name:/^Site Visit\b/}).click();
   await expect(page.locator('#status')).toHaveValue('Site Visit');
   await expect.poll(()=>queries.at(-1).get('status')).toBe('Site Visit');
   await page.getByRole('button',{name:'Card View',exact:true}).click();
@@ -34,4 +34,5 @@ test('Clients opens active view and Lost is requested explicitly',async({page})=
   await page.locator('#status').selectOption('');
   await expect(page.locator('#grid')).toContainText('Active QA');
   await expect(page.locator('#grid')).not.toContainText('Lost QA');
+  expect(queries.at(-1).get('excludeLost')).toBe('true');
 });
