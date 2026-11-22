@@ -15,6 +15,7 @@ const modelSchema = {
     BrokerSubmissions: ['BrokerSubmissionID', 'LeadID', 'RequirementID', 'BrokerID', 'Status', 'RejectReason', 'Version', 'SubmittedAt'],
     Matches: ['MatchID', 'RequirementID', 'PropertyID', 'LeadID', 'Score', 'MatchLevel', 'MatchedCriteria', 'FailedCriteria', 'UnknownCriteria', 'ScoreBreakdown', 'Explanation', 'Status', 'AlgorithmVersion', 'CreatedAt', 'UpdatedAt'],
     Shortlists: ['ShortlistID', 'LeadID', 'TransactionID', 'RequirementID', 'PropertyID', 'CreatedAt', 'Status'],
+    ShortlistShares: ['ShareID', 'TransactionID', 'LeadID', 'CreatedBy', 'TokenHash', 'Status', 'CreatedAt', 'ExpiresAt', 'Events'],
     SiteVisits: ['VisitID', 'LeadID', 'TransactionID', 'RequirementID', 'PropertyID', 'AgentID', 'Date', 'Time', 'Status', 'Feedback'],
     Negotiations: ['NegotiationID', 'LeadID', 'RequirementID', 'TransactionID', 'PropertyID', 'MatchID', 'ShortlistID', 'SiteVisitID', 'AskingPrice', 'InitialOffer', 'CurrentOffer', 'CounterOffer', 'FinalOffer', 'AgreedPrice', 'BrokerageType', 'BrokeragePercent', 'BrokerageAmount', 'BrokeragePayer', 'TokenAmount', 'TokenDate', 'PaymentTerms', 'PossessionDate', 'AgreementDate', 'RegistrationDate', 'SpecialTerms', 'Notes', 'AssignedAgentID', 'CreatedBy', 'UpdatedBy', 'Status', 'CreatedAt', 'UpdatedAt', 'ClosedAt', 'History'],
     NegotiationHistory: ['NegotiationHistoryID', 'NegotiationID', 'Action', 'PreviousStatus', 'NewStatus', 'PreviousOffer', 'NewOffer', 'User', 'Timestamp', 'Notes'],
