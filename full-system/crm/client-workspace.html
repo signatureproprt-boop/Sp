@@ -189,6 +189,9 @@
     .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 16px; }
     .form-group { display: flex; flex-direction: column; gap: 4px; }
     .form-group.full { grid-column: 1/-1; }
+    .crm-checkbox-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .crm-checkbox-option { display:flex; align-items:center; gap:9px; min-height:42px; padding:8px 10px; border:1px solid var(--clr-border); border-radius:8px; background:#fff; cursor:pointer; font-size:13px; }
+    .crm-checkbox-option input { width:18px; height:18px; margin:0; accent-color:var(--clr-primary); flex:0 0 auto; }
     label { font-size: 11px; font-weight: 700; color: var(--clr-text-light); text-transform: uppercase; letter-spacing: .06em; }
     input, select, textarea { border: 1px solid var(--clr-border); border-radius: 6px; padding: 8px 10px; font-size: 13.5px; outline: none; font-family: inherit; width: 100%; }
     input:focus, select:focus, textarea:focus { border-color: var(--clr-gold-mid); box-shadow: 0 0 0 3px rgba(212,160,23,.15); }
@@ -273,6 +276,7 @@
       .need-two-col { grid-template-columns: 1fr; }
       .form-grid { grid-template-columns: 1fr; }
       .form-group.full { grid-column: 1; }
+      .crm-checkbox-options { grid-template-columns:1fr; }
       .kpi-card { min-width: 70px; }
     }
   </style>
@@ -1160,11 +1164,20 @@ table td,table th{border-color:var(--v2-line)!important}
     const values = { ...(state.values || {}) };
     const root = document.getElementById(state.containerId);
     if (!root) return values;
+    root.querySelectorAll('[data-multi-field-key]').forEach(group => {
+      const key = group.dataset.multiFieldKey;
+      if (!key) return;
+      values[key] = Array.from(group.querySelectorAll('input[type="checkbox"]:checked')).map(input => input.value);
+    });
     root.querySelectorAll('[data-field-key]').forEach(el => {
       const key = el.dataset.fieldKey;
       if (!key) return;
       if (el.tagName === 'SELECT' && el.multiple) {
         values[key] = Array.from(el.selectedOptions).map(o => o.value).filter(Boolean);
+        return;
+      }
+      if (el.type === 'checkbox') {
+        values[key] = el.checked;
         return;
       }
       let value = el.value;
@@ -1182,7 +1195,11 @@ table td,table th{border-color:var(--v2-line)!important}
       if (value === 'false') value = false;
       values[key] = value;
     });
-    syncRenderedBudgetAliases(values, Array.from(root.querySelectorAll('[data-field-key]')).map(el => el.dataset.fieldKey), true);
+    const renderedFieldKeys = [
+      ...Array.from(root.querySelectorAll('[data-field-key]')).map(el => el.dataset.fieldKey),
+      ...Array.from(root.querySelectorAll('[data-multi-field-key]')).map(el => el.dataset.multiFieldKey)
+    ];
+    syncRenderedBudgetAliases(values, renderedFieldKeys, true);
     state.values = values;
     return values;
   }
@@ -1250,15 +1267,17 @@ table td,table th{border-color:var(--v2-line)!important}
     const state = dynamicFormState[mode];
     const root = document.getElementById(state.containerId);
     if (!root) return;
-    root.querySelectorAll('[data-field-key]').forEach(el => {
+    root.querySelectorAll('[data-field-key], [data-multi-field-key]').forEach(el => {
       el.onchange = () => {
         const values = collectDynamicValues(mode);
         const visibleStates = evaluateFieldVisibility(state.config, state.rules, values);
         const nextKeys = asArray(state.config?.fields).filter(f => f && (
           ['RELEVANT', 'VISIBLE'].includes(visibleStates[f.FieldKey] || 'RELEVANT')
         )).map(f => f.FieldKey).sort();
-        const renderedKeys = Array.from(root.querySelectorAll('[data-field-key]'))
-          .map(input => input.dataset.fieldKey).sort();
+        const renderedKeys = [
+          ...Array.from(root.querySelectorAll('[data-field-key]')).map(input => input.dataset.fieldKey),
+          ...Array.from(root.querySelectorAll('[data-multi-field-key]')).map(input => input.dataset.multiFieldKey)
+        ].sort();
         // Keep the next focused input attached when a blur changes only a value.
         if (JSON.stringify(nextKeys) !== JSON.stringify(renderedKeys)) rerenderDynamicForm(mode, values);
       };
@@ -1297,8 +1316,15 @@ table td,table th{border-color:var(--v2-line)!important}
     if (typ === 'Select' && opts.length) {
       input = `<select id="${escAttr(id)}" data-field-key="${escAttr(fk)}"><option value="">—</option>${opts.map(o => `<option value="${escAttr(o)}" ${String(value ?? '') === String(o) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     } else if (typ === 'MultiSelect' && opts.length) {
-      const selected = new Set(Array.isArray(value) ? value.map(String) : []);
-      input = `<select id="${escAttr(id)}" data-field-key="${escAttr(fk)}" multiple size="3">${opts.map(o => `<option value="${escAttr(o)}" ${selected.has(String(o)) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+      const selected = new Set(Array.isArray(value)
+        ? value.map(String)
+        : typeof value === 'string' ? value.split(/[,;|]/).map(item => item.trim()).filter(Boolean) : []);
+      input = `<div class="crm-checkbox-options" role="group" aria-label="${escAttr(lbl)}" data-multi-field-key="${escAttr(fk)}">${opts.map((o, index) => {
+        const optionId = `${id}-${index}`;
+        return `<label class="crm-checkbox-option" for="${escAttr(optionId)}"><input id="${escAttr(optionId)}" type="checkbox" value="${escAttr(o)}" ${selected.has(String(o)) ? 'checked' : ''} />${esc(o)}</label>`;
+      }).join('')}</div>`;
+    } else if (typ === 'Boolean' && ['ServantRoom', 'TerraceRequired', 'PrivateGarden'].includes(fk)) {
+      input = `<label class="crm-checkbox-option" for="${escAttr(id)}"><input id="${escAttr(id)}" type="checkbox" data-field-key="${escAttr(fk)}" ${value === true ? 'checked' : ''} />Yes</label>`;
     } else if (typ === 'Boolean') {
       input = `<select id="${escAttr(id)}" data-field-key="${escAttr(fk)}"><option value="">—</option><option value="true" ${value === true ? 'selected' : ''}>Yes</option><option value="false" ${value === false ? 'selected' : ''}>No</option></select>`;
     } else if (typ === 'Number' || typ === 'Area') {
