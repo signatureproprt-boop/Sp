@@ -322,8 +322,9 @@ for (const transactionType of TRANSACTION_TYPES) {
 function buildCommonFields(txnType) {
   const isMonthlyRent = txnType === 'Rent' || txnType === 'Rent Out';
   const isLease = txnType === 'Lease' || txnType === 'Lease Out';
-  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : isLease ? 'Lease Budget Min (₹)' : 'Budget Min (₹)';
-  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : isLease ? 'Lease Budget Max (₹)' : 'Budget Max (₹)';
+  const isSale = txnType === 'Sale';
+  const budgetMinLabel = isMonthlyRent ? 'Monthly Rent Min (₹)' : isLease ? 'Lease Budget Min (₹)' : isSale ? 'Expected Asking Price Min (₹)' : 'Budget Min (₹)';
+  const budgetMaxLabel = isMonthlyRent ? 'Monthly Rent Max (₹)' : isLease ? 'Lease Budget Max (₹)' : isSale ? 'Expected Asking Price Max (₹)' : 'Budget Max (₹)';
   return {
     budgetMin: field('budgetMin', budgetMinLabel, 'Number', false, 1, { validation: 'positive-number', budgetRole: 'min' }),
     budgetMax: field('budgetMax', budgetMaxLabel, 'Number', false, 2, { validation: 'positive-number', budgetRole: 'max' }),
@@ -333,7 +334,7 @@ function buildCommonFields(txnType) {
     location2: field('Location2', 'Secondary Location', 'Text', false, 6),
     location3: field('Location3', 'Tertiary Location', 'Text', false, 7),
     avoidLocations: field('AvoidLocations', 'Avoid Locations', 'Text', false, 8),
-    possession: field('Possession', 'Possession', 'Select', false, 9, { options: ['Ready', 'Ready to Move', '0-6 Months', '6-12 Months', '1-2 Years', '2-3 Years', '3+ Years'] }),
+    possession: field('Possession', isSale ? 'Handover / Possession' : 'Possession', 'Select', false, 9, { options: ['Ready', 'Ready to Move', '0-6 Months', '6-12 Months', '1-2 Years', '2-3 Years', '3+ Years'] }),
     urgency: field('Urgency', 'Urgency', 'Select', true, 10, { options: ['Immediate', 'High', 'Medium', 'Low'] }),
     moveInDate: field('MoveInDate', 'Move-in Date', 'Date', false, 11),
     preferences: field('Preferences', 'Additional Preferences', 'Textarea', false, 50)
@@ -369,6 +370,8 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
   const isApartment = ['Flat', 'Terrace Flat', 'Penthouse', 'Studio', 'Duplex', 'Builder Floor'].includes(subCategory);
   const isIndependentHome = ['Villa', 'Row House', 'Bungalow', 'Independent House'].includes(subCategory);
   const hasTerrace = ['Terrace Flat', 'Penthouse'].includes(subCategory);
+  const hasServantRoom = !['Studio', 'Residential Plot'].includes(subCategory);
+  const isOwnerSide = txnType === 'Sale' || txnType === 'Rent Out' || txnType === 'Lease Out';
   const fields = {
     ...buildCommonFields(txnType),
     ...(isRentalTransaction(txnType) ? buildRentSpecificFields(txnType) : {}),
@@ -379,8 +382,10 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
     areaMax: field('AreaMax', 'Area Max', 'Number', false, 23, { validation: 'positive-number' }),
     areaType: field('AreaType', 'Area Type', 'Select', false, 23.5, { options: ['Carpet Area', 'Built-up Area', 'Super Built-up Area'] }),
     furnishing: field('Furnishing', 'Furnishing', 'Select', false, 24, { options: ['Unfurnished', 'Semi-Furnished', 'Fully Furnished', 'Any'] }),
-    completionStatus: field('CompletionStatus', 'Property Condition / Construction Status', 'Select', false, 24.5, { options: ['Ready to Move', 'Under Construction', 'New Launch', 'Resale - Occupied', 'Unfinished / Incomplete', 'Renovation Required', 'Any'] }),
-    propertyAge: field('PropertyAge', 'Property Age (years)', 'Number', false, 24.7, { validation: 'positive-number' }),
+    completionStatus: field('CompletionStatus', isOwnerSide ? 'Property / Construction Status' : 'Preferred Property / Construction Status', 'Select', false, 24.5, { options: ['Ready to Move', 'Under Construction', 'New Launch', 'Resale - Vacant', 'Resale - Occupied', 'Unfinished / Incomplete', 'Renovation Required', 'Any'] }),
+    propertyAge: isOwnerSide
+      ? field('PropertyAge', 'Property Age (years)', 'Number', false, 24.7, { validation: 'positive-number' })
+      : field('PropertyAge', 'Property Age Preference', 'Select', false, 24.7, { options: ['New Project', 'Ready New', 'Resale up to 5 Years', 'Resale 5-10 Years', 'Resale 10+ Years', 'Both New & Resale', 'Any'] }),
     bathroomsMin: field('BathroomsMin', 'Bathrooms Min', 'Number', false, 24.8, { validation: 'positive-number' }),
     bathroomsMax: field('BathroomsMax', 'Bathrooms Max', 'Number', false, 24.9, { validation: 'positive-number' }),
     balconiesMin: field('BalconiesMin', 'Balconies Min', 'Number', false, 24.95, { validation: 'positive-number' }),
@@ -389,7 +394,10 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
     parking: field('Parking', 'Parking', 'MultiSelect', false, 27, { options: ['2 Wheeler', 'Car', 'Covered', 'Open', 'No Preference'] }),
     vastu: field('Vastu', 'Vastu Compliant', 'Boolean', false, 28),
     gatedCommunity: field('GatedCommunity', 'Gated Community', 'Boolean', false, 29),
-    amenities: field('ResidentialAmenities', 'Amenities', 'MultiSelect', false, 30, { options: ['Lift', 'Power Backup', 'Security', 'Gym', 'Swimming Pool', 'Clubhouse', 'Garden', 'Children Play Area', 'Intercom', 'Visitor Parking'] }),
+    amenities: field('ResidentialAmenities', 'Amenities', 'MultiSelect', false, 30, { options: ['Lift', 'Power Backup', '24×7 Security', 'CCTV', 'Gym', 'Swimming Pool', 'Clubhouse', 'Garden / Landscaped Garden', 'Children Play Area', 'Intercom', 'Visitor Parking', 'Jogging Track', 'Indoor Games', 'Community Hall', 'EV Charging', 'Rainwater Harvesting', 'Fire Safety'] }),
+    ...hasServantRoom ? {
+      servantRoom: field('ServantRoom', isOwnerSide ? 'Servant Room Available' : 'Servant Room Required', 'Boolean', false, 30.5)
+    } : {},
     ...hasTerrace ? {
       terraceRequired: field('TerraceRequired', 'Private Terrace Required', 'Boolean', false, 31),
       terraceArea: field('TerraceArea', 'Preferred Terrace Area (sq.ft)', 'Number', false, 32, { validation: 'positive-number' })
@@ -398,9 +406,11 @@ function buildResidentialForm(txnType, category, subCategory, bhkOptions) {
       plotAreaMin: field('PlotAreaMin', 'Plot Area Min (sq.yd)', 'Number', false, 33, { validation: 'positive-number' }),
       plotAreaMax: field('PlotAreaMax', 'Plot Area Max (sq.yd)', 'Number', false, 34, { validation: 'positive-number' }),
       floorsCount: field('FloorsCount', 'Floors in House', 'Number', false, 35, { validation: 'positive-number' }),
-      privateGarden: field('PrivateGarden', 'Private Garden', 'Boolean', false, 36),
-      servantRoom: field('ServantRoom', 'Servant Room', 'Boolean', false, 37)
+      privateGarden: field('PrivateGarden', 'Private Garden', 'Boolean', false, 36)
     } : {},
+    ...(txnType === 'Sale' ? {
+      ownerOccupancy: field('OwnerOccupancy', 'Property Occupancy', 'Select', false, 38, { options: ['Owner Occupied', 'Tenant Occupied', 'Vacant'] })
+    } : {}),
     ...(isApartment ? {
       societyPreference: field('SocietyPreference', 'Society / Project Preference', 'Text', false, 38)
     } : {}),
