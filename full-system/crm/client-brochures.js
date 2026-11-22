@@ -1,6 +1,28 @@
 'use strict';
 let clientBrochureFlow = null;
 
+function brochureNeedValue(requirement, key) {
+  const lower = key.charAt(0).toLowerCase() + key.slice(1);
+  const raw = requirement?.[key] ?? requirement?.[lower] ?? requirement?.Fields?.[key] ?? requirement?.Fields?.[lower];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    if (raw.state === 'KNOWN' || 'value' in raw) return raw.value ?? null;
+    return null;
+  }
+  return raw ?? null;
+}
+
+function brochureNeedFirst(requirement, keys) {
+  for (const key of keys) {
+    const value = brochureNeedValue(requirement, key);
+    if (value !== null && value !== undefined && value !== '') return value;
+  }
+  return '';
+}
+
+function brochureNeedText(value) {
+  return Array.isArray(value) ? value.filter(Boolean).join(', ') : String(value || '').trim();
+}
+
 async function brochureApi(url, options) {
   const response = await fetch(url, options);
   const result = await response.json();
@@ -24,7 +46,7 @@ async function openClientBrochures(requirementId) {
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
       <label>Category<select id="client-project-category" aria-label="Project category"><option value="">Choose category</option><option>Residential</option><option>Commercial</option><option>Industrial</option><option>Land</option></select></label>
       <label>Builder<input id="client-project-builder" aria-label="Project builder" placeholder="Builder name"></label>
-      <label>Location<input id="client-project-location" aria-label="Project location" placeholder="Location"></label>
+      <label>Preferred locations<input id="client-project-location" aria-label="Project locations" placeholder="Location 1, Location 2"></label>
       <label>BHK<select id="client-project-bhk" aria-label="Project BHK"><option value="">All BHK</option>${[1,2,3,4,5].map(n=>`<option>${n} BHK</option>`).join('')}</select></label>
       <label>Carpet min sqft<input id="client-project-min" aria-label="Project carpet minimum sqft" type="number" min="0"></label>
       <label>Carpet max sqft<input id="client-project-max" aria-label="Project carpet maximum sqft" type="number" min="0"></label></div>
@@ -32,14 +54,18 @@ async function openClientBrochures(requirementId) {
     <div id="client-brochure-preview"></div><p id="client-brochure-error" role="alert" style="color:#991b1b"></p>
     </div></div>`;
   document.body.appendChild(modal);
-  document.getElementById('client-project-category').value=requirement.Category || '';
-  document.getElementById('client-project-category').disabled=!!requirement.Category;
-  document.getElementById('client-project-location').value=requirement.Location1 || requirement.Location || '';
-  const fields=requirement.Fields || requirement;
-  const bhk=String(fields.BHK || fields.BHKMin || '').match(/\d+/)?.[0];
+  const category=brochureNeedFirst(requirement,['Category']);
+  document.getElementById('client-project-category').value=category;
+  document.getElementById('client-project-category').disabled=!!category;
+  document.getElementById('client-project-location').value=[
+    ...['Location1','Location2','Location3'].map(key=>brochureNeedText(brochureNeedValue(requirement,key))),
+    ...['Locations','PreferredLocations'].map(key=>brochureNeedText(brochureNeedValue(requirement,key)))
+  ].flatMap(value=>value.split(',')).map(value=>value.trim()).filter((value,index,all)=>value && all.findIndex(item=>item.toLowerCase()===value.toLowerCase())===index).join(', ');
+  const bhkValue=brochureNeedFirst(requirement,['BHK','BHKMin']);
+  const bhk=String(bhkValue).match(/\d+/)?.[0];
   document.getElementById('client-project-bhk').value=bhk ? bhk+' BHK' : '';
-  document.getElementById('client-project-min').value=fields.CarpetAreaMin || '';
-  document.getElementById('client-project-max').value=fields.CarpetAreaMax || '';
+  document.getElementById('client-project-min').value=brochureNeedFirst(requirement,['CarpetAreaMin','AreaMin']);
+  document.getElementById('client-project-max').value=brochureNeedFirst(requirement,['CarpetAreaMax','AreaMax']);
   try {
     await renderClientBrochureShortlist();
     await searchClientBrochures();
