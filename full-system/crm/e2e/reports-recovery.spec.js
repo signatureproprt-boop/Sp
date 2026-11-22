@@ -23,8 +23,8 @@ test('Brochure recovery submits failed project IDs only and shows storage failur
   await page.route('**/api/v2/builder-projects/brochure-status',r=>r.fulfill({json:{ok:true,generatedAt:new Date().toISOString(),counts:{totalProjects:2,driveLinked:1,linkedFiles:1,failed:1,storedOutsideDrive:0,pending:0,noBrochureSource:0},rows:[{projectId:'FAILED',projectName:'Failed project',status:'Failed',missingFields:[]},{projectId:'STORED',projectName:'Verified project',status:'Drive linked',missingFields:[]}]}}));
   let payload;
   await page.route('**/api/v2/builder-projects/scrape/brochures/retry',r=>{payload=r.request().postDataJSON();return r.fulfill({status:503,json:{ok:false,error:'Google user OAuth credentials must be configured before brochure retry.'}});});
-  await page.goto('/builder-projects');await page.getByRole('button',{name:'📋 Brochure Log',exact:true}).click();
-  await expect(page.locator('#brochure-status-summary')).toContainText('1 failed');
+  await page.goto('/builder-projects');await page.getByRole('button',{name:'📋 Project Work Tracker',exact:true}).click();
+  await expect(page.locator('#brochure-status-rows').getByRole('cell',{name:'Failed',exact:true})).toHaveCount(1);
   await page.getByRole('button',{name:'Recover failed brochures',exact:true}).click();
   await expect(page.locator('#brochure-recovery-status')).toContainText('OAuth credentials');
   expect(payload).toEqual({limit:1,projectIds:['FAILED']});
@@ -40,7 +40,7 @@ test('accepted recovery holds progress requests and refreshes the final verified
     return r.fulfill({json:{ok:true,data:started?{status:'completed',mode:'brochure-backfill',result:{scanned:1,brochuresStored:1,brochuresFailed:0}}:{status:'idle'}}});
   });
   await page.route('**/api/v2/builder-projects/brochure-status',r=>r.fulfill({json:{ok:true,generatedAt:new Date().toISOString(),counts:{totalProjects:1,driveLinked:started?1:0,linkedFiles:started?1:0,failed:started?0:1,storedOutsideDrive:0,pending:0,noBrochureSource:0},rows:[{projectId:'P1',projectName:'QA',status:started?'Drive linked':'Failed',missingFields:[]}]}}));
-  await page.goto('/builder-projects');await page.getByRole('button',{name:'📋 Brochure Log',exact:true}).click();
-  await expect(page.locator('#brochure-status-summary')).toContainText('1 failed');await page.getByRole('button',{name:'Recover failed brochures',exact:true}).click();
-  await expect(page.locator('#brochure-recovery-status')).toContainText('1 stored');await expect(page.locator('#brochure-status-summary')).toContainText('0 failed');expect(held).toBeTruthy();
+  await page.goto('/builder-projects');await page.getByRole('button',{name:'📋 Project Work Tracker',exact:true}).click();
+  await expect(page.locator('#brochure-status-rows').getByRole('cell',{name:'Failed',exact:true})).toHaveCount(1);await page.getByRole('button',{name:'Recover failed brochures',exact:true}).click();
+  await expect(page.locator('#brochure-recovery-status')).toContainText('1 stored');await expect(page.locator('#brochure-status-rows').getByRole('cell',{name:'Drive linked',exact:true})).toHaveCount(1);expect(held).toBeTruthy();
 });

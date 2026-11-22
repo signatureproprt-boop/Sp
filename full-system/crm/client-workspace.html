@@ -687,7 +687,7 @@ table td,table th{border-color:var(--v2-line)!important}
         <h3 style="font-size:13px;font-weight:800;color:var(--clr-brown);margin-bottom:8px">Client ka kaam — yahan se shuru karein</h3>
         <ol style="padding-left:20px;display:grid;gap:7px;font-size:12px;line-height:1.5;color:#4b5563">
           <li><strong>Client ko call karein.</strong> Budget, area, property type aur possession ki zaroorat confirm karein.</li>
-          <li><strong>Sheet details ko verify karein.</strong> Upar “Basic requirement from lead sheet” mein “Use Sheet Details” dabayein, sahi details bharein aur save karein. Sheet ka data abhi preliminary hai.</li>
+          <li><strong>Sheet details ko verify karein.</strong> Upar “Basic requirement from lead sheet” mein “Edit Sheet Requirement” dabayein, sahi details bharein aur save karein. Sheet ka data abhi preliminary hai.</li>
           <li><strong>Requirement save hote hi</strong> neeche inventory match, broker sharing, options, site visit aur deal ke steps dikh jayenge. Broker ko bhejne se pehle apni inventory check karein.</li>
         </ol>
       </section>
@@ -769,6 +769,14 @@ table td,table th{border-color:var(--v2-line)!important}
       </div>
       <p class="client-form-hint" style="margin-top:12px">Choose the client need and property category. Matching residential or commercial fields will load; saved client details can prefill where available.</p>
       <!-- Fully dynamic fields render here based on V2FormRegistry -->
+      <div class="form-group" id="need-budget-unit-row" hidden>
+        <label for="need-budget-unit">Budget unit</label>
+        <select id="need-budget-unit" onchange="changeNeedBudgetUnit(this.value)">
+          <option value="1">Rupees</option>
+          <option value="100000">Lakh</option>
+          <option value="10000000">Crore</option>
+        </select>
+      </div>
       <div id="need-dynamic-fields" style="margin-top:16px"></div>
       <div id="add-need-error" class="form-error" style="margin-top:10px"></div>
     </div>
@@ -1138,7 +1146,7 @@ table td,table th{border-color:var(--v2-line)!important}
     if (!category) return [];
     try {
       const res = await fetch(`/api/v2/config/subcategories?category=${enc(category)}${txnType ? `&transactionType=${enc(txnType)}` : ''}`).then(r => r.json());
-      return Array.isArray(res.data) ? res.data.map(item => item.value || item.label).filter(Boolean) : (SUBCATS[category] || []);
+      return Array.isArray(res.data) ? res.data.map(item => typeof item === 'string' ? item : item.value || item.label).filter(Boolean) : (SUBCATS[category] || []);
     } catch(_) {
       return SUBCATS[category] || [];
     }
@@ -1175,7 +1183,10 @@ table td,table th{border-color:var(--v2-line)!important}
         else delete values[key];
         return;
       }
-      if (el.type === 'number') value = Number(value);
+      if (el.type === 'number') {
+        value = Number(value);
+        if (mode === 'need' && /^budget(min|max)$/i.test(key)) value *= needBudgetScale;
+      }
       if (value === 'true') value = true;
       if (value === 'false') value = false;
       values[key] = value;
@@ -1268,11 +1279,18 @@ table td,table th{border-color:var(--v2-line)!important}
     const fk   = f.FieldKey;
     const id   = `${prefix}${fk}`;
     const typ  = f.FieldType;
-    const lbl  = f.FieldLabel;
+    const transaction = document.getElementById('need-txn-type').value;
+    const isRental = /^(rent|lease)( out)?$/i.test(transaction);
+    const budgetLabel = /^budget(min|max)$/i.test(fk) && prefix === 'need-fld-'
+      ? `${isRental ? 'Monthly Rent' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${isRental ? '₹/month' : needBudgetScale === 10000000 ? 'Crore' : needBudgetScale === 100000 ? 'Lakh' : '₹'})`
+      : null;
+    const lbl = budgetLabel || f.FieldLabel;
     const opts = f.Options || [];
     const hint = f.Placeholder || lbl;
     const help = f.HelpText || '';
-    const value = values?.[fk];
+    const rawValue = values?.[fk];
+    const value = prefix === 'need-fld-' && /^budget(min|max)$/i.test(fk) && rawValue != null
+      ? rawValue / needBudgetScale : rawValue;
     const isFull = typ === 'Textarea' || typ === 'MultiSelect' || fk === 'SocietyName' || fk === 'RERANumber' || fk === 'AvoidLocations' || fk === 'Preferences' || fk === 'GujaratRERA' || fk === 'ExistingBusiness' || fk === 'ExistingCrops' || fk === 'TPScheme';
     const groupClass = isFull ? 'form-group full' : 'form-group';
     let input = '';
@@ -1284,7 +1302,7 @@ table td,table th{border-color:var(--v2-line)!important}
     } else if (typ === 'Boolean') {
       input = `<select id="${escAttr(id)}" data-field-key="${escAttr(fk)}"><option value="">—</option><option value="true" ${value === true ? 'selected' : ''}>Yes</option><option value="false" ${value === false ? 'selected' : ''}>No</option></select>`;
     } else if (typ === 'Number' || typ === 'Area') {
-      input = `<input id="${escAttr(id)}" data-field-key="${escAttr(fk)}" type="number" placeholder="${escAttr(hint)}" value="${escAttr(value ?? '')}" />`;
+      input = `<input id="${escAttr(id)}" data-field-key="${escAttr(fk)}" type="number" step="any" inputmode="decimal" placeholder="${escAttr(hint)}" value="${escAttr(value ?? '')}" />`;
     } else if (typ === 'Date') {
       input = `<input id="${escAttr(id)}" data-field-key="${escAttr(fk)}" type="date" value="${escAttr(value ?? '')}" />`;
     } else if (typ === 'Textarea') {
@@ -1295,7 +1313,7 @@ table td,table th{border-color:var(--v2-line)!important}
       input = `<input id="${escAttr(id)}" data-field-key="${escAttr(fk)}" type="text" placeholder="${escAttr(hint)}" value="${escAttr(value ?? '')}" />`;
     }
     const tierBadge = f.Tier === 'CORE' ? '<span style="color:#dc2626;font-size:10px;margin-left:4px">*</span>' : '';
-    return `<div class="${groupClass}"><label>${esc(lbl)}${tierBadge}</label>${input}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
+    return `<div class="${groupClass}"><label for="${escAttr(id)}">${esc(lbl)}${tierBadge}</label>${input}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
   }
 
   function needCoreFieldKeys(config) {
@@ -1316,9 +1334,9 @@ table td,table th{border-color:var(--v2-line)!important}
     }
     if (category === 'Commercial') {
       const core = [...common,'AreaMin','AreaMax','AreaType','BusinessType','PropertySource'];
-      if (['Office','Co-working Space'].includes(sub)) core.push('Furnishing','OfficeSeatsMin','OfficeSeatsMax');
-      if (['Shop','Showroom'].includes(sub)) core.push('FrontageWidth','ShopFloor');
-      if (sub === 'Warehouse') core.push('ClearHeight','LoadingBays');
+      if (['Office','Co-working Space'].includes(sub)) core.push('Furnishing','OfficeSeatsMin','OfficeSeatsMax','SeatingCapacity','CabinsRequired','CabinCount','ParkingRequired');
+      if (['Shop','Showroom'].includes(sub)) core.push('FrontageWidth','FrontageFeet','ShopFloor','GroundFloorRequired');
+      if (sub === 'Warehouse') core.push('ClearHeight','ClearHeightFeet','LoadingBays','LoadingDockRequired','TruckAccessRequired');
       if (sub === 'Restaurant') core.push('SeatingCapacity');
       if (sub === 'Clinic') core.push('MedicalUse','ConsultationRooms');
       return new Set(core);
@@ -2185,8 +2203,24 @@ table td,table th{border-color:var(--v2-line)!important}
   const SURAT_AREAS_WS = ['Adajan','Althan','Anand Mahal Road','Athwa','Bhatar','Bhimrad','Causeway Road','City Light','Dumas Road','Ghod Dod Road','Jahangirpura','Kadodara','Kamrej','Katargam','LP Savani Road','Magdalla','Nanpura','New Textile Market','Nikol','Pal','Palanpur Patiya','Parle Point','Piplod','Puna','Rander','Rustampura','Salabatpura','Sarthana','Singanpore','Tapi Road','Udhna','Umra','Varachha','Vesu','VIP Road'];
 
   let needRequestId = null;
+  let editingSheetRequirement = false;
+  let needBudgetScale = 1;
+
+  function changeNeedBudgetUnit(unit) {
+    const values = collectDynamicValues('need');
+    needBudgetScale = Number(unit);
+    rerenderDynamicForm('need', values);
+  }
+  let needScopeVersion = 0;
   async function openAddNeedModal() {
     needRequestId = crypto.randomUUID();
+    editingSheetRequirement = false;
+    needBudgetScale = 1;
+    document.getElementById('need-budget-unit').value = '1';
+    document.getElementById('need-budget-unit-row').hidden = true;
+    needScopeVersion++;
+    needFormLoadVersion++;
+    needFormPending = false;
     editingNeedId = null;
     document.querySelector('#add-need-modal .modal-title').textContent = 'Add Property Requirement';
     document.getElementById('need-save-btn').textContent = 'Add Requirement';
@@ -2200,20 +2234,27 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   async function onNeedScopeChange() {
-    await updateNeedSubcats();
-    await needLoadDynamicForm();
+    const version = ++needScopeVersion;
+    needFormLoadVersion++;
+    needFormPending = true;
+    if (await updateNeedSubcats(version)) await needLoadDynamicForm();
   }
 
-  async function updateNeedSubcats() {
+  async function updateNeedSubcats(version = ++needScopeVersion) {
     const cat  = document.getElementById('need-category').value;
     const txnType = document.getElementById('need-txn-type').value;
     const subs = await fetchSubcategories(cat, txnType);
-    document.getElementById('need-subcategory').innerHTML =
-      '<option value="">Not sure yet</option>' + subs.map(s => `<option>${esc(s)}</option>`).join('');
+    if (version !== needScopeVersion) return false;
+    const select = document.getElementById('need-subcategory');
+    const previous = select.value;
+    select.innerHTML = '<option value="">Not sure yet</option>' + subs.map(s => `<option>${esc(s)}</option>`).join('');
+    if (subs.includes(previous)) select.value = previous;
+    return true;
   }
 
   // ── Fully-dynamic form loading (uses /api/v2/form-config — 154 fields) ────
   let needFormLoadVersion = 0;
+  let needFormPending = false;
   async function needLoadDynamicForm() {
     const loadVersion = ++needFormLoadVersion;
     const txnType = document.getElementById('need-txn-type').value;
@@ -2222,10 +2263,20 @@ table td,table th{border-color:var(--v2-line)!important}
     const dyn     = document.getElementById('need-dynamic-fields');
     const formScope = [txnType, cat, sub].join('|');
     if (dynamicFormState.need.scope !== formScope) {
-      dynamicFormState.need = { ...dynamicFormState.need, config: null, rules: [], values: {}, scope: formScope };
+      const previous = collectDynamicValues('need');
+      const values = Object.fromEntries(['Location1', 'Location2', 'Location3']
+        .filter(key => previous[key] !== undefined).map(key => [key, previous[key]]));
+      dynamicFormState.need = { ...dynamicFormState.need, config: null, rules: [], values, scope: formScope };
       dyn.innerHTML = '';
     }
-    if (!txnType || !cat) { dyn.innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Purpose + Category to load fields</div>'; return; }
+    if (!txnType || !cat) { needFormPending = false; dyn.innerHTML = '<div style="padding:20px;text-align:center;color:#7a6355;font-size:13px">Select Purpose + Category to load fields</div>'; return; }
+    const budgetUnitRow = document.getElementById('need-budget-unit-row');
+    budgetUnitRow.hidden = true;
+    if (/^(rent|lease)/i.test(txnType)) {
+      needBudgetScale = 1;
+      document.getElementById('need-budget-unit').value = '1';
+    }
+    needFormPending = true;
     try {
       const url = `/api/v2/form-config?transactionType=${encodeURIComponent(txnType)}&category=${encodeURIComponent(cat)}${sub ? '&subCategory='+encodeURIComponent(sub) : ''}`;
       const [res, depRes] = await Promise.all([
@@ -2236,17 +2287,21 @@ table td,table th{border-color:var(--v2-line)!important}
       if (!res.ok || !res.data) { dyn.innerHTML = needBasicFields(); return; }
       const HEADER = new Set(['TransactionType','Category','SubCategory','LeadSource','ClientName','PrimaryMobile','Email','City','PropertyPreference','PropertyCondition','WhoIsSpeaking','ContactMobile','ContactEmail']);
       const fields = asArray(res.data.fields).filter(f => f && f.Active !== false && !HEADER.has(f.FieldKey));
-      const prefill = getLeadRequirementPrefill(txnType, cat, sub);
+      const prefill = editingNeedId || editingSheetRequirement ? {} : getLeadRequirementPrefill(txnType, cat, sub);
       dynamicFormState.need = {
         ...dynamicFormState.need,
         config: { ...res.data, fields },
         rules: depRes.ok ? asArray(depRes.data) : [],
         values: { ...prefill, ...collectDynamicValues('need') }
       };
-      rerenderDynamicForm('need');
+      rerenderDynamicForm('need', dynamicFormState.need.values);
+      budgetUnitRow.hidden = /^(rent|lease)/i.test(txnType) ||
+        !fields.some(field => /^budget(min|max)$/i.test(field.FieldKey));
     } catch(e) {
       if (loadVersion !== needFormLoadVersion) return;
       dyn.innerHTML = needBasicFields();
+    } finally {
+      if (loadVersion === needFormLoadVersion) needFormPending = false;
     }
   }
 
@@ -2267,7 +2322,12 @@ table td,table th{border-color:var(--v2-line)!important}
     const fk   = f.FieldKey;
     const id   = `need-fld-${fk}`;
     const typ  = f.FieldType;
-    const lbl  = f.FieldLabel;
+    const transaction = document.getElementById('need-txn-type').value;
+    const isRental = /^(rent|lease)( out)?$/i.test(transaction);
+    const budgetLabel = /^budget(min|max)$/i.test(fk) && prefix === 'need-fld-'
+      ? `${isRental ? 'Monthly Rent' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${isRental ? '₹/month' : '₹'})`
+      : null;
+    const lbl = budgetLabel || f.FieldLabel;
     const opts = f.Options || [];
     const hint = f.Placeholder || lbl;
     const help = f.HelpText || '';
@@ -2292,11 +2352,11 @@ table td,table th{border-color:var(--v2-line)!important}
     else
       input = `<input id="${esc(id)}" data-testid="${esc(testId)}" data-field-key="${esc(fk)}" type="text" placeholder="${esc(hint)}" />`;
     const tierBadge = f.Tier === 'CORE' ? '<span style="color:#dc2626;font-size:10px;margin-left:4px">*</span>' : '';
-    return `<div class="${groupClass}"><label>${esc(lbl)}${tierBadge}</label>${input}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
+    return `<div class="${groupClass}"><label for="${escAttr(id)}">${esc(lbl)}${tierBadge}</label>${input}${help ? `<span style="font-size:11px;color:#7a6355;margin-top:2px;display:block">${esc(help)}</span>` : ''}</div>`;
   }
 
   async function saveAddNeed() {
-    if (document.getElementById('need-save-btn').disabled) return;
+    if (document.getElementById('need-save-btn').disabled || needFormPending) return;
     const cat = document.getElementById('need-category').value;
     if (!cat) { document.getElementById('add-need-error').textContent = 'Category is required'; return; }
     const txnType = document.getElementById('need-txn-type').value;
@@ -2314,9 +2374,17 @@ table td,table th{border-color:var(--v2-line)!important}
         TransactionType: txnType,
         ...(editingNeedId ? {} : { RequirementStatus: 'Active', PipelineStage: 'New', ClientRequestID: needRequestId }),
         Category: cat,
-        SubCategory: sub
+        SubCategory: sub,
+        PropertyType: sub
       };
       const dynamicValues = collectDynamicValues('need');
+      if (editingNeedId) {
+        const existing = asArray(workspace.requirements).find(item => item.RequirementID === editingNeedId);
+        if ((existing?.TransactionType || existing?.Type) !== txnType) {
+          txnPayload.BudgetMin = null;
+          txnPayload.BudgetMax = null;
+        }
+      }
       const formState = dynamicFormState.need;
       const visibleStates = formState?.config
         ? evaluateFieldVisibility(formState.config, formState.rules, dynamicValues)
@@ -2333,6 +2401,11 @@ table td,table th{border-color:var(--v2-line)!important}
         if (!editingNeedId && (val === '' || val == null || (Array.isArray(val) && !val.length))) return;
         txnPayload[key] = val === '' ? null : val;
       });
+      for (const key of ['BudgetMin', 'BudgetMax']) {
+        const alias = key[0].toLowerCase() + key.slice(1);
+        if (alias in txnPayload) txnPayload[key] = txnPayload[alias];
+        else if (editingSheetRequirement && !(key in txnPayload)) txnPayload[key] = null;
+      }
       const txnUrl = editingNeedId
         ? `/api/v2/requirements/${encodeURIComponent(editingNeedId)}`
         : `/api/v2/clients/${encodeURIComponent(LEAD_ID)}/requirements`;
@@ -2350,7 +2423,7 @@ table td,table th{border-color:var(--v2-line)!important}
       document.getElementById('add-need-error').textContent = e.message;
     } finally {
       btn.disabled = false;
-      btn.textContent = editingNeedId ? 'Save Requirement' : 'Add Requirement';
+      btn.textContent = editingSheetRequirement ? 'Save & Confirm' : editingNeedId ? 'Save Requirement' : 'Add Requirement';
     }
   }
 
@@ -2577,7 +2650,7 @@ table td,table th{border-color:var(--v2-line)!important}
         const value = editNeedText(getRequirementValue(transaction, key));
         return value ? label + ': ' + value : '';
       }).filter(Boolean).slice(0, 3);
-      return `<article class="client-edit-need-card">
+      return `<article class="client-edit-need-card" data-requirement-card="${escAttr(id)}">
         <div class="client-edit-need-top">
           <div>
             <div class="client-edit-need-title">Requirement ${index + 1}: ${esc(type)} · ${esc(category)}</div>
@@ -2596,7 +2669,13 @@ table td,table th{border-color:var(--v2-line)!important}
         ${requirementLifecycleActions(transaction)}
       </article>`;
     }).join('');
-    root.querySelectorAll('[data-edit-transaction]').forEach(button => {
+    const cards = new Map(Array.from(root.querySelectorAll('[data-requirement-card]'),
+      card => [card.dataset.requirementCard, card]));
+    document.querySelectorAll('[data-confirmed-sheet-requirement]').forEach(slot => {
+      const card = cards.get(slot.dataset.confirmedSheetRequirement);
+      if (card) slot.replaceWith(card);
+    });
+    document.querySelectorAll('[data-edit-transaction]').forEach(button => {
       button.addEventListener('click', () => openUpdateNeedModal(button.dataset.editTransaction));
     });
   }
@@ -2633,7 +2712,13 @@ table td,table th{border-color:var(--v2-line)!important}
   async function useSheetRequirement(index) {
     const source = sheetRequirementRows[index];
     if (!source) return;
+    const confirmed = asArray(workspace.requirements).find(row => row.ClientRequestID === source.requestId);
+    if (confirmed) return openUpdateNeedModal(confirmed.RequirementID);
     await openAddNeedModal();
+    editingSheetRequirement = true;
+    needRequestId = source.requestId;
+    document.querySelector('#add-need-modal .modal-title').textContent = 'Edit Sheet Requirement';
+    document.getElementById('need-save-btn').textContent = 'Save & Confirm';
     const type = source.TransactionType === 'Sell' ? 'Sale' : source.TransactionType;
     document.getElementById('need-txn-type').value = type || '';
     document.getElementById('need-category').value = source.Category || '';
@@ -2665,13 +2750,17 @@ table td,table th{border-color:var(--v2-line)!important}
     sheetTransactions.forEach((item, index) => rowsBySource.set(sourceKey(item, index), item));
     // The lead's latest sync snapshot takes precedence over legacy imported rows.
     leadItems.forEach((item, index) => rowsBySource.set(sourceKey(item, index), item));
-    const rows = Array.from(rowsBySource.values());
+    const rows = Array.from(rowsBySource, ([key, item]) => ({
+      ...item, requestId: 'sheet-requirement:' + key
+    }));
     sheetRequirementRows = rows;
     if (!rows.length) {
       root.innerHTML = '<div class="sheet-basic-item"><strong>No Sheet requirement found</strong><span>Client ki call ke dauran basic need confirm karke requirement record karein.</span></div>';
       return;
     }
     root.innerHTML = rows.map((item, index) => {
+      const confirmed = asArray(workspace.requirements).find(row => row.ClientRequestID === item.requestId);
+      if (confirmed) return `<div data-confirmed-sheet-requirement="${escAttr(confirmed.RequirementID)}"></div>`;
       const type = editNeedText(item.TransactionType || item.Type || item.transactionType || item.type) || 'Need type to confirm';
       const category = editNeedText(item.Category || item.category) || 'Property type to confirm';
       const location = [getRequirementValue(item, 'Location1'), getRequirementValue(item, 'Location2')]
@@ -2684,7 +2773,7 @@ table td,table th{border-color:var(--v2-line)!important}
       return `<div class="sheet-basic-item">
         <strong>${esc(type)} · ${esc(category)}</strong>
         <span>${esc(label)} · Confirm this with the client${details ? `<br>${esc(details)}` : ''}</span>
-        <button class="btn btn-ghost" type="button" onclick="useSheetRequirement(${index})">Use Sheet Details</button>
+        <button class="btn btn-ghost" type="button" onclick="useSheetRequirement(${index})">Edit Sheet Requirement</button>
       </div>`;
     }).join('');
     const originalRows = asArray(workspace?.lead?.ImportedSheetDetails);
