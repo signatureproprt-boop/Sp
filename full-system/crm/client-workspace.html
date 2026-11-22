@@ -1285,12 +1285,21 @@ table td,table th{border-color:var(--v2-line)!important}
       ? `${isRental ? 'Monthly Rent' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${isRental ? '₹/month' : needBudgetScale === 10000000 ? 'Crore' : needBudgetScale === 100000 ? 'Lakh' : '₹'})`
       : null;
     const lbl = budgetLabel || f.FieldLabel;
-    const opts = f.Options || [];
+    let opts = f.Options || [];
     const hint = f.Placeholder || lbl;
     const help = f.HelpText || '';
     const rawValue = values?.[fk];
-    const value = prefix === 'need-fld-' && /^budget(min|max)$/i.test(fk) && rawValue != null
+    let value = prefix === 'need-fld-' && /^budget(min|max)$/i.test(fk) && rawValue != null
       ? rawValue / needBudgetScale : rawValue;
+    if (typ === 'Select' && opts.length && /^bhk(min|max)$/i.test(fk) && value != null) {
+      const bhk = String(value).trim().match(/^(\d+(?:\.\d+)?)\s*(?:BHK)?$/i);
+      if (bhk) {
+        const label = bhk[1] + 'BHK';
+        const equivalent = opts.find(option => String(option).replace(/\s/g, '').toUpperCase() === label);
+        value = equivalent || label;
+        if (!equivalent) opts = [...opts, label];
+      }
+    }
     const isFull = typ === 'Textarea' || typ === 'MultiSelect' || fk === 'SocietyName' || fk === 'RERANumber' || fk === 'AvoidLocations' || fk === 'Preferences' || fk === 'GujaratRERA' || fk === 'ExistingBusiness' || fk === 'ExistingCrops' || fk === 'TPScheme';
     const groupClass = isFull ? 'form-group full' : 'form-group';
     let input = '';
@@ -2328,7 +2337,7 @@ table td,table th{border-color:var(--v2-line)!important}
       ? `${isRental ? 'Monthly Rent' : 'Budget'} ${/min$/i.test(fk) ? 'Min' : 'Max'} (${isRental ? '₹/month' : '₹'})`
       : null;
     const lbl = budgetLabel || f.FieldLabel;
-    const opts = f.Options || [];
+    let opts = f.Options || [];
     const hint = f.Placeholder || lbl;
     const help = f.HelpText || '';
     const testId = `need-req-field-${fk}`;

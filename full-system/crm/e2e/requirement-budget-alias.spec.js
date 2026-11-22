@@ -7,9 +7,9 @@ test('edited lower-case budget fields beat profile prefills and explicit clears 
  await page.route('**/api/**',async r=>{
   const req=r.request(),p=new URL(req.url()).pathname;let response={ok:true,data:[]};
   if(p.endsWith('/workspace'))response={ok:true,data:{lead,requirements,transactions:[],followUps:[],activities:[],timeline:[]}};
-  else if(p.endsWith('/form-config'))response={ok:true,data:{fields:[{FieldKey:'budgetMin',FieldLabel:'Budget Min',FieldType:'Number',Active:true},{FieldKey:'budgetMax',FieldLabel:'Budget Max',FieldType:'Number',Active:true}]}};
+  else if(p.endsWith('/form-config'))response={ok:true,data:{fields:[{FieldKey:'budgetMin',FieldLabel:'Budget Min',FieldType:'Number',Active:true},{FieldKey:'budgetMax',FieldLabel:'Budget Max',FieldType:'Number',Active:true},{FieldKey:'BHKMin',FieldLabel:'BHK Min',FieldType:'Select',Options:['3BHK','4BHK','5BHK+'],Active:true},{FieldKey:'BHKMax',FieldLabel:'BHK Max',FieldType:'Select',Options:['3BHK','4BHK','5BHK+'],Active:true}]}};
   else if(p==='/api/v2/clients/L1/requirements'&&req.method()==='POST'){
-   const body=req.postDataJSON();writes.push(body);requirements.push({...body,RequirementID:'R1',LeadID:'L1',TransactionID:null});response={ok:true,data:requirements[0]};
+   const body=req.postDataJSON();writes.push(body);requirements.push({...body,RequirementID:'R1',LeadID:'L1',TransactionID:null,BHKMin:4,BHKMax:5});response={ok:true,data:requirements[0]};
   }else if(p==='/api/v2/requirements/R1'&&req.method()==='PATCH'){
    const body=req.postDataJSON();writes.push(body);Object.assign(requirements[0],body);response={ok:true,data:{requirement:requirements[0]}};
   }
@@ -25,6 +25,8 @@ test('edited lower-case budget fields beat profile prefills and explicit clears 
  await expect(page.locator('#edit-requirements-list')).toContainText('₹1,000 – ₹2,000');
  await page.reload();await expect(page.locator('#edit-requirements-list')).toContainText('₹1,000 – ₹2,000');
  await page.getByRole('button',{name:'✏️ Edit Property Details',exact:true}).click();await expect(page.locator('#need-fld-budgetMax')).toHaveValue('2000');
+ await expect(page.locator('#need-fld-BHKMin')).toHaveValue('4BHK');
+ await expect(page.locator('#need-fld-BHKMax')).toHaveValue('5BHK');
  await page.locator('#need-fld-budgetMax').fill('');await page.getByRole('button',{name:'Save Requirement',exact:true}).click();
  await expect(page.locator('#add-need-modal')).toBeHidden();expect(writes[1].BudgetMax).toBeNull();expect(writes[1].budgetMax).toBeNull();expect(lead.BudgetMax).toBe(7500000);
 });
