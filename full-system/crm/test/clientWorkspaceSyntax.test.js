@@ -28,7 +28,7 @@ test('client route opens as a prefilled form and separates unconfirmed Sheet bas
   assert.match(html, /if \(workspace\?\.lead\) openEditModal\(\)/);
   assert.match(html, /SheetBasicRequirements/);
   assert.match(html, /Select after confirming with client/);
-  assert.match(html, /Confirm it with the client before saving a property requirement/);
+  assert.match(html, /Confirm the client’s current need before adding it/);
   assert.match(html, /Current Requirements/);
   assert.match(html, /toggleClientHistory/);
 });
