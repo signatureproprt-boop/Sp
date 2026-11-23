@@ -1366,11 +1366,11 @@ async function handleApi(req, res, url) {
         const sessionId = String(url.searchParams.get('session') || '').slice(0, 80);
         const events = Array.isArray(share.Events) ? share.Events : [];
         runtime.repository.update('ShortlistShares', 'TokenHash', tokenHash, { OpenCount: Number(share.OpenCount || 0) + 1, FirstOpenedAt: share.FirstOpenedAt || now, LastOpenedAt: now, Events: [...events, { Type: 'open', SessionID: sessionId || null, At: now }].slice(-5000) });
-        sendJson(res, { ok: true, data: { title: share.Title || 'Your property shortlist', properties: share.Properties || [], expiresAt: share.ExpiresAt } }, 200, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return;
+        sendJson(res, { ok: true, data: { title: share.Title || 'Your property shortlist', contact: share.Contact || null, properties: share.Properties || [], expiresAt: share.ExpiresAt } }, 200, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return;
       }
       if (req.method === 'POST') {
         const body = bodyForV2 || {};
-        const type = ['property_view', 'brochure_click', 'site_visit_request', 'compare'].includes(body.type) ? body.type : null;
+        const type = ['property_view', 'brochure_click', 'site_visit_request', 'compare', 'advisor_call', 'advisor_message'].includes(body.type) ? body.type : null;
         const sessionId = String(body.sessionId || '').slice(0, 80);
         const propertyId = String(body.propertyId || '').slice(0, 100);
         if (!type || !/^[a-zA-Z0-9_-]{8,80}$/.test(sessionId) || (propertyId && !(share.Properties || []).some((p) => p.PropertyID === propertyId))) { sendJson(res, { ok: false, error: 'Invalid tracking event' }, 400); return; }
@@ -1737,12 +1737,20 @@ async function handleApi(req, res, url) {
         if (!rows.length) { sendJson(res, { ok: false, error: 'Active shortlist is empty' }, 400); return; }
         const properties = rows.map((row) => {
           const p = row.Property || {};
-          return { PropertyID: String(row.PropertyID || '').slice(0, 100), Title: p.Title || p.ProjectName || row.PropertyID, BuilderName: p.BuilderName || null, Category: p.Category || null, SubCategory: p.SubCategory || null, Location: p.Location1 || p.SocietyName || null, Price: p.AskingPrice ?? null, Area: p.CarpetArea ?? p.Area ?? null, BHK: p.BHK || null, FurnishingType: p.FurnishingType || null, Status: p.Status || null, PhotoUrl: p.PhotoUrl || null, Brochures: (p.MediaLinks?.brochures || []).filter((u) => /^https:\/\//i.test(u)).slice(0, 5) };
+          const brochures = [...new Set((p.MediaLinks?.brochures || []).map((u) => String(u || '').trim()).filter((u) => /^https:\/\//i.test(u) || /^\/(?!\/)/.test(u)))].slice(0, 20);
+          return { PropertyID: String(row.PropertyID || '').slice(0, 100), Title: p.Title || p.ProjectName || row.PropertyID, BuilderName: p.BuilderName || null, Category: p.Category || null, SubCategory: p.SubCategory || null, Location: p.Location1 || p.SocietyName || null, Price: p.AskingPrice ?? null, Area: p.CarpetArea ?? p.Area ?? null, BHK: p.BHK || null, FurnishingType: p.FurnishingType || null, Status: p.Status || null, PhotoUrl: p.PhotoUrl || null, Brochures: brochures };
         }).filter((p) => p.PropertyID);
         if (!properties.length) { sendJson(res, { ok: false, error: 'No shareable properties found' }, 400); return; }
+        const lead = runtime.repository.find('Leads', 'LeadID', transaction.LeadID || transaction.ClientID);
+        const contactUserId = lead?.AssignedAgentID || transaction.AssignedAgentID || actor.userId;
+        const contactUser = runtime.repository.getUser?.(contactUserId) || runtime.repository.find('Users', 'UserID', contactUserId);
+        let contactMobile = String(contactUser?.Mobile || '').replace(/\D/g, '');
+        if (contactMobile.length === 11 && contactMobile.startsWith('0')) contactMobile = contactMobile.slice(1);
+        if (contactMobile.length === 10) contactMobile = '91' + contactMobile;
+        const contact = /^[1-9]\d{9,14}$/.test(contactMobile) ? { Name: contactUser?.Name || 'Signature Properties Advisor', Phone: contactMobile } : null;
         const token = crypto.randomBytes(32).toString('hex');
         const now = new Date();
-        const record = { ShareID: crypto.randomUUID(), TransactionID: transactionId, LeadID: transaction.LeadID || transaction.ClientID || null, CreatedBy: actor.userId, TokenHash: crypto.createHash('sha256').update(token).digest('hex'), Title: 'Your property shortlist', Properties: properties, Status: 'Active', CreatedAt: now.toISOString(), ExpiresAt: new Date(now.getTime() + 30 * 86400000).toISOString(), OpenCount: 0, Events: [] };
+        const record = { ShareID: crypto.randomUUID(), TransactionID: transactionId, LeadID: transaction.LeadID || transaction.ClientID || null, CreatedBy: actor.userId, TokenHash: crypto.createHash('sha256').update(token).digest('hex'), Title: 'Your property shortlist', Contact: contact, Properties: properties, Status: 'Active', CreatedAt: now.toISOString(), ExpiresAt: new Date(now.getTime() + 30 * 86400000).toISOString(), OpenCount: 0, Events: [] };
         runtime.repository.create('ShortlistShares', record);
         sendJson(res, { ok: true, data: { ShareID: record.ShareID, url: `/s/${token}`, expiresAt: record.ExpiresAt } }, 201); return;
       }
