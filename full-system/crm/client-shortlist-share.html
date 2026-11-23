@@ -30,21 +30,23 @@
       document.querySelectorAll('[data-contact-event]').forEach(el=>el.addEventListener('click',()=>event(el.dataset.contactEvent,'')));
       const root=document.getElementById('cards');if(!rows.length){root.innerHTML='<div class="empty">No properties are available in this shortlist.</div>';return}
       root.innerHTML=rows.map((p,i)=>{const photo=safeUrl(p.PhotoUrl),brochures=(p.Brochures||[]).map(safeUrl).filter(Boolean);const preview=(!photo&&brochures.length)?`<canvas data-brochure-preview="${esc(brochures[0])}" aria-label="${esc(p.Title)} brochure image preview"></canvas>`:'';const facts=[p.BHK,p.Area&&`${p.Area} sq ft`,p.FurnishingType,p.Status].filter(Boolean);return `<article class="card" data-property="${esc(p.PropertyID)}"><div class="photo">${photo?`<img loading="lazy" src="${esc(photo)}" alt="${esc(p.Title)}">`:preview||'Property image unavailable'}</div><div class="body"><div class="type">${esc([p.Category,p.SubCategory].filter(Boolean).join(' · ')||'Selected property')}</div><h2>${esc(p.Title||'Property option '+(i+1))}</h2><p class="location">${esc(p.Location||'Location on request')}${p.BuilderName?' · '+esc(p.BuilderName):''}</p><div class="facts">${facts.map(x=>`<span class="fact">${esc(x)}</span>`).join('')}</div><div class="price">${esc(money(p.Price))}</div><div class="actions">${brochures.map((u,j)=>`<a class="btn" data-track="brochure_click" href="${esc(u)}" target="_blank" rel="noopener">Open full brochure${brochures.length>1?' '+(j+1):''}</a>`).join('')}<button class="btn gold" data-track="site_visit_request">Request a site visit</button></div>${brochures.length?'':'<p class="note">Full brochure is not uploaded for this property yet.</p>'}<p class="note">Property details are shared for discussion. Confirm current price and availability with your property advisor.</p></div></article>`}).join('');
-      root.querySelectorAll('.photo img').forEach(img=>img.addEventListener('error',()=>{img.parentElement.textContent='Property photo unavailable'}));
-      const previews=[...root.querySelectorAll('[data-brochure-preview]')];
-      if(previews.length)import('/node_modules/pdfjs-dist/build/pdf.min.mjs').then(async pdfjs=>{
-        pdfjs.GlobalWorkerOptions.workerSrc='/node_modules/pdfjs-dist/build/pdf.worker.min.mjs';
-        const documents=new Map();
-        await Promise.all(previews.map(async canvas=>{
-          try{
-            const url=canvas.dataset.brochurePreview;
-            if(!documents.has(url))documents.set(url,pdfjs.getDocument({url}).promise);
-            const document=await documents.get(url),page=await document.getPage(Math.min(3,document.numPages)),base=page.getViewport({scale:1}),viewport=page.getViewport({scale:Math.min(2,900/base.width)});
-            canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
-            await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport}).promise;
-          }catch(_){canvas.parentElement.textContent='Property image unavailable'}
-        }));
-      }).catch(()=>previews.forEach(canvas=>canvas.parentElement.textContent='Property image unavailable'));
+      let pdfjsPromise;
+      const renderPreview=async canvas=>{
+        try{
+          pdfjsPromise ||= import('/node_modules/pdfjs-dist/build/pdf.min.mjs').then(pdfjs=>{pdfjs.GlobalWorkerOptions.workerSrc='/node_modules/pdfjs-dist/build/pdf.worker.min.mjs';return pdfjs});
+          const pdfjs=await pdfjsPromise,url=canvas.dataset.brochurePreview,document=await pdfjs.getDocument({url}).promise;
+          const page=await document.getPage(Math.min(3,document.numPages)),base=page.getViewport({scale:1}),viewport=page.getViewport({scale:Math.min(2,900/base.width)});
+          canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+          await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport}).promise;
+        }catch(_){canvas.parentElement.textContent='Property image unavailable'}
+      };
+      root.querySelectorAll('.photo img').forEach(img=>img.addEventListener('error',()=>{
+        const holder=img.parentElement,card=img.closest('.card'),brochure=card?.querySelector('[data-track="brochure_click"]')?.href;
+        if(!brochure){holder.textContent='Property image unavailable';return}
+        const canvas=document.createElement('canvas');canvas.dataset.brochurePreview=brochure;canvas.setAttribute('aria-label','Brochure project image preview');
+        holder.replaceChildren(canvas);renderPreview(canvas);
+      }));
+      root.querySelectorAll('[data-brochure-preview]').forEach(renderPreview);
       root.querySelectorAll('.card').forEach(card=>{event('property_view',card.dataset.property);card.querySelectorAll('[data-track]').forEach(el=>el.addEventListener('click',async()=>{const type=el.dataset.track;if(type==='site_visit_request'){el.disabled=true;el.textContent='Sending…'}const saved=await event(type,card.dataset.property);if(type==='site_visit_request'){el.textContent=saved?'Request noted':'Please retry';el.disabled=saved}}))});
       document.getElementById('compare-mode').addEventListener('change',e=>{if(e.target.checked)event('compare','')});
     }).catch(error=>{document.getElementById('count').textContent='';document.getElementById('cards').innerHTML=`<div class="empty">${esc(error.message)}</div>`});
