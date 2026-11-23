@@ -638,7 +638,7 @@ table td,table th{border-color:var(--v2-line)!important}
     <div class="modal-header">
       <div class="edit-client-heading">
         <span class="modal-title" id="edit-client-title" tabindex="-1">Client Form</span>
-        <span class="client-form-hint">Review the Sheet details below. Use a Sheet requirement after confirming it with the client, then save it.</span>
+        <span class="client-form-hint">Edit client details here. Add or update each property requirement below.</span>
       </div>
       <div class="client-form-page-actions">
         <a class="btn btn-ghost btn-sm" href="/clients">← Clients</a>
@@ -678,20 +678,13 @@ table td,table th{border-color:var(--v2-line)!important}
           <label for="edit-lost-note">Lost Note</label>
           <textarea id="edit-lost-note" rows="2" placeholder="Additional context"></textarea>
         </div>
-        <div class="client-form-heading">🏠 Basic property details</div>
-        <div class="form-group"><label for="edit-purpose">Purpose</label><select id="edit-purpose" onchange="updateBasicPropertyFields()"><option value="">Not confirmed</option><option>Purchase</option><option>Sale</option><option>Rent</option><option>Rent Out</option><option>Lease</option><option>Lease Out</option></select></div>
-        <div class="form-group"><label for="edit-property-type">Property type</label><input id="edit-property-type" type="text" list="basic-property-types" oninput="updateBasicPropertyFields()" /><datalist id="basic-property-types"><option value="Residential"><option value="Commercial"><option value="Land"><option value="Industrial"><option value="Agriculture"></datalist></div>
-        <div class="form-group"><label for="edit-budget-min" id="edit-budget-min-label">Budget Min (₹)</label><input id="edit-budget-min" type="number" min="0" /></div>
-        <div class="form-group"><label for="edit-budget-max" id="edit-budget-max-label">Budget / Rent Max (₹)</label><input id="edit-budget-max" type="number" min="0" /></div>
-        <div class="form-group"><label for="edit-location">Preferred location</label><input id="edit-location" type="text" /></div>
-        <div class="form-group" id="edit-bhk-wrap"><label for="edit-bhk">BHK</label><input id="edit-bhk" type="text" /></div>
         <div class="client-form-heading">📝 Client notes</div>
         <div class="form-group full"><label for="edit-notes">Notes</label><textarea id="edit-notes" rows="3"></textarea></div>
       </div>
 
       <section id="sheet-basic-panel" class="sheet-basic-panel" aria-labelledby="sheet-basic-title" hidden>
-        <h3 id="sheet-basic-title">📄 Basic requirement from lead sheet</h3>
-        <p>This is preliminary information from the Sheet. Confirm it with the client before saving a property requirement.</p>
+        <h3 id="sheet-basic-title">📄 Sheet details to confirm</h3>
+        <p>Use these details only when no confirmed requirement has been saved. Confirm the client’s current need before adding it.</p>
         <div id="sheet-basic-requirements" class="sheet-basic-list" aria-live="polite"></div>
       </section>
 
@@ -2804,6 +2797,8 @@ table td,table th{border-color:var(--v2-line)!important}
   function isSheetImportedTransaction(transaction) {
     const source = String(transaction?._source || transaction?.Source || '').toLowerCase();
     const creator = String(transaction?.CreatedBy || transaction?.CreatedByName || '').toLowerCase();
+    const sheetConfirmation = String(transaction?.ClientRequestID || '').startsWith('sheet-requirement:');
+    if (sheetConfirmation) return false;
     return source.startsWith('googlesheet:') || creator.includes('googlesheetsync');
   }
 
@@ -2907,15 +2902,6 @@ table td,table th{border-color:var(--v2-line)!important}
     document.getElementById('edit-lost-reason').value = lead.LostReason || '';
     document.getElementById('edit-lost-note').value = lead.LostNote || '';
     document.getElementById('edit-notes').value      = lead.Notes||'';
-    const basic = {purpose: lead.RequirementType, 'property-type': lead.PropertyType,
-      'budget-min': lead.BudgetMin, 'budget-max': lead.BudgetMax, location: lead.Location1,
-      bhk: lead.BHK || lead.RequirementProfile?.BHK || ''};
-    Object.entries(basic).forEach(([key, value]) => {
-      const input = document.getElementById('edit-' + key);
-      if (input.tagName === 'SELECT' && value && !Array.from(input.options).some(o => o.value === value)) input.add(new Option(value, value));
-      input.value = value ?? '';
-    });
-    updateBasicPropertyFields();
     const callLink = document.getElementById('client-form-call');
     const whatsappLink = document.getElementById('client-form-whatsapp');
     const phoneForCall = safePhone(lead.PrimaryMobile || lead.Phone);
@@ -2951,16 +2937,6 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   let savingClientDetails = false;
-  function updateBasicPropertyFields() {
-    const type = document.getElementById('edit-property-type').value.trim();
-    const nonResidential = /^(Commercial|Office|Shop|Showroom|Land|Plot|Industrial|Warehouse|Agriculture)$/i.test(type);
-    document.getElementById('edit-bhk-wrap').hidden = nonResidential;
-    document.getElementById('edit-bhk-wrap').style.display = nonResidential ? 'none' : '';
-    const renting = /Rent|Lease/.test(document.getElementById('edit-purpose').value);
-    document.getElementById('edit-budget-min-label').textContent = renting ? 'Monthly Rent Min (₹)' : 'Budget Min (₹)';
-    document.getElementById('edit-budget-max-label').textContent = renting
-      ? 'Monthly Rent Max (₹)' : 'Budget / Expected Price Max (₹)';
-  }
   async function saveEdit() {
     if (savingClientDetails) return;
     const payload = {
@@ -2975,12 +2951,6 @@ table td,table th{border-color:var(--v2-line)!important}
       Source:         document.getElementById('edit-source').value,
       LostReason:     document.getElementById('edit-status').value === 'Lost' ? document.getElementById('edit-lost-reason').value.trim() : null,
       LostNote:       document.getElementById('edit-status').value === 'Lost' ? document.getElementById('edit-lost-note').value.trim() : null,
-      RequirementType: document.getElementById('edit-purpose').value || null,
-      PropertyType: document.getElementById('edit-property-type').value.trim() || null,
-      BudgetMin: numOrNull(document.getElementById('edit-budget-min').value),
-      BudgetMax: numOrNull(document.getElementById('edit-budget-max').value),
-      Location1: document.getElementById('edit-location').value.trim() || null,
-      BHK: document.getElementById('edit-bhk-wrap').hidden ? null : (document.getElementById('edit-bhk').value.trim() || null),
       Notes:          document.getElementById('edit-notes').value.trim()
     };
     if (payload.ClientStatus === 'Lost' && !payload.LostReason) {
