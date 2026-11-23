@@ -47,6 +47,13 @@ const { DocumentService }        = require('../services/documentService');
 const { AccessControlService }   = require('../services/accessControlService');
 const { EntityConfig, TagConfig, WorkflowConfig, ScoringConfig, ColumnConfig, V2FormRegistry, SourceOptions } = require('../data/v2Config');
 
+// Blank status is treated as active for legacy requirement rows. New rows use
+// explicit ACTIVE; Draft, Paused, and terminal states are never operational.
+function isActiveRequirement(row) {
+  const status = String(row?.RequirementStatus || row?.Status || '').trim().toUpperCase();
+  return !status || status === 'ACTIVE';
+}
+
 // ── Feature Flag ──────────────────────────────────────────────────────────────
 // Read once at startup. Restart server to pick up a change.
 // Controls only SHARED routes. New routes are always active.
@@ -886,7 +893,7 @@ class V2Router {
         const requirement = this.reqSvc.getRequirement(body?.RequirementID);
         if (!requirement.ok || requirement.data.LeadID !== leadId) return this._json(404, { ok: false, error: 'Requirement not found for this client' });
         const r = requirement.data;
-        if (['Lost', 'Closed', 'Archived'].includes(r.RequirementStatus)) return this._json(400, { ok: false, error: 'Reopen the requirement before starting a deal' });
+        if (!isActiveRequirement(r)) return this._json(400, { ok: false, error: 'Activate this requirement before starting a deal' });
         const existing = this.txnSvc.listTransactionsByLead(leadId).find(t => t.SourceRequirementID === r.RequirementID);
         if (existing) return this._ok({ ok: true, data: existing, reused: true });
         const result = this.txnSvc.createTransaction(leadId, { TransactionType: r.TransactionType, Category: r.Category, SubCategory: r.SubCategory,
@@ -1326,8 +1333,7 @@ class V2Router {
 
     const activeRequirementLeadIds = new Set(reqs
       .filter(r => {
-        const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
-        return !status || status === 'ACTIVE';
+        return isActiveRequirement(r);
       })
       .map(r => r.LeadID)
       .filter(Boolean));
@@ -1440,15 +1446,13 @@ class V2Router {
     const hotCount = visible.filter(l => Number(typeof l.ClientScore === 'object' ? l.ClientScore?.total : l.ClientScore || 0) >= 70).length;
     const activeNeeds = reqs.filter(r => {
       if (!visibleLeadIds.has(r.LeadID)) return false;
-      const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
-      return !status || status === 'ACTIVE';
+      return isActiveRequirement(r);
     }).length;
     const countableLeads = actor ? this.accessSvc.filterReadableLeads(leads, actor) : leads;
     const countableIds = new Set(countableLeads.map(l => l.LeadID));
     const activeReqIds = new Set(reqs
       .filter(r => {
-        const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
-        return countableIds.has(r.LeadID) && (!status || status === 'ACTIVE');
+        return countableIds.has(r.LeadID) && isActiveRequirement(r);
       })
       .map(r => r.LeadID));
     const leadStatus = l => String(l.ClientStatus || l.LeadStatus || '').trim();
@@ -1623,7 +1627,7 @@ class V2Router {
         ...lead,
         _activeNeeds: leadReqs.filter(r => {
           const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
-          return !status || status === 'ACTIVE';
+          return isActiveRequirement(r);
         }).length,
         _needSummaries: needSummaries,
         _moreNeeds: 0,
@@ -1720,7 +1724,7 @@ class V2Router {
         summary: {
           transactionCount:  transactions.length,
           requirementCount:  requirements.length,
-          activeRequirements: requirements.filter((r) => !['Closed','Lost','Archived'].includes(r.RequirementStatus || r.Status)).length,
+          activeRequirements: requirements.filter(isActiveRequirement).length,
           pendingFollowUps:   followUps.filter((f) => !['COMPLETED', 'CANCELLED'].includes(String(f.status || f.Status || '').toUpperCase())).length
         }
       }

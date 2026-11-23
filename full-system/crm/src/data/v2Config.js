@@ -518,7 +518,7 @@ function buildCommercialForm(txnType, category, subCategory) {
         leaseExpiry: field('LeaseExpiry', 'Current Lease Expiry', 'Date', false, 11.4)
       } : {}),
       commercialAmenities: field('CommercialAmenities', 'Amenities', 'MultiSelect', false, 49.5, {
-        options: ['Lift', 'Visitor Parking', 'Security', 'CCTV', 'Fire Safety', 'Internet / Fiber', 'Common Washroom', ...(isShopfront ? ['Signage', 'Loading Access', 'Display Window'] : [])]
+        options: ['Lift', 'Power Backup', 'Visitor Parking', 'Security', 'CCTV', 'Fire Safety', 'Internet / Fiber', 'Common Washroom', ...(isShopfront ? ['Signage', 'Loading Access', 'Display Window'] : [])]
       }),
       areaMin: field('AreaMin', 'Area Min (sq.ft)', 'Number', false, 20, { validation: 'positive-number' }),
       areaMax: field('AreaMax', 'Area Max (sq.ft)', 'Number', false, 21, { validation: 'positive-number' }),

@@ -140,7 +140,7 @@ let FILTER_TXN='';
 function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
 function scheduleLoad(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>load(true),300)}
 function firstNeed(c){
- const confirmed=(c._needSummaries||[]).filter(n=>!['LOST','CLOSED','ARCHIVED'].includes(String(n.RequirementStatus||'').toUpperCase()));
+ const confirmed=(c._needSummaries||[]).filter(n=>{const s=String(n.RequirementStatus||'').trim().toUpperCase();return !s||s==='ACTIVE'});
  if(confirmed.length)return confirmed[0];
  const basics=Array.isArray(c.SheetBasicRequirements)?c.SheetBasicRequirements:[];
  const tab=document.getElementById('sourceTab').value;
