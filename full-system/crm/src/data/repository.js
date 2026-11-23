@@ -3434,7 +3434,10 @@ class JsonRepository {
     const dataset = collected.data;
 
     const leadStatus = this.countBy(dataset.leads, (row) => String(row.LeadStatus || 'UNKNOWN').toUpperCase());
-    const activeRequirements = dataset.requirements.filter((row) => ['ACTIVE', 'OPEN', 'NEW'].includes(String(row.Status || '').toUpperCase())).length;
+    const activeRequirements = dataset.requirements.filter((row) => {
+      const status = String(row.RequirementStatus || row.Status || '').trim().toUpperCase();
+      return !status || status === 'ACTIVE';
+    }).length;
     const matchedRequirementIds = new Set(dataset.matches.map((row) => row.RequirementID));
     const shortlistedRequirementIds = new Set(dataset.shortlists.map((row) => row.RequirementID));
     const hotLeadIds = new Set(dataset.requirements.filter((row) => ['HIGH', 'HOT'].includes(String(row.Urgency || '').toUpperCase())).map((row) => row.LeadID));
@@ -3581,7 +3584,10 @@ class JsonRepository {
       data: {
         filters: dataset.filters,
         totalRequirements: dataset.requirements.length,
-        activeRequirements: (statusCounts.ACTIVE || 0) + (statusCounts.OPEN || 0),
+        activeRequirements: dataset.requirements.filter((row) => {
+          const status = String(row.RequirementStatus || row.Status || '').trim().toUpperCase();
+          return !status || status === 'ACTIVE';
+        }).length,
         archivedRequirements: (statusCounts.CANCELLED || 0) + (statusCounts.CLOSED || 0),
         hotRequirements: dataset.requirements.filter((row) => ['HIGH', 'HOT'].includes(String(row.Urgency || '').toUpperCase())).length,
         byTransactionType: this.countBy(dataset.requirements, (row) => row.TransactionType || 'UNKNOWN'),

@@ -12,7 +12,10 @@ class DashboardService {
   async getDashboardSummary() {
     const leads = this.repository.listLeads();
     const requirements = this.repository.list('Requirements');
-    const activeRequirements = requirements.filter((row) => ['ACTIVE', 'OPEN', 'NEW'].includes(String(row.Status || '').toUpperCase())).length;
+    const activeRequirements = requirements.filter((row) => {
+      const status = String(row.RequirementStatus || row.Status || '').trim().toUpperCase();
+      return !status || status === 'ACTIVE';
+    }).length;
 
     return {
       totalLeads: leads.length,

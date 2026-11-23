@@ -1553,6 +1553,16 @@ table td,table th{border-color:var(--v2-line)!important}
   }
 
   // ── KPI STRIP ─────────────────────────────────────────────────────────────────
+  function normalizeRequirementStatus(status) {
+    return String(status || '').trim().toUpperCase();
+  }
+
+  function isActiveRequirementStatus(status) {
+    const normalized = normalizeRequirementStatus(status);
+    // Blank status is retained as active only for legacy rows.
+    return !normalized || normalized === 'ACTIVE';
+  }
+
   function renderKpiStrip() {
     const txns  = workspace.transactions || [];
     const reqs  = workspace.requirements || [];
@@ -1562,7 +1572,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const deals = workspace.deals        || [];
     const lead  = workspace.lead;
 
-    const activeReqs  = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
+    const activeReqs  = reqs.filter(r => isActiveRequirementStatus(r.RequirementStatus || r.Status));
     const openFollowups = fus.filter(f => !['COMPLETED','CANCELLED'].includes(f.status));
     const openNegs    = negs.filter(n => !['Closed','Won','Lost'].includes(n.Status||n.NegotiationStatus));
     const score       = typeof lead.ClientScore === 'object' ? lead.ClientScore?.total : lead.ClientScore;
@@ -1594,13 +1604,15 @@ table td,table th{border-color:var(--v2-line)!important}
     // Helper to find parent transaction
     const findTxn = r => txns.find(t => t.TransactionID === r.TransactionID) || { TransactionType: r.TransactionType };
 
-    // Split active vs. closed/lost
-    const activeReqs = reqs.filter(r => !['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
-    const closedReqs = reqs.filter(r =>  ['Lost','Closed','Archived'].includes(r.RequirementStatus||r.Status));
+    // Active is the only operational status. Draft and Paused remain visible
+    // in a separate section so they can be resumed without inflating active counts.
+    const activeReqs = reqs.filter(r => isActiveRequirementStatus(r.RequirementStatus || r.Status));
+    const onHoldReqs = reqs.filter(r => ['DRAFT', 'PAUSED'].includes(normalizeRequirementStatus(r.RequirementStatus || r.Status)));
+    const closedReqs = reqs.filter(r => !isActiveRequirementStatus(r.RequirementStatus || r.Status) && !['DRAFT', 'PAUSED'].includes(normalizeRequirementStatus(r.RequirementStatus || r.Status)));
 
     let html = '';
 
-    if (!activeReqs.length && closedReqs.length) {
+    if (!activeReqs.length && (closedReqs.length || onHoldReqs.length)) {
       html += `<div class="empty-state" style="padding:20px 0">
         <p style="font-size:13px;color:var(--clr-text-light)">No active requirements.</p>
       </div>`;
@@ -1608,6 +1620,15 @@ table td,table th{border-color:var(--v2-line)!important}
 
     // One operating card per transaction. Detail rows stay internal for compatibility.
     html += activeReqs.map(r => needCard(findTxn(r), r)).join('');
+
+    if (onHoldReqs.length) {
+      html += `<details style="margin-top:20px">
+        <summary style="cursor:pointer;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--clr-text-light);border-top:1px solid var(--clr-border);padding-top:14px;list-style:none;display:flex;align-items:center;gap:6px">
+          <span style="font-size:14px">›</span> Draft / On Hold (${onHoldReqs.length})
+        </summary>
+        <div style="margin-top:10px">${onHoldReqs.map(r => needCard(findTxn(r), r)).join('')}</div>
+      </details>`;
+    }
 
     // Closed / Lost requirements — compact collapsed section
     if (closedReqs.length) {
@@ -1643,6 +1664,19 @@ table td,table th{border-color:var(--v2-line)!important}
     finally { if (button) button.disabled = false; }
   }
 
+  async function resumeClientRequirement(reqId, button) {
+    if (button) button.disabled = true;
+    try {
+      const result = await fetch(`/api/v2/requirements/${encodeURIComponent(reqId)}`, {
+        method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({RequirementStatus: 'Active'})
+      }).then(r => r.json());
+      if (!result.ok) throw new Error(result.error || 'Could not activate requirement');
+      await loadWorkspace();
+      renderTransactions();
+    } catch (error) { alert(error.message); }
+    finally { if (button) button.disabled = false; }
+  }
+
   function lostReqCard(txn, r) {
     const titleParts = [txn.TransactionType||r.TransactionType, r.Category, r.SubCategory].filter(Boolean);
     const budgetStr  = formatBudget(r.BudgetMin, r.BudgetMax);
@@ -1660,6 +1694,8 @@ table td,table th{border-color:var(--v2-line)!important}
 
   function needCard(txn, r) {
     const reqId  = r.RequirementID;
+    const reqStatus = normalizeRequirementStatus(r.RequirementStatus || r.Status);
+    const canStartDeal = isActiveRequirementStatus(reqStatus);
     const score  = typeof r.RequirementScore === 'object' ? r.RequirementScore?.total : r.RequirementScore;
     const scoreCls = score == null ? '' : score >= 70 ? 'high' : score >= 40 ? 'mid' : 'low';
     const stage  = txn.PipelineStage || r.PipelineStage || 'New';
@@ -1753,10 +1789,11 @@ table td,table th{border-color:var(--v2-line)!important}
 
       <div class="need-card-footer">
         <button class="need-action-btn primary" data-testid="req-update-${esc(reqId)}" onclick="openUpdateNeedModal('${esc(reqId)}')">✏️ Update</button>
+        ${['DRAFT', 'PAUSED'].includes(reqStatus) ? `<button class="need-action-btn ghost" onclick="resumeClientRequirement('${esc(reqId)}', this)">↻ Activate Requirement</button>` : ''}
         <button class="need-action-btn ghost"   data-testid="req-matches-${esc(reqId)}" onclick="toggleSmartMatches('${esc(reqId)}')">🎯 Smart Match</button>
         <button class="need-action-btn ghost"   data-testid="req-shortlist-${esc(reqId)}" onclick="toggleShortlist('${esc(reqId)}')">⭐ Shortlist</button>
         <button class="need-action-btn ghost"   data-testid="req-share-${esc(reqId)}" onclick="openNetworkShareModal('${esc(reqId)}')">👥 Share with Network</button>
-        <button class="need-action-btn ghost" data-testid="start-deal-${esc(reqId)}" onclick="startClientDeal('${esc(reqId)}', this)">${(workspace.transactions || []).some(t => t.SourceRequirementID === reqId) ? 'Deal started' : 'Start Deal'}</button>
+        <button class="need-action-btn ghost" data-testid="start-deal-${esc(reqId)}" ${canStartDeal ? '' : 'disabled title="Activate this requirement before starting a deal"'} onclick="startClientDeal('${esc(reqId)}', this)">${(workspace.transactions || []).some(t => t.SourceRequirementID === reqId) ? 'Deal started' : canStartDeal ? 'Start Deal' : 'Activate to Start Deal'}</button>
         <button class="need-action-btn ghost"   onclick="openSiteVisitsContext('${esc(reqId)}')">🏠 Site Visits</button>
         <button class="need-action-btn ghost"   onclick="openAddFollowupForRequirement('${esc(reqId)}')">📞 Follow-up</button>
         <button class="need-action-btn ghost"   onclick="openRequirementStatusModal('${esc(reqId)}','Paused')">⏸ Hold</button>
@@ -2451,6 +2488,24 @@ table td,table th{border-color:var(--v2-line)!important}
         if (!editingNeedId && (val === '' || val == null || (Array.isArray(val) && !val.length))) return;
         txnPayload[key] = val === '' ? null : val;
       });
+      if (editingNeedId && formState?.config) {
+        // Explicitly mark fields that became irrelevant after an answer changed.
+        // This clears the old saved value instead of silently retaining it.
+        const configuredFields = new Set(asArray(formState.config.fields).map(field => field?.FieldKey).filter(Boolean));
+        const retainedCoreFields = new Set(['TransactionType', 'Category', 'SubCategory', 'PropertyType', 'PropertyPreference', 'BudgetMin', 'BudgetMax', 'Location1', 'Location2', 'Location3', 'SpecialNotes', 'WhoIsSpeaking', 'ContactMobile', 'ContactEmail']);
+        asArray(formState.config.fields).forEach(field => {
+          if (!field?.FieldKey) return;
+          if (['RELEVANT', 'VISIBLE'].includes(visibleStates[field.FieldKey] || 'RELEVANT')) return;
+          txnPayload[field.FieldKey] = 'NOT_APPLICABLE';
+        });
+        const existing = asArray(workspace.requirements).find(item => item.RequirementID === editingNeedId);
+        Object.entries(existing?.Fields || {}).forEach(([key, entry]) => {
+          if (configuredFields.has(key) || retainedCoreFields.has(key) || entry?.state !== 'KNOWN') return;
+          // If the form scope changed, a previously known field absent from the
+          // new schema no longer applies to this requirement.
+          txnPayload[key] = 'NOT_APPLICABLE';
+        });
+      }
       for (const key of ['BudgetMin', 'BudgetMax']) {
         const alias = key[0].toLowerCase() + key.slice(1);
         if (alias in txnPayload) txnPayload[key] = txnPayload[alias];

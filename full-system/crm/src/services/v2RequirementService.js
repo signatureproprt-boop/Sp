@@ -659,7 +659,7 @@ class V2RequirementService {
 
     // Explicit blanks clear captured values; omitted fields stay intact.
     eachPayloadField(payload, (key, value) => {
-      if (TRACKED_FIELDS.includes(key) && (value === null || value === '')) updated[key] = null;
+      if (TRACKED_FIELDS.includes(key) && (value === null || value === '' || value === 'NOT_APPLICABLE' || value === '__NA__' || value === 'Not Required' || value === 'Not_Required')) updated[key] = null;
     });
 
     if (status === 'Paused') {
@@ -932,6 +932,7 @@ class V2RequirementService {
     for (const key of positiveKeys) {
       const raw = payload[key] !== undefined ? payload[key] : payload[key.charAt(0).toLowerCase() + key.slice(1)];
       if (raw === undefined || raw === null || raw === '') continue;
+      if (typeof raw === 'string' && ['NOT_APPLICABLE', '__NA__', 'Not Required', 'Not_Required'].includes(raw)) continue;
       if (typeof raw === 'object' && raw.value !== undefined) continue;
 
       // Select labels such as “Studio” are not numeric. Their configured option
