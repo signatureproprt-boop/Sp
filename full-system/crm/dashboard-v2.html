@@ -80,7 +80,7 @@ body{
 <a href="/reports">Reports</a>
 <a href="/admin">Admin</a>
 </nav>
-<div class="top-actions"><input class="search" id="global-search" placeholder="Search clients or properties…"><button class="icon" title="Notifications">🔔</button><button class="avatar" id="user-avatar" onclick="doLogout()" title="Logout">--</button></div>
+<div class="top-actions"><input class="search" id="global-search" placeholder="Search clients or properties…"><button class="icon" type="button" title="Client alerts" aria-label="Client alerts" onclick="location.href='/clients?showAlerts=1'">🔔</button><button class="avatar" id="user-avatar" onclick="doLogout()" title="Logout">--</button></div>
 <button class="hamb" id="nav-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
 </header>
 <nav class="mobile-menu" id="mobile-menu" aria-label="Mobile navigation">
