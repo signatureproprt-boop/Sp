@@ -1366,7 +1366,29 @@ async function handleApi(req, res, url) {
         const sessionId = String(url.searchParams.get('session') || '').slice(0, 80);
         const events = Array.isArray(share.Events) ? share.Events : [];
         runtime.repository.update('ShortlistShares', 'TokenHash', tokenHash, { OpenCount: Number(share.OpenCount || 0) + 1, FirstOpenedAt: share.FirstOpenedAt || now, LastOpenedAt: now, Events: [...events, { Type: 'open', SessionID: sessionId || null, At: now }].slice(-5000) });
-        sendJson(res, { ok: true, data: { title: share.Title || 'Your property shortlist', contact: share.Contact || null, properties: share.Properties || [], expiresAt: share.ExpiresAt } }, 200, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return;
+        let contact = share.Contact || null;
+        const existingPhone = String(contact?.Phone || '').replace(/\D/g, '');
+        if (!contact || !existingPhone || existingPhone === '919000000001' || existingPhone === '9000000001') {
+          const user = runtime.repository.getUser?.(share.CreatedBy) || runtime.repository.find('Users', 'UserID', share.CreatedBy);
+          const profile = new (require('./src/services/brokerProfileService').BrokerProfileService)(runtime.repository).getProfile()?.data || {};
+          const candidates = [
+            contact,
+            { Name: user?.Name || user?.FullName, Phone: user?.Mobile || user?.Phone || user?.WhatsApp || user?.PrimaryMobile },
+            { Name: profile.Name, Agency: profile.Agency, Phone: profile.Mobile }
+          ];
+          contact = null;
+          for (const candidate of candidates) {
+            let phone = String(candidate?.Phone || '').replace(/\D/g, '');
+            if (phone.length === 11 && phone.startsWith('0')) phone = phone.slice(1);
+            if (phone.length === 10) phone = '91' + phone;
+            if (phone === '919000000001') continue; // Never publish the default sample number.
+            if (/^[1-9]\d{9,14}$/.test(phone)) {
+              contact = { Name: candidate?.Name || 'Signature Properties Advisor', Agency: candidate?.Agency || 'Signature Properties', Phone: phone };
+              break;
+            }
+          }
+        }
+        sendJson(res, { ok: true, data: { title: share.Title || 'Your property shortlist', contact, properties: share.Properties || [], expiresAt: share.ExpiresAt } }, 200, { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); return;
       }
       if (req.method === 'POST') {
         const body = bodyForV2 || {};
@@ -1744,10 +1766,22 @@ async function handleApi(req, res, url) {
         const lead = runtime.repository.find('Leads', 'LeadID', transaction.LeadID || transaction.ClientID);
         const contactUserId = lead?.AssignedAgentID || transaction.AssignedAgentID || actor.userId;
         const contactUser = runtime.repository.getUser?.(contactUserId) || runtime.repository.find('Users', 'UserID', contactUserId);
-        let contactMobile = String(contactUser?.Mobile || '').replace(/\D/g, '');
-        if (contactMobile.length === 11 && contactMobile.startsWith('0')) contactMobile = contactMobile.slice(1);
-        if (contactMobile.length === 10) contactMobile = '91' + contactMobile;
-        const contact = /^[1-9]\d{9,14}$/.test(contactMobile) ? { Name: contactUser?.Name || 'Signature Properties Advisor', Phone: contactMobile } : null;
+        const profile = new (require('./src/services/brokerProfileService').BrokerProfileService)(runtime.repository).getProfile()?.data || {};
+        const contactCandidates = [
+          { Name: contactUser?.Name || contactUser?.FullName, Phone: contactUser?.Mobile || contactUser?.Phone || contactUser?.WhatsApp || contactUser?.PrimaryMobile },
+          { Name: profile.Name, Agency: profile.Agency, Phone: profile.Mobile }
+        ];
+        let contact = null;
+        for (const candidate of contactCandidates) {
+          let contactMobile = String(candidate.Phone || '').replace(/\D/g, '');
+          if (contactMobile.length === 11 && contactMobile.startsWith('0')) contactMobile = contactMobile.slice(1);
+          if (contactMobile.length === 10) contactMobile = '91' + contactMobile;
+          if (contactMobile === '919000000001') continue; // Never publish the default sample number.
+          if (/^[1-9]\d{9,14}$/.test(contactMobile)) {
+            contact = { Name: candidate.Name || 'Signature Properties Advisor', Agency: candidate.Agency || 'Signature Properties', Phone: contactMobile };
+            break;
+          }
+        }
         const token = crypto.randomBytes(32).toString('hex');
         const now = new Date();
         const record = { ShareID: crypto.randomUUID(), TransactionID: transactionId, LeadID: transaction.LeadID || transaction.ClientID || null, CreatedBy: actor.userId, TokenHash: crypto.createHash('sha256').update(token).digest('hex'), Title: 'Your property shortlist', Contact: contact, Properties: properties, Status: 'Active', CreatedAt: now.toISOString(), ExpiresAt: new Date(now.getTime() + 30 * 86400000).toISOString(), OpenCount: 0, Events: [] };
