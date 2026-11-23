@@ -16,6 +16,8 @@ function buildQuery(){
  const p=new URLSearchParams();
  const sourceTab=document.getElementById('sourceTab').value; if(sourceTab)p.set('sourceTab',sourceTab);
  const q=document.getElementById('search').value.trim(), status=document.getElementById('status').value;
+ const dateFrom=document.getElementById('leadDateFrom')?.value,dateTo=document.getElementById('leadDateTo')?.value,dateSort=document.getElementById('leadDateSort')?.value||'newest';
+ if(dateFrom)p.set('leadDateFrom',dateFrom);if(dateTo)p.set('leadDateTo',dateTo);p.set('leadDateSort',dateSort);
  if(CLIENT_BUCKET==='activeRequirements')p.set('view','activeRequirements');
  if(CLIENT_BUCKET==='contactPending')p.set('view','contactPending');
  if(CLIENT_BUCKET==='all')p.set('view','all');
@@ -125,13 +127,14 @@ function setBucket(bucket){
  document.querySelectorAll('[data-bucket]').forEach(b=>{const active=b.dataset.bucket===bucket;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
  load(true);
 }
+function leadCreatedDate(c){const value=c.CreatedAt||c.CreatedDate||c.CreatedOn||c.LeadCreatedAt;return value?new Date(value).toLocaleDateString('en-IN'):'—'}
 function renderList(rows){
  const body=rows.map(c=>{
   const r=firstNeed(c),phone=c.PrimaryMobile||c.Phone,status=norm(c.ClientStatus||c.LeadStatus);
   const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status;
-  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(statusLabel)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'')+'</div></td></tr>';
+  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(leadCreatedDate(c))+'</td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(statusLabel)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'')+'</div></td></tr>';
  }).join('');
- return '<table class="client-table" aria-label="Clients list"><thead><tr><th scope="col">Client</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col">Property details</th><th scope="col">Next follow-up</th><th scope="col">Actions</th></tr></thead><tbody>'+body+'</tbody></table>';
+ return '<table class="client-table" aria-label="Clients list"><thead><tr><th scope="col">Client</th><th scope="col">Lead date</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col">Property details</th><th scope="col">Next follow-up</th><th scope="col">Actions</th></tr></thead><tbody>'+body+'</tbody></table>';
 }
 let FILTER_TXN='';
 function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
@@ -190,13 +193,14 @@ function renderClientCard(c){
  const lost=status==='Lost';
  const lostReason=c.LostReason||c.LossReason||c.ReasonLost||'Reason not recorded';
  const lostDate=c.LostAt||c.LostDate||c.UpdatedAt||'';
+ const reconnectDate=localDateInput(c.NextFollowUpAt),reconnectTime=localTimeInput(c.NextFollowUpAt);
  const head='<div class="card-head client-card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(leadId)+'</div></div><span class="status status-'+esc(statusClass)+'">'+esc(statusLabel)+'</span></div>'+
-  '<div class="client-tags">'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source investor-tag">Investor</span>':'')+'</div>'+
+  '<div class="client-tags"><span class="source">Lead date: '+esc(leadCreatedDate(c))+'</span>'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source investor-tag">Investor</span>':'')+'</div>'+
   '<div class="client-requirement"><div class="client-requirement-label">Requirement</div><div class="client-requirement-text">'+esc(summary)+'</div><div class="client-detail-line">'+(budget!=='—'?'<span>Budget: '+esc(budget)+'</span>':'')+(loc?'<span>Location: '+esc(loc)+'</span>':'')+'</div></div>';
  if(lost){
   return '<article class="card client-card" data-lead-id="'+esc(leadId)+'">'+head+
    '<div class="client-lost-meta"><div><b>Lost reason</b><span>'+esc(lostReason)+'</span></div><div><b>Lost date</b><span>'+esc(lostDate?new Date(lostDate).toLocaleDateString('en-IN'):'—')+'</span></div></div>'+
-   '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="reopen">↻ Reopen</button><a class="client-action" href="/client-workspace?id='+enc(leadId)+'">Open Workspace</a></div></article>';
+   '<div class="client-lost-reminder"><b>Reconnect reminder</b><div class="client-followup-fields"><input type="date" aria-label="Reconnect date" data-reconnect-date value="'+esc(reconnectDate)+'"><input type="time" aria-label="Reconnect time" data-reconnect-time value="'+esc(reconnectTime)+'"></div><input type="text" aria-label="Reconnect note" data-reconnect-note placeholder="Reminder note" value="'+esc(c.NextActionNote||'')+'"><button class="client-action" type="button" data-card-action="save-reconnect">Save reminder</button><small>Saved reminder appears in client alerts.</small></div><div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="reopen">↻ Reopen</button><a class="client-action" href="/client-workspace?id='+enc(leadId)+'">Open Workspace</a></div></article>';
  }
  return '<article class="card client-card" data-lead-id="'+esc(leadId)+'" data-requirement-id="'+esc(needId)+'">'+head+
   '<div class="client-next"><span class="client-next-label">Next follow-up</span><span>'+esc(next)+'</span></div>'+
@@ -288,10 +292,18 @@ async function handleClientCardAction(event){
   catch(e){button.disabled=false;alert('Client reopen nahi hua: '+e.message)}
   return;
  }
+ if(action==='save-reconnect'){await saveLostReconnect(card,button);return}
  if(action==='load-brokers'){await loadCardBrokers(card,button);return}
  if(action==='send-brokers'){await sendCardRequirementToBrokers(card,button);return}
  if(action==='copy-requirement'){await copyCardRequirement(card);return}
  if(action==='save-call'){await saveCardCall(card,button);return}
+}
+async function saveLostReconnect(card,button){
+ const cardId=card.dataset.leadId,date=card.querySelector('[data-reconnect-date]')?.value,time=card.querySelector('[data-reconnect-time]')?.value,note=card.querySelector('[data-reconnect-note]')?.value.trim()||'';
+ if(!date){alert('Reconnect date select karein.');return}
+ const at=new Date(date+'T'+(time||'10:00')+':00');if(Number.isNaN(at.getTime())){alert('Valid date aur time select karein.');return}
+ button.disabled=true;
+ try{await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(cardId),{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({NextFollowUpAt:at.toISOString(),NextActionType:'Reconnect',NextActionNote:note})});button.textContent='Reminder saved';loadClientAlerts(false)}catch(e){button.disabled=false;alert('Reminder save nahi hua: '+e.message)}
 }
 async function loadCardBrokers(card,button){
  const panel=card.querySelector('[data-broker-panel]'),list=card.querySelector('[data-broker-list]'),error=card.querySelector('[data-broker-error]');
@@ -373,9 +385,17 @@ async function saveCardCall(card,button){
  }catch(e){button.disabled=false;error.textContent='Save confirm nahi hua: '+e.message+'. Retry se pehle client ka Call Log check karein.'}
 }
 
+async function loadClientAlerts(showErrors=true){
+ const list=document.getElementById('client-alert-list'),count=document.getElementById('client-alert-count');if(!list)return;
+ list.innerHTML='<div class="client-alert-empty">Loading alerts…</div>';
+ try{const j=await fetchJsonWithTimeout('/api/v2/client-alerts',{credentials:'include'});const rows=Array.isArray(j.data)?j.data:[];count.textContent=rows.length+' alerts';list.innerHTML=rows.length?rows.map(a=>'<article class="client-alert-row"><a href="/client-workspace?id='+enc(a.LeadID)+'">'+esc(a.Title||'Client alert')+' →</a><small>'+esc(a.Detail||'')+' · '+esc(a.At?new Date(a.At).toLocaleString('en-IN'):'')+'</small></article>').join(''):'<div class="client-alert-empty">No due reminders or recent shortlist opens.</div>'}catch(e){count.textContent='Could not load';list.innerHTML='<div class="client-alert-empty">Alerts load nahi hue: '+esc(e.message)+'</div>';if(showErrors)console.warn('Client alerts',e)}
+}
+function openClientAlerts(){const panel=document.getElementById('client-alert-panel');if(panel){panel.hidden=false;loadClientAlerts()}}
+function closeClientAlerts(){const panel=document.getElementById('client-alert-panel');if(panel)panel.hidden=true}
 window.__signatureClientsBooted = true;
 try {
   load();
+  if(new URLSearchParams(location.search).get('showAlerts')==='1')setTimeout(openClientAlerts,500);
 } catch (bootError) {
   const grid = document.getElementById('grid');
   if (grid) grid.innerHTML = '<div class="empty" style="grid-column:1/-1">Unable to start Clients: '+esc(bootError?.message || bootError)+'<br><button class="btn" style="margin-top:12px;background:#fdf8ec;color:var(--brown)" onclick="load()">Retry</button></div>';
