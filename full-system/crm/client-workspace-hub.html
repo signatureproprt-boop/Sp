@@ -66,7 +66,7 @@ button,input,select{font:inherit}.topbar{height:58px;background:#fff;border-bott
 .client-lost-meta div{display:flex;flex-direction:column;gap:3px;min-width:0}
 .client-lost-meta b{font-size:9px;text-transform:uppercase;color:var(--muted)}
 .client-lost-meta span{font-size:10px;color:var(--brown2);overflow-wrap:anywhere}
-@media(max-width:700px){.client-actions{gap:4px;flex-wrap:wrap}.client-action{font-size:9px;padding:6px 7px}.client-popover{position:fixed;left:12px;right:12px;top:50%;transform:translateY(-50%);width:auto;max-height:78vh;z-index:100}.client-followup-fields{grid-template-columns:1fr 1fr}}
+.client-alert-panel{position:fixed;z-index:160;top:72px;right:18px;width:min(520px,calc(100vw - 24px));max-height:78vh;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 18px 50px #21140d33;padding:14px}.client-alert-panel[hidden]{display:none}.client-alert-head{display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:8px}.client-alert-head>div:first-child{display:flex;flex-direction:column;gap:3px}.client-alert-head span{font-size:11px;color:var(--muted)}.client-alert-head>div:last-child{display:flex;gap:5px}.client-alert-row{display:flex;flex-direction:column;gap:4px;padding:10px 2px;border-bottom:1px solid var(--border)}.client-alert-row a{color:var(--brown);font-weight:750;text-decoration:none}.client-alert-row small{color:var(--muted)}.client-lost-reminder{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px;padding:9px;background:#fffaf0;border:1px solid #f0dfb5;border-radius:9px}.client-lost-reminder>b{font-size:10px;color:var(--brown)}.client-lost-reminder>input{width:100%;border:1px solid var(--border);border-radius:7px;padding:8px;font-size:11px}.client-lost-reminder small{font-size:9px;color:var(--muted)}.client-alert-empty{padding:16px;color:var(--muted)}.client-date-range{display:flex;gap:8px}.client-date-range>*{min-width:0}@media(max-width:700px){.client-alert-panel{top:12px;left:12px;right:12px;width:auto}.client-date-range{display:contents}.client-actions{gap:4px;flex-wrap:wrap}.client-action{font-size:9px;padding:6px 7px}.client-popover{position:fixed;left:12px;right:12px;top:50%;transform:translateY(-50%);width:auto;max-height:78vh;z-index:100}.client-followup-fields{grid-template-columns:1fr 1fr}}
 </style>
 
 <style id="v2-unified-architect">
@@ -133,7 +133,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="top-actions"><button class="hamb" aria-label="Open menu" onclick="document.getElementById('mobile-nav').style.display=document.getElementById('mobile-nav').style.display==='flex'?'none':'flex'">☰</button><button class="avatar" title="Logout" aria-label="Logout" onclick="doLogout()">SA</button></div>
 </header>
 <main class="page">
-<section class="head"><div><h1>Clients</h1><p>One client, one lifetime record — manage every purchase, sale, rent and property relationship from one workspace.</p></div><button class="primary" onclick="openNewClient()">＋ New Client</button></section>
+<section class="head"><div><h1>Clients</h1><p>One client, one lifetime record — manage every purchase, sale, rent and property relationship from one workspace.</p></div><div style="display:flex;gap:8px"><button class="chip" type="button" onclick="openClientAlerts()">🔔 Alerts</button><button class="primary" onclick="openNewClient()">＋ New Client</button></div></section>
 <section class="client-controls" aria-label="Client views and status">
 <div class="status-tabs" role="group" aria-label="Client status filters">
 <button class="chip active" data-status="New" aria-pressed="true" onclick="setStatus('New')">New Leads <span class="queue-count" data-queue-count="newLeads">—</span></button>
@@ -168,6 +168,9 @@ table td,table th{border-color:var(--v2-line)!important}
 <div class="filter-wrap"><label>Status</label><select id="status" onchange="setStatus(this.value)"><option value="">All statuses</option><option selected>New</option><option>Contacted</option><option>Follow-up</option><option>Qualified</option><option>Site Visit</option><option>Negotiation</option><option>Won</option><option>Lost</option></select></div>
 <div class="filter-wrap"><label>Client Type</label><select id="clientType" onchange="load(true)"><option value="">All Clients</option><option value="investor">Investors</option><option value="normal">Non-Investors</option></select></div>
 <div class="filter-wrap"><label>Budget</label><select id="budget" onchange="load(true)"><option value="">Any Budget</option><option value="under50">Under ₹50L</option><option value="50to100">₹50L–₹1Cr</option><option value="100to200">₹1–2Cr</option><option value="over200">₹2Cr+</option></select></div>
+<div class="filter-wrap"><label>Lead date from</label><input id="leadDateFrom" type="date" onchange="load(true)"></div>
+<div class="filter-wrap"><label>Lead date to</label><input id="leadDateTo" type="date" onchange="load(true)"></div>
+<div class="filter-wrap"><label>Lead date order</label><select id="leadDateSort" onchange="load(true)"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></div>
 <div class="filter-wrap"><label>Location</label><input id="location" placeholder="Surat / area" oninput="scheduleLoad()"></div>
 <div class="filter-wrap"><label>Source</label><select id="source" onchange="load(true)"><option value="">All Sources</option><option>Own</option><option>Builder</option><option>Broker</option><option>Owner</option></select></div>
 </div>
@@ -176,6 +179,7 @@ table td,table th{border-color:var(--v2-line)!important}
 <section id="grid" class="grid"><div class="load">Loading clients…</div></section>
 <div id="pager" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:14px"></div>
 </main>
+<section id="client-alert-panel" class="client-alert-panel" hidden aria-label="Client alerts"><div class="client-alert-head"><div><b>Client alerts</b><span id="client-alert-count">Checking…</span></div><div><button type="button" class="chip" onclick="loadClientAlerts()">↻ Refresh</button><button type="button" class="chip" onclick="closeClientAlerts()">Close</button></div></div><div id="client-alert-list" class="client-alert-list"></div></section>
 <div id="new-client-modal" class="modal" onclick="if(event.target===this)closeNewClient()">
   <div class="modal-box">
     <h2 style="margin:0;color:var(--brown)">＋ New Client</h2>

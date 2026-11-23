@@ -760,6 +760,50 @@ class V2Router {
     }
 
     // ── /api/v2/clients/query  (need-based client query — Phase 15) ──────────
+    if (pathname === '/api/v2/client-alerts' && method === 'GET') {
+      const auth = this._requireActor(req, url);
+      if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
+      const permission = this.accessSvc.requirePermissions(auth.actor, ['LEADS_VIEW', 'LEADS_READ']);
+      if (!permission.ok) return this._json(permission.statusCode, { ok: false, error: permission.error });
+      const db = this.repo.read();
+      const now = Date.now();
+      const leads = this.accessSvc.filterReadableLeads(db.Leads || [], auth.actor);
+      const byId = new Map(leads.map(lead => [String(lead.LeadID), lead]));
+      const alerts = [];
+      for (const lead of leads) {
+        const dueValue = lead.NextFollowUpAt || lead.NextFollowupAt || lead.FollowUpAt || lead.NextActionAt;
+        const dueAt = dueValue ? new Date(dueValue).getTime() : NaN;
+        if (!Number.isFinite(dueAt)) continue;
+        const status = String(lead.ClientStatus || lead.LeadStatus || '').trim().toLowerCase();
+        const reconnect = status === 'lost' && String(lead.NextActionType || '').trim().toLowerCase() === 'reconnect';
+        const inWindow = reconnect ? dueAt <= now + 30 * 86400000 : dueAt <= now + 7 * 86400000 && !['lost','inactive','blacklisted'].includes(status);
+        if (inWindow) alerts.push({
+          Type: reconnect ? 'lost_reconnect' : 'follow_up',
+          LeadID: lead.LeadID,
+          Title: reconnect ? 'Lost client reconnect due' : 'Client follow-up due',
+          Detail: (lead.ClientName || lead.Name || 'Client') + ' · ' + (lead.NextActionNote || lead.NextActionType || 'Follow up'),
+          At: new Date(dueAt).toISOString()
+        });
+      }
+      for (const share of db.ShortlistShares || []) {
+        const lead = byId.get(String(share.LeadID || ''));
+        if (!lead) continue;
+        const events = Array.isArray(share.Events) ? share.Events : [];
+        const recentOpens = events.filter(event => String(event.Type || '').toLowerCase() === 'open' && Number.isFinite(Date.parse(event.At)) && Date.parse(event.At) >= now - 7 * 86400000);
+        if (!recentOpens.length) continue;
+        const latest = recentOpens.sort((a, b) => Date.parse(b.At) - Date.parse(a.At))[0];
+        alerts.push({
+          Type: 'shortlist_open',
+          LeadID: lead.LeadID,
+          Title: 'Client opened shortlist link',
+          Detail: (lead.ClientName || lead.Name || 'Client') + ' · ' + recentOpens.length + ' recent open' + (recentOpens.length === 1 ? '' : 's'),
+          At: latest.At
+        });
+      }
+      alerts.sort((a, b) => Date.parse(a.At) - Date.parse(b.At));
+      return this._ok({ ok: true, data: alerts.slice(0, 100), count: alerts.length });
+    }
+
     if (pathname === '/api/v2/clients/query' && method === 'GET') {
       const auth = this._requireActor(req, url);
       if (!auth.ok) return this._json(auth.statusCode, { ok: false, error: auth.error });
@@ -1211,6 +1255,9 @@ class V2Router {
     const bhk          = url.searchParams.get('bhk') ? Number(url.searchParams.get('bhk')) : null;
     const q            = url.searchParams.get('q') || url.searchParams.get('search');
     const clientStatus = url.searchParams.get('status') || undefined;
+    const leadDateFrom = url.searchParams.get('leadDateFrom') || undefined;
+    const leadDateTo = url.searchParams.get('leadDateTo') || undefined;
+    const leadDateSort = url.searchParams.get('leadDateSort') || 'newest';
     const lifecycle    = url.searchParams.get('lifecycle') || undefined;
     const source       = url.searchParams.get('source') || undefined;
     const tag          = url.searchParams.get('tag') || undefined;
@@ -1225,7 +1272,7 @@ class V2Router {
       sourceTab: url.searchParams.get('sourceTab') || undefined,
       clientStatus, lifecycle, source, tag, agentId, clientType, page, limit,
       excludeLost: url.searchParams.get('excludeLost') === 'true',
-      clientBucket: url.searchParams.get('view') || ''
+      clientBucket: url.searchParams.get('view') || '', leadDateFrom, leadDateTo, leadDateSort
     }, actor);
   }
 
@@ -1353,6 +1400,15 @@ class V2Router {
       result = resolved;
     }
 
+    const leadDate = row => {
+      const value = row.CreatedAt || row.CreatedDate || row.CreatedOn || row.LeadCreatedAt;
+      const parsed = value ? new Date(value) : null;
+      if (!parsed || Number.isNaN(parsed.getTime())) return '';
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(parsed);
+    };
+    if (filters.leadDateFrom || filters.leadDateTo) {
+      result = result.filter(row => { const day = leadDate(row); return !!day && (!filters.leadDateFrom || day >= filters.leadDateFrom) && (!filters.leadDateTo || day <= filters.leadDateTo); });
+    }
     const visible = actor ? this.accessSvc.filterReadableLeads(result, actor) : result;
     const updatedAt = row => new Date(row.UpdatedAt || row.CreatedAt || 0).getTime();
     if (filters.clientBucket === 'followUpsDue') {
@@ -1369,7 +1425,14 @@ class V2Router {
         return updatedAt(b) - updatedAt(a);
       });
     } else {
-      visible.sort((a, b) => updatedAt(b) - updatedAt(a));
+      const direction = String(filters.leadDateSort || 'newest').toLowerCase() === 'oldest' ? 1 : -1;
+      visible.sort((a, b) => {
+        const da = leadDate(a), db = leadDate(b);
+        if (da && db && da !== db) return da < db ? -direction : direction;
+        if (da && !db) return -1;
+        if (!da && db) return 1;
+        return updatedAt(b) - updatedAt(a);
+      });
     }
 
     const total = visible.length;
