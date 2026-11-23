@@ -183,6 +183,14 @@
     .modal-title { font-size: 17px; font-weight: 800; color: var(--clr-primary); }
     .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--clr-text-light); }
     .modal-body { padding: 18px 22px; }
+    .shortlist-activity-summary{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px;background:#f8f6f1;border-radius:8px}
+    .shortlist-activity-summary b{color:var(--clr-primary)}
+    .shortlist-activity-summary small{color:var(--clr-text-light)}
+    .shortlist-activity-list{margin:8px 0 0;padding:0;list-style:none}
+    .shortlist-activity-list li{padding:8px 2px;border-top:1px solid var(--clr-border);font-size:12px}
+    .shortlist-activity-list time{display:block;color:var(--clr-text-light);font-size:10px;margin-top:3px}
+    .shortlist-review-note{margin:6px 0;color:var(--clr-text-light);font-size:11px;line-height:1.4}
+    @media(max-width:600px){.modal-overlay{padding:12px}.modal{max-width:100%;max-height:calc(100dvh - 24px)}.modal-body{padding:14px}.shortlist-activity-summary{grid-template-columns:1fr}}
     .modal-footer { padding: 14px 22px; border-top: 1px solid var(--clr-border); display: flex; justify-content: flex-end; gap: 8px; background: #faf6f0; border-radius: 0 0 14px 14px; }
 
     /* Form */
@@ -3818,33 +3826,49 @@ table td,table th{border-color:var(--v2-line)!important}
     } catch (error) { alert('Shortlist link could not be created: ' + error.message); return; }
     document.getElementById('shortlist-share-preview')?.remove();
     const modal = document.createElement('div'); modal.id = 'shortlist-share-preview'; modal.className = 'modal-overlay';
-    modal.innerHTML = `<div class="modal" style="max-width:760px" role="dialog" aria-label="Review shortlist message"><div class="modal-header"><span class="modal-title">Review and share shortlist</span><button class="modal-close" id="close-shortlist-preview">×</button></div><div class="modal-body"><p>Client: ${esc(workspace.lead.ClientName || 'Client')} · WhatsApp: ${esc(phone)}</p><p>Client link: <a href="${esc(share.url)}" target="_blank" rel="noopener">${esc(share.url)}</a> · Expires in 30 days. Anyone with this link can open it without OTP.</p><div id="shortlist-branded-cards"></div><p>WhatsApp message draft</p><textarea aria-label="Shortlist message" id="shortlist-share-text" rows="12" style="width:100%"></textarea><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a id="shortlist-share-open" class="btn btn-primary" target="_blank" rel="noopener">Open WhatsApp</a><button id="shortlist-mark-sent" class="btn btn-ghost" type="button">Mark as sent</button><button id="shortlist-share-refresh" class="btn btn-ghost" type="button">Refresh link activity</button></div><div id="shortlist-share-activity" style="margin-top:10px;padding:10px;background:#f8f6f1;border-radius:8px">No link activity recorded yet.</div></div></div>`;
+    modal.innerHTML = `<div class="modal" style="max-width:760px" role="dialog" aria-label="Review shortlist message"><div class="modal-header"><span class="modal-title">Review and share shortlist</span><button class="modal-close" id="close-shortlist-preview">×</button></div><div class="modal-body"><p>Client: ${esc(workspace.lead.ClientName || 'Client')} · WhatsApp: ${esc(phone)}</p><p>Client link: <a href="${esc(share.url)}" target="_blank" rel="noopener">${esc(share.url)}</a> · Expires in 30 days. Anyone with this link can open it without OTP.</p><div id="shortlist-branded-cards"></div><p style="margin:14px 0 6px;font-weight:700">WhatsApp message draft</p><textarea aria-label="Shortlist message" id="shortlist-share-text" rows="10" style="display:block;width:100%;min-height:210px;box-sizing:border-box;line-height:1.45;margin:0 0 8px;resize:vertical"></textarea><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a id="shortlist-share-open" class="btn btn-primary" target="_blank" rel="noopener">Open WhatsApp</a><button id="shortlist-mark-sent" class="btn btn-ghost" type="button">Mark as sent</button><button id="shortlist-share-refresh" class="btn btn-ghost" type="button">Refresh link review</button></div><p class="shortlist-review-note">Share/send ke baad link opens aur property actions yahan update honge. Open count link access dikhata hai, viewer ka naam nahi.</p><div id="shortlist-share-activity" role="status" aria-live="polite" style="margin-top:10px;padding:10px;background:#f8f6f1;border-radius:8px">Link ready. Activity check ho rahi hai…</div></div></div>`;
     document.body.appendChild(modal);
     const input = document.getElementById('shortlist-share-text');
     input.value = ShortlistShare.message(rows, workspace.lead, window.location.origin).replace(/^.*(?:Brochure|Photo|Video): https?:\/\/.*\n/gm, '') + `\nView the full shortlist and download available brochures: ${share.url}\n\nYou can open this link without an OTP. Please do not forward it if you prefer to keep your property options private.`;
     const link = document.getElementById('shortlist-share-open');
     const update = () => { link.href = `https://wa.me/${phone}?text=${encodeURIComponent(input.value)}`; };
     input.addEventListener('input', update); update();
-    document.getElementById('close-shortlist-preview').onclick = () => modal.remove();
+    let activityPollId = null, activityBusy = false;
+    const closePreview = () => { if (activityPollId) clearInterval(activityPollId); modal.remove(); };
+    document.getElementById('close-shortlist-preview').onclick = closePreview;
+    const refreshActivity = async (quiet = false) => {
+      const box = document.getElementById('shortlist-share-activity');
+      if (!box || !document.body.contains(modal) || activityBusy) return;
+      activityBusy = true;
+      if (!quiet) box.textContent = 'Activity check ho rahi hai…';
+      try {
+        const result = await fetch(`/api/v2/shortlist-shares/${encodeURIComponent(reqId)}`, { credentials: 'include', cache: 'no-store' }).then(r => r.json());
+        if (!result.ok) throw new Error(result.error || 'Unable to load link review');
+        const item = (result.data || []).find(row => row.ShareID === share.ShareID);
+        if (!item) { box.textContent = 'Is link ki activity abhi available nahi hai.'; return; }
+        const counts = item.EventCounts || {}, opens = Number(item.OpenCount || 0);
+        const state = opens ? 'Link open record hua' : item.SentAt ? 'Sent mark hua; abhi tak koi link open record nahi hua.' : 'Link ready hai; abhi tak koi open record nahi. WhatsApp draft ko khud send karna hoga.';
+        const eventNames = { open: 'Link opened', property_view: 'Property viewed', brochure_click: 'Brochure opened', advisor_call: 'Call button tapped', advisor_message: 'Message button tapped', site_visit_request: 'Site visit requested', compare: 'Compare selected' };
+        const timeline = (item.RecentEvents || []).slice(0, 8).map(event => '<li><b>' + esc(eventNames[event.Type] || 'Link activity') + (event.PropertyName ? ' · ' + esc(event.PropertyName) : '') + '</b><time>' + esc(event.At ? new Date(event.At).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' : '') + '</time></li>').join('');
+        const lastOpened = item.LastOpenedAt ? new Date(item.LastOpenedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' : 'Not opened yet';
+        box.innerHTML = '<div class="shortlist-activity-summary"><b>' + esc(state) + '</b><small>Opens ' + opens + ' · Sessions ' + Number(item.UniqueSessions || 0) + '</small></div><p class="shortlist-review-note">Last open: ' + esc(lastOpened) + ' · Property views ' + Number(counts.property_view || 0) + ' · Brochures ' + Number(counts.brochure_click || 0) + ' · Calls ' + Number(counts.advisor_call || 0) + ' · Messages ' + Number(counts.advisor_message || 0) + ' · Site visit requests ' + Number(counts.site_visit_request || 0) + (item.PossibleSharedLink ? ' · Opened in multiple browser sessions' : '') + '</p>' + (timeline ? '<ul class="shortlist-activity-list">' + timeline + '</ul>' : '<small class="shortlist-review-note">Abhi koi open ya property action record nahi hua.</small>');
+      } catch (error) { box.textContent = 'Activity load nahi hui: ' + error.message; }
+      finally { activityBusy = false; }
+    };
     document.getElementById('shortlist-mark-sent').onclick = async () => {
       try {
-        const result = await fetch(`/api/v2/shortlist-shares/${encodeURIComponent(reqId)}/${encodeURIComponent(share.ShareID)}/sent`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json());
+        const result = await fetch(`/api/v2/shortlist-shares/${encodeURIComponent(reqId)}/${encodeURIComponent(share.ShareID)}/sent`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json());
         if (!result.ok) throw new Error(result.error || 'Unable to save sent status');
         document.getElementById('shortlist-mark-sent').textContent = '✓ Marked sent';
+        await refreshActivity();
       } catch (error) { alert(error.message); }
     };
-    document.getElementById('shortlist-share-refresh').onclick = async () => {
-      const box = document.getElementById('shortlist-share-activity');
-      try {
-        const result = await fetch(`/api/v2/shortlist-shares/${encodeURIComponent(reqId)}`).then(r => r.json());
-        if (!result.ok) throw new Error(result.error || 'Unable to load activity');
-        const item = (result.data || []).find(row => row.ShareID === share.ShareID);
-        if (!item) { box.textContent = 'No activity recorded yet.'; return; }
-        const counts = item.EventCounts || {};
-        box.textContent = `Opens: ${item.OpenCount || 0} · Browser sessions: ${item.UniqueSessions || 0} · Property views: ${counts.property_view || 0} · Brochure clicks: ${counts.brochure_click || 0} · Call clicks: ${counts.advisor_call || 0} · Message clicks: ${counts.advisor_message || 0} · Site visit requests: ${counts.site_visit_request || 0}${item.PossibleSharedLink ? ' · Possible shared link: opened in multiple browser sessions' : ''}`;
-      } catch (error) { box.textContent = error.message; }
-    };
-    try { await ShortlistShare.renderCards(document.getElementById('shortlist-branded-cards'),rows,workspace.lead); } catch(e) { alert(e.message); }
+    document.getElementById('shortlist-share-refresh').onclick = () => refreshActivity();
+    try {
+      await ShortlistShare.renderCards(document.getElementById('shortlist-branded-cards'),rows,workspace.lead);
+      await refreshActivity(true);
+      activityPollId = setInterval(() => refreshActivity(true), 15000);
+    } catch(e) { alert(e.message); }
   }
 
   function smartMatchCard(m, reqId) {

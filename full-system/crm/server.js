@@ -1744,7 +1744,11 @@ async function handleApi(req, res, url) {
         const data = records.filter((s) => s.TransactionID === transactionId && s.Status !== 'Revoked').sort((a, b) => String(b.CreatedAt).localeCompare(String(a.CreatedAt))).map((s) => {
           const events = Array.isArray(s.Events) ? s.Events : [];
           const sessions = [...new Set(events.map((e) => e.SessionID).filter(Boolean))];
-          return { ShareID: s.ShareID, CreatedAt: s.CreatedAt, ExpiresAt: s.ExpiresAt, SentAt: s.SentAt || null, OpenCount: s.OpenCount || 0, UniqueSessions: sessions.length, PossibleSharedLink: sessions.length > 1, EventCounts: events.reduce((out, e) => (out[e.Type] = (out[e.Type] || 0) + 1, out), {}) };
+          const propertyNames = new Map((s.Properties || []).map((property) => [String(property.PropertyID || ''), property.Title || property.ProjectName || '']));
+          const recentEvents = events.slice(-30).reverse().map((event) => ({
+            Type: String(event.Type || ''), At: event.At || null, PropertyName: propertyNames.get(String(event.PropertyID || '')) || null
+          }));
+          return { ShareID: s.ShareID, CreatedAt: s.CreatedAt, ExpiresAt: s.ExpiresAt, SentAt: s.SentAt || null, FirstOpenedAt: s.FirstOpenedAt || null, LastOpenedAt: s.LastOpenedAt || null, OpenCount: s.OpenCount || 0, UniqueSessions: sessions.length, PossibleSharedLink: sessions.length > 1, EventCounts: events.reduce((out, e) => (out[e.Type] = (out[e.Type] || 0) + 1, out), {}), RecentEvents: recentEvents };
         });
         sendJson(res, { ok: true, data }); return;
       }
