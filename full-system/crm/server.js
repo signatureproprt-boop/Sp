@@ -1367,7 +1367,8 @@ async function handleApi(req, res, url) {
         const events = Array.isArray(share.Events) ? share.Events : [];
         runtime.repository.update('ShortlistShares', 'TokenHash', tokenHash, { OpenCount: Number(share.OpenCount || 0) + 1, FirstOpenedAt: share.FirstOpenedAt || now, LastOpenedAt: now, Events: [...events, { Type: 'open', SessionID: sessionId || null, At: now }].slice(-5000) });
         let contact = share.Contact || null;
-        if (!contact || !String(contact.Phone || '').replace(/\D/g, '')) {
+        const existingPhone = String(contact?.Phone || '').replace(/\D/g, '');
+        if (!contact || !existingPhone || existingPhone === '919000000001' || existingPhone === '9000000001') {
           const user = runtime.repository.getUser?.(share.CreatedBy) || runtime.repository.find('Users', 'UserID', share.CreatedBy);
           const profile = new (require('./src/services/brokerProfileService').BrokerProfileService)(runtime.repository).getProfile()?.data || {};
           const candidates = [
