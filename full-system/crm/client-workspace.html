@@ -3841,7 +3841,7 @@ table td,table th{border-color:var(--v2-line)!important}
         const item = (result.data || []).find(row => row.ShareID === share.ShareID);
         if (!item) { box.textContent = 'No activity recorded yet.'; return; }
         const counts = item.EventCounts || {};
-        box.textContent = `Opens: ${item.OpenCount || 0} · Browser sessions: ${item.UniqueSessions || 0} · Property views: ${counts.property_view || 0} · Brochure clicks: ${counts.brochure_click || 0} · Site visit requests: ${counts.site_visit_request || 0}${item.PossibleSharedLink ? ' · Possible shared link: opened in multiple browser sessions' : ''}`;
+        box.textContent = `Opens: ${item.OpenCount || 0} · Browser sessions: ${item.UniqueSessions || 0} · Property views: ${counts.property_view || 0} · Brochure clicks: ${counts.brochure_click || 0} · Call clicks: ${counts.advisor_call || 0} · Message clicks: ${counts.advisor_message || 0} · Site visit requests: ${counts.site_visit_request || 0}${item.PossibleSharedLink ? ' · Possible shared link: opened in multiple browser sessions' : ''}`;
       } catch (error) { box.textContent = error.message; }
     };
     try { await ShortlistShare.renderCards(document.getElementById('shortlist-branded-cards'),rows,workspace.lead); } catch(e) { alert(e.message); }
