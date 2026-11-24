@@ -1587,6 +1587,7 @@ class V2Router {
 
     return leads.map(lead => {
       const leadReqs = reqByLead.get(lead.LeadID) || [];
+      const activeReqs = leadReqs.filter(isActiveRequirement);
       const leadTxns = txnByLead.get(lead.LeadID) || [];
       const pending = nextFollowUpByLead.get(lead.LeadID);
       const lastAct = lastActivityByLead.get(lead.LeadID);
@@ -1625,12 +1626,9 @@ class V2Router {
 
       return {
         ...lead,
-        _activeNeeds: leadReqs.filter(r => {
-          const status = String(r.RequirementStatus || r.Status || '').trim().toUpperCase();
-          return isActiveRequirement(r);
-        }).length,
+        _activeNeeds: activeReqs.length,
         _needSummaries: needSummaries,
-        _moreNeeds: 0,
+        _moreNeeds: Math.max(0, activeReqs.length - 1),
         _nextFollowUp: pending ? (pending.DueAt || pending.DueDate) : null,
         _lastContact: lastAct ? lastAct.CreatedAt : lead.last_activity_at || null,
         _openTransactions: leadTxns.filter(t => !['COMPLETED','CANCELLED','CLOSED','WON','LOST'].includes(String(t.Status || '').toUpperCase())).length
