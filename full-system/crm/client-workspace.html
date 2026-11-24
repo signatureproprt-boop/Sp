@@ -1442,6 +1442,7 @@ table td,table th{border-color:var(--v2-line)!important}
     const startCall = initParams.get('startCall') === '1';
     const openRequirement = initParams.get('openRequirement') === '1';
     const openShortlist = initParams.get('openShortlist') === '1';
+    const openVisits = initParams.get('openVisits') === '1';
     const shortlistRequirementId = initParams.get('requirementId') || '';
     if (workspace?.lead && startCall) {
       window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
@@ -1460,6 +1461,18 @@ table td,table th{border-color:var(--v2-line)!important}
         await openClientBrochures(shortlistRequirementId);
         return;
       }
+    }
+    if (workspace?.lead && openVisits) {
+      window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
+      const history = document.querySelector('.details-accordion');
+      if (history) history.hidden = false;
+      const inner = document.getElementById('details-inner'), toggle = document.getElementById('details-toggle');
+      if (inner) inner.classList.add('open');
+      if (toggle) toggle.classList.add('open');
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'site-visits'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-site-visits'));
+      document.getElementById('tab-site-visits')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
     }
     if (workspace?.lead) openEditModal();
   }
