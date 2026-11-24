@@ -233,7 +233,8 @@ function renderClientCard(c){
  return '<article class="card client-card" data-lead-id="'+esc(leadId)+'" data-requirement-id="'+esc(needId)+'">'+head+
   '<div class="client-next"><span class="client-next-label">Next follow-up</span><span>'+esc(next)+'</span></div>'+
   '<div class="client-last-contact">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
-  '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="toggle-call">☎ Call Log</button><button class="client-action" type="button" data-card-action="toggle-share">↗ Match / Share</button><button class="client-action" type="button" data-card-action="quick-update">✎ Quick Update</button></div>'+
+  '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="toggle-call">☎ Call Log</button><button class="client-action" type="button" data-card-action="toggle-followup">◷ Follow-up</button><a class="client-action" href="/client-workspace?id='+enc(leadId)+'&amp;openVisits=1">⌖ Site Visit</a></div>'+
+  '<div class="client-actions client-actions-secondary"><button class="client-action" type="button" data-card-action="toggle-share">↗ Match / Share</button><button class="client-action" type="button" data-card-action="toggle-lost">× Lost</button><button class="client-action" type="button" data-card-action="quick-update">✎ Quick Update</button></div>'+
   '<a class="client-workspace-link" href="/client-workspace?id='+enc(leadId)+'">Open Workspace →</a>'+
   '<section class="client-popover client-call-popover" data-client-popover="call" hidden><div class="client-popover-head"><b>Log a call</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
    '<label>Call outcome<select data-call-outcome><option value="">Choose result</option><option value="CONNECTED_REQUIREMENT">Baat hui — requirement mili</option><option value="CONNECTED_NO_REQUIREMENT">Baat hui — abhi requirement nahi</option><option value="NO_ANSWER">Phone nahi uthaya</option><option value="PHONE_OFF">Phone band</option><option value="BUSY">Busy</option><option value="CALLBACK_REQUESTED">Callback bola</option><option value="NOT_INTERESTED">Interested nahi</option><option value="WRONG_NUMBER">Wrong number</option></select></label>'+
@@ -241,6 +242,8 @@ function renderClientCard(c){
    '<label>Call note <textarea data-call-note rows="2" placeholder="Short note about the call"></textarea></label>'+
    '<div class="client-followup-fields"><label>Next date<input type="date" data-followup-date value="'+esc(localDateInput(c.NextFollowUpAt))+'"></label><label>Time<input type="time" data-followup-time value="'+esc(localTimeInput(c.NextFollowUpAt))+'"></label></div>'+
    '<div class="client-popover-error" role="alert" data-call-error></div><div class="client-popover-actions"><button type="button" class="client-action primary-action" data-card-action="save-call">Save call</button><a class="client-phone-link" '+(phone?'href="tel:'+esc(phone)+'"':'aria-disabled="true"')+'>'+ (phone?'Call client':'Phone unavailable')+'</a></div></section>'+
+  '<section class="client-popover client-followup-popover" data-client-popover="followup" hidden><div class="client-popover-head"><b>Schedule follow-up</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div><p>Save karte hi client stage Follow-up hoga aur reminder alerts mein dikhega.</p><div class="client-followup-fields"><label>Date<input type="date" data-card-followup-date value="'+esc(localDateInput(c.NextFollowUpAt))+'"></label><label>Time<input type="time" data-card-followup-time value="'+esc(localTimeInput(c.NextFollowUpAt))+'"></label></div><label>Note <textarea rows="2" data-card-followup-note placeholder="Kis baat ke liye follow-up karna hai?"></textarea></label><div class="client-popover-error" role="alert" data-card-followup-error></div><button type="button" class="client-action primary-action" data-card-action="save-followup">Save follow-up</button></section>'+
+  '<section class="client-popover client-lost-popover" data-client-popover="lost" hidden><div class="client-popover-head"><b>Mark client Lost</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div><label>Reason<select data-card-lost-reason><option value="">Choose reason</option><option>Not interested</option><option>Wrong number</option><option>Budget mismatch</option><option>Bought elsewhere</option><option>Requirement fulfilled</option><option>Other</option></select></label><label>Note (optional)<textarea rows="2" data-card-lost-note placeholder="Short reason or context"></textarea></label><div class="client-popover-error" role="alert" data-card-lost-error></div><button type="button" class="client-action primary-action" data-card-action="save-lost">Confirm Lost</button></section>'+
   '<section class="client-popover client-share-popover" data-client-popover="share" hidden><div class="client-popover-head"><b>Match or share</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
    '<div class="client-share-options">'+clientShortlistAction+'<a class="client-share-option" href="/client-workspace?id='+enc(leadId)+'">⌂ Match in Inventory <small>Review property matches for this requirement</small></a><button type="button" class="client-share-option" data-card-action="load-brokers">♧ Share with Broker Network <small>Only requirement details are shared with selected brokers</small></button><button type="button" class="client-share-option" data-card-action="copy-requirement">▣ Copy requirement summary <small>Client name and phone stay private</small></button></div>'+
    '<div class="client-broker-panel" data-broker-panel hidden><div data-broker-list>Loading active brokers…</div><label>Optional note<textarea rows="2" data-broker-note placeholder="Add a short note for brokers"></textarea></label><div class="client-popover-error" role="alert" data-broker-error></div><button type="button" class="client-action primary-action" data-card-action="send-brokers">Create secure share links</button><div data-broker-results></div></div></section>'+
@@ -308,8 +311,9 @@ async function handleClientCardAction(event){
  const action=button.dataset.cardAction;
  const hidePanels=()=>{card.querySelectorAll('[data-client-popover]').forEach(p=>p.hidden=true);card.classList.remove('is-open')};
  if(action==='close-popovers'){hidePanels();return}
- if(action==='toggle-call'||action==='toggle-share'||action==='quick-update'){
-  const name=action==='toggle-call'?'call':action==='toggle-share'?'share':'quick';
+ if(action==='toggle-call'||action==='toggle-share'||action==='toggle-followup'||action==='toggle-lost'||action==='quick-update'){
+  const names={'toggle-call':'call','toggle-share':'share','toggle-followup':'followup','toggle-lost':'lost','quick-update':'quick'};
+  const name=names[action];
   const panel=card.querySelector('[data-client-popover="'+name+'"]'),wasOpen=panel&&!panel.hidden;
   hidePanels();if(panel&&!wasOpen){panel.hidden=false;card.classList.add('is-open')}
   return;
@@ -325,6 +329,30 @@ async function handleClientCardAction(event){
  if(action==='send-brokers'){await sendCardRequirementToBrokers(card,button);return}
  if(action==='copy-requirement'){await copyCardRequirement(card);return}
  if(action==='save-call'){await saveCardCall(card,button);return}
+ if(action==='save-followup'){await saveCardFollowup(card,button);return}
+ if(action==='save-lost'){await saveCardLost(card,button);return}
+}
+async function saveCardFollowup(card,button){
+ const leadId=card.dataset.leadId,date=card.querySelector('[data-card-followup-date]')?.value,time=card.querySelector('[data-card-followup-time]')?.value,note=card.querySelector('[data-card-followup-note]')?.value.trim()||'',error=card.querySelector('[data-card-followup-error]');
+ if(!date||!time){error.textContent='Follow-up date aur time dono select karein.';return}
+ const dueAt=new Date(date+'T'+time).toISOString();
+ if(Number.isNaN(new Date(dueAt).getTime())){error.textContent='Valid date aur time select karein.';return}
+ button.disabled=true;error.textContent='Saving…';
+ try{
+  const activity=await fetchJsonWithTimeout('/api/v2/activities',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LeadID:leadId,ActivityType:'CALL',Summary:'Follow-up scheduled',Notes:note||null,FollowUpDate:dueAt,NextAction:'Call back'})});
+  const followup=await fetchJsonWithTimeout('/api/v2/followups',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LeadID:leadId,ClientRequestID:(crypto.randomUUID?crypto.randomUUID():String(Date.now())),ActivityID:activity.data?.ActivityID||null,ActivityType:'CALL',DueAt:dueAt,Notes:note||'Client follow-up',Priority:'Medium'})});
+  if(!followup.ok)throw new Error(followup.error||'Reminder save failed');
+  const stage=await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(leadId),{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({ClientStatus:'Follow-up',NextFollowUpAt:dueAt,NextActionType:'Call',NextActionNote:note||'Client follow-up'})});
+  if(!stage.ok)throw new Error(stage.error||'Client stage update failed');
+  load(true);
+ }catch(e){button.disabled=false;error.textContent='Follow-up save confirm nahi hua: '+e.message+'. Retry se pehle client history check karein.'}
+}
+async function saveCardLost(card,button){
+ const reason=card.querySelector('[data-card-lost-reason]')?.value||'',note=card.querySelector('[data-card-lost-note]')?.value.trim()||'',error=card.querySelector('[data-card-lost-error]');
+ if(!reason){error.textContent='Lost reason choose karein.';return}
+ button.disabled=true;error.textContent='Saving…';
+ try{const result=await fetchJsonWithTimeout('/api/v2/clients/'+encodeURIComponent(card.dataset.leadId)+'/lost',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({LostReason:reason,LostNote:note||null})});if(!result.ok)throw new Error(result.error||'Lost stage update failed');load(true)}
+ catch(e){button.disabled=false;error.textContent='Lost stage save nahi hua: '+e.message}
 }
 async function saveLostReconnect(card,button){
  const cardId=card.dataset.leadId,date=card.querySelector('[data-reconnect-date]')?.value,time=card.querySelector('[data-reconnect-time]')?.value,note=card.querySelector('[data-reconnect-note]')?.value.trim()||'';

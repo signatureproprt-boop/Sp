@@ -31,6 +31,16 @@ test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
   await expect.poll(()=>queries.at(-1).get('status')).toBe('Site Visit');
   await page.getByRole('button',{name:'Card View',exact:true}).click();
   await expect(page.locator('#grid article')).toContainText('Active QA');
+  const clientCard=page.locator('.client-card[data-lead-id="L1"]');
+  await expect(clientCard.getByRole('button',{name:/Follow-up/})).toBeVisible();
+  await expect(clientCard.getByRole('link',{name:/Site Visit/})).toHaveAttribute('href','/client-workspace?id=L1&openVisits=1');
+  await expect(clientCard.getByRole('button',{name:/Lost/})).toBeVisible();
+  await clientCard.getByRole('button',{name:/Follow-up/}).click();
+  await clientCard.locator('[data-card-followup-date]').fill('2026-11-25');
+  await clientCard.locator('[data-card-followup-time]').fill('11:00');
+  await clientCard.locator('[data-card-followup-note]').fill('Discuss property shortlist');
+  await clientCard.getByRole('button',{name:'Save follow-up'}).click();
+  await expect.poll(()=>actions.some(x=>x.url==='/api/v2/clients/L1'&&x.method==='PATCH'&&x.body?.ClientStatus==='Follow-up')).toBe(true);
   await page.getByRole('button',{name:/Clients with Active Requirements/}).click();
   await expect(page.locator('#grid')).toContainText('Client: New · 2 active req.');
   await expect.poll(()=>queries.at(-1).get('view')).toBe('activeRequirements');
