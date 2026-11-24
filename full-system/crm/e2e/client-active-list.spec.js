@@ -11,6 +11,8 @@ test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
       queries.push(u.searchParams);
       const lost=u.searchParams.get('status')==='Lost';
       await r.fulfill({json:{ok:true,data:[lost?{LeadID:'L2',ClientName:'Lost QA',ClientStatus:'Lost',LostReason:'Budget mismatch',LostAt:'2026-11-20T10:00:00Z'}:{LeadID:'L1',ClientName:'Active QA',ClientStatus:'New',_needSummaries:[{RequirementID:'R1',TransactionType:'Purchase',Category:'Residential',SubCategory:'Flat',BudgetMax:22000000,RequirementStatus:'Active'},{RequirementID:'R2',TransactionType:'Rent',Category:'Commercial',SubCategory:'Office',BudgetMax:45000,RequirementStatus:'Active'}]}],totalCount:1,pagination:{page:1,total:1,totalPages:1},summary:{}}});
+    }else if(u.pathname==='/api/v2/shortlist/R1'){
+      await r.fulfill({json:{ok:true,data:[{PropertyID:'P1',Property:{Title:'Vesu Sample Flat',SubCategory:'Flat',Location1:'Vesu',AskingPrice:9000000}}]}});
     }else {actions.push({url:u.pathname,method:r.request().method(),body:r.request().postDataJSON()});await r.fulfill({json:{ok:true,data:[]}})}
   });
   await page.goto('/clients');
@@ -33,8 +35,16 @@ test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
   await expect(page.locator('#grid article')).toContainText('Active QA');
   const clientCard=page.locator('.client-card[data-lead-id="L1"]');
   await expect(clientCard.getByRole('button',{name:/Follow-up/})).toBeVisible();
-  await expect(clientCard.getByRole('link',{name:/Site Visit/})).toHaveAttribute('href','/client-workspace?id=L1&openVisits=1');
+  await expect(clientCard.getByRole('button',{name:/Site Visit/})).toBeVisible();
   await expect(clientCard.getByRole('button',{name:/Lost/})).toBeVisible();
+  await clientCard.getByRole('button',{name:/Site Visit/}).click();
+  await expect(clientCard.locator('[data-client-popover="visit"]')).toBeVisible();
+  await expect(clientCard.locator('[data-visit-property]')).toHaveValue('P1');
+  await clientCard.locator('[data-visit-date]').fill('2026-11-25');
+  await clientCard.locator('[data-visit-time]').fill('11:30');
+  await clientCard.getByRole('button',{name:'Confirm Site Visit'}).click();
+  await expect.poll(()=>actions.some(x=>x.url==='/api/v2/site-visit-bookings'&&x.method==='POST'&&x.body?.requirementId==='R1'&&x.body?.propertyIds?.includes('P1'))).toBe(true);
+  await expect(page).toHaveURL(/\/clients$/);
   await clientCard.getByRole('button',{name:/Follow-up/}).click();
   await clientCard.locator('[data-card-followup-date]').fill('2026-11-25');
   await clientCard.locator('[data-card-followup-time]').fill('11:00');

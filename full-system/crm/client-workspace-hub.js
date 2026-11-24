@@ -203,6 +203,7 @@ function localTimeInput(value){
 function renderClientCard(c){
  const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus);
  const activeCount=activeNeeds(c).length;
+ const visitRequirements=activeNeeds(c).filter(n=>needValue(n,['RequirementID','requirementId','ReqID']));
  const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Client: '+status+' · '+activeCount+' active req.':status;
  const statusClass=String(statusLabel||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
  const leadId=String(c.LeadID||''),needId=String(needValue(r,['RequirementID','requirementId','ReqID'])||'');
@@ -222,6 +223,7 @@ function renderClientCard(c){
   :activeCount>1
    ?'<a class="client-share-option" href="/client-workspace?id='+enc(leadId)+'">▣ Choose a requirement <small>Open workspace to select which need to shortlist</small></a>'
    :'<a class="client-share-option" href="/client-workspace?id='+enc(leadId)+'&amp;openRequirement=1">＋ Add a requirement first <small>Confirm what the client needs before matching properties</small></a>';
+ const visitRequirementOptions=visitRequirements.map(n=>{const id=needValue(n,['RequirementID','requirementId','ReqID']);return '<option value="'+esc(id)+'">'+esc(needDigest(c,n)||id)+'</option>'}).join('');
  const head='<div class="card-head client-card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(leadId)+'</div></div><span class="status status-'+esc(statusClass)+'">'+esc(statusLabel)+'</span></div>'+
   '<div class="client-tags"><span class="source">Lead date: '+esc(leadCreatedDate(c))+'</span>'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source investor-tag">Investor</span>':'')+'</div>'+
   '<div class="client-requirement"><div class="client-requirement-label">'+(activeCount?'Active requirements · '+activeCount:'Requirement')+'</div>'+(activeCount>1?'<div class="client-requirement-list">'+activeNeeds(c).slice(0,2).map(n=>'<div class="client-requirement-item">'+esc(needDigest(c,n)||'Property details pending')+'</div>').join('')+(activeCount>2?'<div class="client-requirement-more">+'+(activeCount-2)+' more · Open workspace</div>':'')+'</div>':'<div class="client-requirement-text">'+esc(summary)+'</div><div class="client-detail-line">'+(budget!=='—'?'<span>Budget: '+esc(budget)+'</span>':'')+(loc?'<span>Location: '+esc(loc)+'</span>':'')+'</div>')+'</div>';
@@ -233,7 +235,7 @@ function renderClientCard(c){
  return '<article class="card client-card" data-lead-id="'+esc(leadId)+'" data-requirement-id="'+esc(needId)+'">'+head+
   '<div class="client-next"><span class="client-next-label">Next follow-up</span><span>'+esc(next)+'</span></div>'+
   '<div class="client-last-contact">Last contact: '+esc(stamp?new Date(stamp).toLocaleDateString('en-IN'):'—')+'</div>'+
-  '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="toggle-call">☎ Call Log</button><button class="client-action" type="button" data-card-action="toggle-followup">◷ Follow-up</button><a class="client-action" href="/client-workspace?id='+enc(leadId)+'&amp;openVisits=1">⌖ Site Visit</a></div>'+
+  '<div class="client-actions"><button class="client-action primary-action" type="button" data-card-action="toggle-call">☎ Call Log</button><button class="client-action" type="button" data-card-action="toggle-followup">◷ Follow-up</button><button class="client-action" type="button" data-card-action="toggle-visit">⌖ Site Visit</button></div>'+
   '<div class="client-actions client-actions-secondary"><button class="client-action" type="button" data-card-action="toggle-share">↗ Match / Share</button><button class="client-action" type="button" data-card-action="toggle-lost">× Lost</button><button class="client-action" type="button" data-card-action="quick-update">✎ Quick Update</button></div>'+
   '<a class="client-workspace-link" href="/client-workspace?id='+enc(leadId)+'">Open Workspace →</a>'+
   '<section class="client-popover client-call-popover" data-client-popover="call" hidden><div class="client-popover-head"><b>Log a call</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
@@ -244,11 +246,17 @@ function renderClientCard(c){
    '<div class="client-popover-error" role="alert" data-call-error></div><div class="client-popover-actions"><button type="button" class="client-action primary-action" data-card-action="save-call">Save call</button><a class="client-phone-link" '+(phone?'href="tel:'+esc(phone)+'"':'aria-disabled="true"')+'>'+ (phone?'Call client':'Phone unavailable')+'</a></div></section>'+
   '<section class="client-popover client-followup-popover" data-client-popover="followup" hidden><div class="client-popover-head"><b>Schedule follow-up</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div><p>Save karte hi client stage Follow-up hoga aur reminder alerts mein dikhega.</p><div class="client-followup-fields"><label>Date<input type="date" data-card-followup-date value="'+esc(localDateInput(c.NextFollowUpAt))+'"></label><label>Time<input type="time" data-card-followup-time value="'+esc(localTimeInput(c.NextFollowUpAt))+'"></label></div><label>Note <textarea rows="2" data-card-followup-note placeholder="Kis baat ke liye follow-up karna hai?"></textarea></label><div class="client-popover-error" role="alert" data-card-followup-error></div><button type="button" class="client-action primary-action" data-card-action="save-followup">Save follow-up</button></section>'+
   '<section class="client-popover client-lost-popover" data-client-popover="lost" hidden><div class="client-popover-head"><b>Mark client Lost</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div><label>Reason<select data-card-lost-reason><option value="">Choose reason</option><option>Not interested</option><option>Wrong number</option><option>Budget mismatch</option><option>Bought elsewhere</option><option>Requirement fulfilled</option><option>Other</option></select></label><label>Note (optional)<textarea rows="2" data-card-lost-note placeholder="Short reason or context"></textarea></label><div class="client-popover-error" role="alert" data-card-lost-error></div><button type="button" class="client-action primary-action" data-card-action="save-lost">Confirm Lost</button></section>'+
+  '<section class="client-popover client-visit-popover" data-client-popover="visit" hidden><div class="client-popover-head"><b>Schedule Site Visit</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
+   (visitRequirementOptions?'<label>Requirement<select data-visit-requirement>'+visitRequirementOptions+'</select></label>':'<p>Site visit schedule karne ke liye pehle client ki active requirement save karein.</p>')+
+   '<div class="client-visit-properties" data-visit-properties>'+(visitRequirementOptions?'Choose requirement to load shortlisted properties.':'')+'</div>'+
+   (visitRequirementOptions?'<div class="client-followup-fields"><label>Date<input type="date" data-visit-date value="'+esc(cardDefaultVisitDate())+'"></label><label>Time<input type="time" data-visit-time value="11:00"></label></div><label>Duration<select data-visit-duration><option>60 mins</option><option selected>90 mins</option><option>120 mins</option></select></label><label>Meeting point (optional)<input type="text" data-visit-meeting placeholder="e.g. project entrance"></label><label>Note (optional)<textarea rows="2" data-visit-note placeholder="Visit ke liye short note"></textarea></label><div class="client-popover-error" role="alert" data-visit-error></div><button type="button" class="client-action primary-action" data-card-action="save-visit">Confirm Site Visit</button>':'')+
+  '</section>'+
   '<section class="client-popover client-share-popover" data-client-popover="share" hidden><div class="client-popover-head"><b>Match or share</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div>'+
    '<div class="client-share-options">'+clientShortlistAction+'<a class="client-share-option" href="/client-workspace?id='+enc(leadId)+'">⌂ Match in Inventory <small>Review property matches for this requirement</small></a><button type="button" class="client-share-option" data-card-action="load-brokers">♧ Share with Broker Network <small>Only requirement details are shared with selected brokers</small></button><button type="button" class="client-share-option" data-card-action="copy-requirement">▣ Copy requirement summary <small>Client name and phone stay private</small></button></div>'+
    '<div class="client-broker-panel" data-broker-panel hidden><div data-broker-list>Loading active brokers…</div><label>Optional note<textarea rows="2" data-broker-note placeholder="Add a short note for brokers"></textarea></label><div class="client-popover-error" role="alert" data-broker-error></div><button type="button" class="client-action primary-action" data-card-action="send-brokers">Create secure share links</button><div data-broker-results></div></div></section>'+
   '<section class="client-popover client-quick-popover" data-client-popover="quick" hidden><div class="client-popover-head"><b>Quick update</b><button type="button" data-card-action="close-popovers" aria-label="Close">×</button></div><p>Requirement details aur stage history ke liye client workspace kholen.</p><a class="client-action primary-action" href="/client-workspace?id='+enc(leadId)+'">Open Workspace</a></section></article>';
 }
+function cardDefaultVisitDate(){const d=new Date();d.setDate(d.getDate()+1);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
 function renderPager(){
  const el=document.getElementById('pager'),p=queryState;
  if(!p.total){el.innerHTML='';return}
@@ -292,6 +300,7 @@ async function createClient(){
 }
 document.getElementById('grid')?.addEventListener('click',handleClientCardAction);
 document.getElementById('grid')?.addEventListener('change',function(event){
+ if(event.target.matches('[data-visit-requirement]')){loadCardVisitProperties(event.target.closest('.client-card'));return}
  if(!event.target.matches('[data-call-outcome]'))return;
  const card=event.target.closest('.client-card'),result=event.target.value;
  const wrap=card?.querySelector('[data-lost-reason-wrap]'),save=card?.querySelector('[data-card-action="save-call"]');
@@ -311,11 +320,11 @@ async function handleClientCardAction(event){
  const action=button.dataset.cardAction;
  const hidePanels=()=>{card.querySelectorAll('[data-client-popover]').forEach(p=>p.hidden=true);card.classList.remove('is-open')};
  if(action==='close-popovers'){hidePanels();return}
- if(action==='toggle-call'||action==='toggle-share'||action==='toggle-followup'||action==='toggle-lost'||action==='quick-update'){
-  const names={'toggle-call':'call','toggle-share':'share','toggle-followup':'followup','toggle-lost':'lost','quick-update':'quick'};
+ if(action==='toggle-call'||action==='toggle-share'||action==='toggle-followup'||action==='toggle-lost'||action==='toggle-visit'||action==='quick-update'){
+  const names={'toggle-call':'call','toggle-share':'share','toggle-followup':'followup','toggle-lost':'lost','toggle-visit':'visit','quick-update':'quick'};
   const name=names[action];
   const panel=card.querySelector('[data-client-popover="'+name+'"]'),wasOpen=panel&&!panel.hidden;
-  hidePanels();if(panel&&!wasOpen){panel.hidden=false;card.classList.add('is-open')}
+  hidePanels();if(panel&&!wasOpen){panel.hidden=false;card.classList.add('is-open');if(name==='visit')loadCardVisitProperties(card)}
   return;
  }
  if(action==='reopen'){
@@ -331,6 +340,30 @@ async function handleClientCardAction(event){
  if(action==='save-call'){await saveCardCall(card,button);return}
  if(action==='save-followup'){await saveCardFollowup(card,button);return}
  if(action==='save-lost'){await saveCardLost(card,button);return}
+ if(action==='save-visit'){await saveCardVisit(card,button);return}
+}
+async function loadCardVisitProperties(card){
+ const reqId=card?.querySelector('[data-visit-requirement]')?.value,list=card?.querySelector('[data-visit-properties]');
+ if(!list)return;
+ if(!reqId){list.textContent='Active requirement select karein.';return}
+ list.textContent='Shortlisted properties load ho rahi hain…';
+ try{
+  const result=await fetchJsonWithTimeout('/api/v2/shortlist/'+encodeURIComponent(reqId)+'?status=Active',{credentials:'include'});
+  const rows=Array.isArray(result.data)?result.data:[];
+  if(!rows.length){list.innerHTML='<div class="client-visit-empty">Is requirement ki active shortlist khali hai. Site visit se pehle property ko Match / Share mein shortlist karein.</div>';return}
+  list.innerHTML='<div class="client-visit-list-label">Visit ke liye property select karein</div>'+rows.map(row=>{const p=row.Property||{},id=row.PropertyID||p.PropertyID||'',title=p.Title||p.ProjectName||id,details=[p.SubCategory||p.Category,p.Location1||p.Area,p.AskingPrice?('₹'+Number(p.AskingPrice).toLocaleString('en-IN')):''].filter(Boolean).join(' · ');return '<label class="client-visit-property"><input type="checkbox" data-visit-property value="'+esc(id)+'" checked><span><b>'+esc(title)+'</b><small>'+esc(details||'Property details unavailable')+'</small></span></label>'}).join('');
+ }catch(e){list.textContent='Shortlist load nahi hui: '+e.message}
+}
+async function saveCardVisit(card,button){
+ const reqId=card.querySelector('[data-visit-requirement]')?.value,properties=Array.from(card.querySelectorAll('[data-visit-property]:checked')).map(el=>el.value),visitDate=card.querySelector('[data-visit-date]')?.value,visitTime=card.querySelector('[data-visit-time]')?.value,error=card.querySelector('[data-visit-error]');
+ if(!reqId){error.textContent='Active requirement choose karein.';return}
+ if(!properties.length){error.textContent='Kam se kam ek shortlisted property select karein.';return}
+ if(!visitDate||!visitTime){error.textContent='Visit date aur time select karein.';return}
+ button.disabled=true;error.textContent='Visit schedule ho rahi hai…';
+ try{
+  await fetchJsonWithTimeout('/api/v2/site-visit-bookings',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({requirementId:reqId,propertyIds:properties,visitDate,visitTime,duration:card.querySelector('[data-visit-duration]')?.value||'90 mins',meetingPoint:card.querySelector('[data-visit-meeting]')?.value.trim()||'',notes:card.querySelector('[data-visit-note]')?.value.trim()||''})});
+  load(true);
+ }catch(e){button.disabled=false;error.textContent='Site visit schedule nahi hui: '+e.message}
 }
 async function saveCardFollowup(card,button){
  const leadId=card.dataset.leadId,date=card.querySelector('[data-card-followup-date]')?.value,time=card.querySelector('[data-card-followup-time]')?.value,note=card.querySelector('[data-card-followup-note]')?.value.trim()||'',error=card.querySelector('[data-card-followup-error]');
