@@ -10,7 +10,19 @@ function safePhone(v){const raw=String(v??'').trim();if(!raw||/^(#|error|n\/a|na
 function phoneLabel(v){return safePhone(v)?String(v).trim():'Phone unavailable';}
 async function doLogout(){await fetch('/api/auth/logout',{method:'POST',credentials:'include'}).catch(()=>{});window.location.href='/login.html';}
 function norm(v){const a={Verified:'Contacted',Active:'Qualified',Inactive:'Lost',Blacklisted:'Lost',Converted:'Won'};return a[String(v||'').trim()]||String(v||'New').trim()||'New'}
-function fmtBudget(r){if(!r)return '—';const f=n=>n==null?'':n>=1e7?'₹'+(n/1e7).toFixed(1)+'Cr':n>=1e5?'₹'+(n/1e5).toFixed(0)+'L':'₹'+Number(n).toLocaleString('en-IN');return [f(r.BudgetMin),f(r.BudgetMax)].filter(Boolean).join(' – ')||'—'}
+function fmtBudget(r){
+ if(!r)return '—';
+ const f=value=>{
+  if(value==null||String(value).trim()==='')return '';
+  const n=Number(value);if(!Number.isFinite(n)||n<0)return '';
+  const compact=(amount,unit)=>'₹'+amount.toFixed(2).replace(/\.0+$|(?<=\.[0-9])0$/,'')+unit;
+  if(n>=1e7)return compact(n/1e7,'Cr');
+  if(n>=1e5)return compact(n/1e5,'L');
+  return '₹'+n.toLocaleString('en-IN');
+ };
+ const range=[f(r.BudgetMin),f(r.BudgetMax)].filter(Boolean).join(' – ');
+ return (range||'—')+(/rent|lease/i.test(String(r.TransactionType||''))&&range?' /month':'');
+}
 function budgetRange(v){return ({under50:[null,4999999],"50to100":[5000000,9999999],"100to200":[10000000,19999999],over200:[20000000,null]})[v]||[null,null]}
 function buildQuery(){
  const p=new URLSearchParams();
@@ -128,11 +140,21 @@ function setBucket(bucket){
  load(true);
 }
 function leadCreatedDate(c){const value=c.CreatedAt||c.CreatedDate||c.CreatedOn||c.LeadCreatedAt;return value?new Date(value).toLocaleDateString('en-IN'):'—'}
+function activeNeeds(c){return (Array.isArray(c?._needSummaries)?c._needSummaries:[]).filter(n=>{const s=String(n.RequirementStatus||'').trim().toUpperCase();return !s||s==='ACTIVE'})}
+function needSummariesForDisplay(c){
+ const confirmed=activeNeeds(c);
+ if(confirmed.length)return confirmed;
+ return [firstNeed(c)];
+}
 function renderList(rows){
  const body=rows.map(c=>{
-  const r=firstNeed(c),phone=c.PrimaryMobile||c.Phone,status=norm(c.ClientStatus||c.LeadStatus);
-  const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status;
-  return '<tr><td><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td>'+esc(leadCreatedDate(c))+'</td><td>'+esc(phoneLabel(phone))+'</td><td><span class="status">'+esc(statusLabel)+'</span></td><td class="need-cell">'+esc((r.Unconfirmed?'Unconfirmed: ':'')+(needDigest(c,r)||'Property details pending'))+'</td><td>'+esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—')+'</td><td><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(safePhone(phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'')+'</div></td></tr>';
+  const needs=needSummariesForDisplay(c),phone=c.PrimaryMobile||c.Phone,status=norm(c.ClientStatus||c.LeadStatus),lost=status==='Lost';
+  const activeCount=activeNeeds(c).length;
+  const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Client: '+status+' · '+activeCount+' active requirement'+(activeCount===1?'':'s'):status;
+  const needHtml=needs.map(n=>'<div class="client-list-need">'+(n.Unconfirmed?'<span class="unconfirmed">Unconfirmed · </span>':'')+esc(needDigest(c,n)||'Property details pending')+'</div>').join('')+(activeCount>needs.length?'<div class="client-list-more">+'+(activeCount-needs.length)+' more active requirement'+(activeCount-needs.length===1?'':'s')+' · Open workspace to view all</div>':'');
+  const lostInfo=lost?'<div class="lost-list-meta"><b>Lost reason:</b> '+esc(c.LostReason||c.LossReason||c.ReasonLost||'Reason not recorded')+'<br><b>Lost date:</b> '+esc((c.LostAt||c.LostDate||c.UpdatedAt)?new Date(c.LostAt||c.LostDate||c.UpdatedAt).toLocaleDateString('en-IN'):'—')+'</div>':'';
+  const reconnect=lost?'<div class="lost-list-reminder"><label>Reconnect date<input type="date" aria-label="Reconnect date" data-reconnect-date value="'+esc(localDateInput(c.NextFollowUpAt))+'"></label><label>Time<input type="time" aria-label="Reconnect time" data-reconnect-time value="'+esc(localTimeInput(c.NextFollowUpAt))+'"></label><input type="text" aria-label="Reconnect note" data-reconnect-note placeholder="Reminder note" value="'+esc(c.NextActionNote||'')+'"><button class="client-action" type="button" data-card-action="save-reconnect">Save reminder</button></div>':'';
+  return '<tr class="client-list-row" data-lead-id="'+esc(c.LeadID)+'"><td data-label="Client"><strong>'+esc(c.ClientName||c.Name||'Unnamed')+'</strong><div class="id">'+esc(c.LeadID)+'</div></td><td data-label="Lead date">'+esc(leadCreatedDate(c))+'</td><td data-label="Mobile">'+esc(phoneLabel(phone))+'</td><td data-label="Status"><span class="status">'+esc(statusLabel)+'</span>'+lostInfo+'</td><td data-label="Requirement" class="need-cell">'+needHtml+'</td><td data-label="Next follow-up">'+(lost?reconnect:esc(c.NextFollowUpAt?new Date(c.NextFollowUpAt).toLocaleString('en-IN'):'—'))+'</td><td data-label="Actions"><div class="actions"><a class="primary" href="/client-workspace?id='+enc(c.LeadID)+'">Open Workspace →</a>'+(lost?'<button type="button" class="client-action" data-card-action="reopen">↻ Reopen</button>':'')+(safePhone(phone)?'<a href="/client-workspace?id='+enc(c.LeadID)+'&amp;startCall=1">☎ Call &amp; Log</a>':'')+'</div></td></tr>';
  }).join('');
  return '<table class="client-table" aria-label="Clients list"><thead><tr><th scope="col">Client</th><th scope="col">Lead date</th><th scope="col">Mobile</th><th scope="col">Status</th><th scope="col">Property details</th><th scope="col">Next follow-up</th><th scope="col">Actions</th></tr></thead><tbody>'+body+'</tbody></table>';
 }
@@ -140,7 +162,7 @@ let FILTER_TXN='';
 function setChip(el,key,value){if(key==='txn')FILTER_TXN=value;document.querySelectorAll('.chip[data-txn]').forEach(x=>x.classList.toggle('active',x===el));load(true)}
 function scheduleLoad(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>load(true),300)}
 function firstNeed(c){
- const confirmed=(c._needSummaries||[]).filter(n=>{const s=String(n.RequirementStatus||'').trim().toUpperCase();return !s||s==='ACTIVE'});
+ const confirmed=activeNeeds(c);
  if(confirmed.length)return confirmed[0];
  const basics=Array.isArray(c.SheetBasicRequirements)?c.SheetBasicRequirements:[];
  const tab=document.getElementById('sourceTab').value;
@@ -180,7 +202,8 @@ function localTimeInput(value){
 }
 function renderClientCard(c){
  const r=firstNeed(c),status=norm(c.ClientStatus||c.LeadStatus);
- const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Requirement Active':status;
+ const activeCount=activeNeeds(c).length;
+ const statusLabel=CLIENT_BUCKET==='activeRequirements'?'Client: '+status+' · '+activeCount+' active req.':status;
  const statusClass=String(statusLabel||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
  const leadId=String(c.LeadID||''),needId=String(needValue(r,['RequirementID','requirementId','ReqID'])||'');
  const txn=needValue(r,['TransactionType','transactionType','Transaction'])||c.RequirementType||'';
@@ -196,7 +219,7 @@ function renderClientCard(c){
  const reconnectDate=localDateInput(c.NextFollowUpAt),reconnectTime=localTimeInput(c.NextFollowUpAt);
  const head='<div class="card-head client-card-head"><div><div class="name">'+esc(c.ClientName||c.Name||'Unnamed')+'</div><div class="id">'+esc(leadId)+'</div></div><span class="status status-'+esc(statusClass)+'">'+esc(statusLabel)+'</span></div>'+
   '<div class="client-tags"><span class="source">Lead date: '+esc(leadCreatedDate(c))+'</span>'+(cat?'<span class="source">'+esc(cat)+'</span>':'')+(txn?'<span class="source">'+esc(txn)+'</span>':'')+(investorFlag(c)?'<span class="source investor-tag">Investor</span>':'')+'</div>'+
-  '<div class="client-requirement"><div class="client-requirement-label">Requirement</div><div class="client-requirement-text">'+esc(summary)+'</div><div class="client-detail-line">'+(budget!=='—'?'<span>Budget: '+esc(budget)+'</span>':'')+(loc?'<span>Location: '+esc(loc)+'</span>':'')+'</div></div>';
+  '<div class="client-requirement"><div class="client-requirement-label">'+(activeCount?'Active requirements · '+activeCount:'Requirement')+'</div>'+(activeCount>1?'<div class="client-requirement-list">'+activeNeeds(c).slice(0,2).map(n=>'<div class="client-requirement-item">'+esc(needDigest(c,n)||'Property details pending')+'</div>').join('')+(activeCount>2?'<div class="client-requirement-more">+'+(activeCount-2)+' more · Open workspace</div>':'')+'</div>':'<div class="client-requirement-text">'+esc(summary)+'</div><div class="client-detail-line">'+(budget!=='—'?'<span>Budget: '+esc(budget)+'</span>':'')+(loc?'<span>Location: '+esc(loc)+'</span>':'')+'</div>')+'</div>';
  if(lost){
   return '<article class="card client-card" data-lead-id="'+esc(leadId)+'">'+head+
    '<div class="client-lost-meta"><div><b>Lost reason</b><span>'+esc(lostReason)+'</span></div><div><b>Lost date</b><span>'+esc(lostDate?new Date(lostDate).toLocaleDateString('en-IN'):'—')+'</span></div></div>'+
@@ -275,7 +298,7 @@ document.getElementById('grid')?.addEventListener('change',function(event){
 async function handleClientCardAction(event){
  const button=event.target.closest('[data-card-action]');
  if(!button)return;
- const card=button.closest('.client-card');
+ const card=button.closest('.client-card, .client-list-row');
  if(!card)return;
  const action=button.dataset.cardAction;
  const hidePanels=()=>{card.querySelectorAll('[data-client-popover]').forEach(p=>p.hidden=true);card.classList.remove('is-open')};

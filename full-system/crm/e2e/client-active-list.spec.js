@@ -2,6 +2,7 @@ const {test,expect}=require('@playwright/test');
 const path=require('node:path');
 test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
   const queries=[];
+  const actions=[];
   await page.route('**/clients',r=>r.fulfill({path:path.join(__dirname,'../client-workspace-hub.html'),contentType:'text/html'}));
   await page.route('**/client-workspace-hub.js',r=>r.fulfill({path:path.join(__dirname,'../client-workspace-hub.js'),contentType:'application/javascript'}));
   await page.route('**/api/**',async r=>{
@@ -9,11 +10,14 @@ test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
     if(u.pathname==='/api/v2/clients/query'){
       queries.push(u.searchParams);
       const lost=u.searchParams.get('status')==='Lost';
-      await r.fulfill({json:{ok:true,data:[{LeadID:lost?'L2':'L1',ClientName:lost?'Lost QA':'Active QA',ClientStatus:lost?'Lost':'New'}],totalCount:1,pagination:{page:1,total:1,totalPages:1},summary:{}}});
-    }else await r.fulfill({json:{ok:true,data:[]}});
+      await r.fulfill({json:{ok:true,data:[lost?{LeadID:'L2',ClientName:'Lost QA',ClientStatus:'Lost',LostReason:'Budget mismatch',LostAt:'2026-11-20T10:00:00Z'}:{LeadID:'L1',ClientName:'Active QA',ClientStatus:'New',_needSummaries:[{RequirementID:'R1',TransactionType:'Purchase',Category:'Residential',SubCategory:'Flat',BudgetMax:22000000,RequirementStatus:'Active'},{RequirementID:'R2',TransactionType:'Rent',Category:'Commercial',SubCategory:'Office',BudgetMax:45000,RequirementStatus:'Active'}]}],totalCount:1,pagination:{page:1,total:1,totalPages:1},summary:{}}});
+    }else {actions.push({url:u.pathname,method:r.request().method(),body:r.request().postDataJSON()});await r.fulfill({json:{ok:true,data:[]}})}
   });
   await page.goto('/clients');
   await expect(page.locator('#grid')).toContainText('Active QA');
+  await expect(page.locator('#grid')).toContainText('Active requirements · 2');
+  await expect(page.locator('#grid')).toContainText('₹2.2Cr');
+  await expect(page.locator('#grid')).toContainText('₹45,000 /month');
   expect(queries.at(-1).get('status')).toBe('New');
   await expect(page.locator('#status option:checked')).toHaveText('New');
   await page.getByRole('button',{name:'List View',exact:true}).click();
@@ -27,10 +31,20 @@ test('Clients opens New Leads and Lost is requested explicitly',async({page})=>{
   await expect.poll(()=>queries.at(-1).get('status')).toBe('Site Visit');
   await page.getByRole('button',{name:'Card View',exact:true}).click();
   await expect(page.locator('#grid article')).toContainText('Active QA');
+  await page.getByRole('button',{name:/Clients with Active Requirements/}).click();
+  await expect(page.locator('#grid')).toContainText('Client: New · 2 active req.');
+  await expect.poll(()=>queries.at(-1).get('view')).toBe('activeRequirements');
   await page.locator('#status').selectOption('Lost');
   await expect(page.locator('#grid')).toContainText('Lost QA');
   expect(queries.at(-1).get('status')).toBe('Lost');
   expect(queries.at(-1).has('excludeLost')).toBe(false);
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'List View',exact:true}).click();
+  await expect(page.getByRole('table',{name:'Clients list'})).toContainText('Budget mismatch');
+  await expect(page.getByRole('table',{name:'Clients list'})).toContainText('Lost date');
+  await expect(page.getByLabel('Reconnect date')).toBeVisible();
+  await page.getByRole('button',{name:'↻ Reopen'}).click();
+  await expect.poll(()=>actions.some(x=>x.url==='/api/v2/clients/L2/reactivate'&&x.method==='POST')).toBe(true);
   await page.locator('#status').selectOption('');
   await expect(page.locator('#grid')).toContainText('Active QA');
   await expect(page.locator('#grid')).not.toContainText('Lost QA');
