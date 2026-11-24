@@ -1441,6 +1441,8 @@ table td,table th{border-color:var(--v2-line)!important}
     const initParams = new URLSearchParams(location.search);
     const startCall = initParams.get('startCall') === '1';
     const openRequirement = initParams.get('openRequirement') === '1';
+    const openShortlist = initParams.get('openShortlist') === '1';
+    const shortlistRequirementId = initParams.get('requirementId') || '';
     if (workspace?.lead && startCall) {
       window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
       await callClient();
@@ -1450,6 +1452,14 @@ table td,table th{border-color:var(--v2-line)!important}
       window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
       await openAddNeedModal();
       return;
+    }
+    if (workspace?.lead && openShortlist && shortlistRequirementId) {
+      window.history.replaceState({}, '', '/client-workspace?id=' + encodeURIComponent(LEAD_ID));
+      const requirementExists = asArray(workspace.requirements).some(r => String(r.RequirementID || r.requirementId || '') === shortlistRequirementId);
+      if (requirementExists && typeof openClientBrochures === 'function') {
+        await openClientBrochures(shortlistRequirementId);
+        return;
+      }
     }
     if (workspace?.lead) openEditModal();
   }
