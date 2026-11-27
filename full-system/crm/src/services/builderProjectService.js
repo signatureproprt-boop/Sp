@@ -608,6 +608,52 @@ class BuilderProjectService {
     return { ok: true, data: row };
   }
 
+  updateBankProposalWorkflow(id, payload = {}, userId = null) {
+    const db = this.repo.read();
+    const row = this._all(db).find((p) => p.ProjectID === id && p.Active !== false);
+    if (!row) return { ok: false, error: 'Project not found' };
+    const allowedStatuses = new Set([
+      'not_started', 'authorization_needed', 'collecting_documents', 'ready_to_submit',
+      'submitted', 'under_review', 'clarification_needed', 'approved', 'not_approved'
+    ]);
+    const status = String(payload.status || 'not_started');
+    if (!allowedStatuses.has(status)) return { ok: false, error: 'Invalid bank proposal status' };
+    const allowedAuthorization = new Set(['not_requested', 'requested', 'received']);
+    const authorizationStatus = String(payload.authorizationStatus || 'not_requested');
+    if (!allowedAuthorization.has(authorizationStatus)) return { ok: false, error: 'Invalid builder authorization status' };
+    const allowedForm = new Set(['not_received', 'received', 'completed']);
+    const officialFormStatus = String(payload.officialFormStatus || 'not_received');
+    if (!allowedForm.has(officialFormStatus)) return { ok: false, error: 'Invalid HDFC form status' };
+    const allowedDocuments = [
+      'builderEntityKyc', 'projectApplication', 'reraCertificate', 'sanctionedPlan',
+      'constructionPermission', 'landTitleChain', 'developmentAgreement',
+      'titleSearchOrEncumbrance', 'projectFinanceNoc', 'unitInventoryAndCostSheet',
+      'otherApprovals'
+    ];
+    const previous = row.BankProposalWorkflow || {};
+    const documents = Object.fromEntries(allowedDocuments.map((key) => [
+      key, typeof payload.documents?.[key] === 'boolean' ? payload.documents[key] : previous.documents?.[key] === true
+    ]));
+    const cleanText = (value, fallback = '', max = 500) => String(value ?? fallback).trim().slice(0, max);
+    const updatedAt = new Date().toISOString();
+    row.BankProposalWorkflow = {
+      status,
+      authorizationStatus,
+      officialFormStatus,
+      documents,
+      submittedOn: cleanText(payload.submittedOn, previous.submittedOn || '', 30),
+      referenceNumber: cleanText(payload.referenceNumber, previous.referenceNumber || '', 100),
+      bankContact: cleanText(payload.bankContact, previous.bankContact || '', 200),
+      nextFollowUpOn: cleanText(payload.nextFollowUpOn, previous.nextFollowUpOn || '', 30),
+      bankNotes: cleanText(payload.bankNotes, previous.bankNotes || '', 2000),
+      updatedAt,
+      updatedBy: userId || null
+    };
+    row.UpdatedAt = updatedAt;
+    this.repo.write(db);
+    return { ok: true, data: row.BankProposalWorkflow };
+  }
+
   setReview(id, kind, checked, userId) {
     const db = this.repo.read();
     const row = this._all(db).find((p) => p.ProjectID === id && p.Active !== false);
