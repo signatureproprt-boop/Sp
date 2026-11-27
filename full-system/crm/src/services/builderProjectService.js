@@ -646,6 +646,11 @@ class BuilderProjectService {
       bankContact: cleanText(payload.bankContact, previous.bankContact || '', 200),
       nextFollowUpOn: cleanText(payload.nextFollowUpOn, previous.nextFollowUpOn || '', 30),
       bankNotes: cleanText(payload.bankNotes, previous.bankNotes || '', 2000),
+      brokerName: cleanText(payload.brokerName, previous.brokerName || '', 120),
+      brokerMobile: cleanText(payload.brokerMobile, previous.brokerMobile || '', 30),
+      brokerEmail: cleanText(payload.brokerEmail, previous.brokerEmail || '', 160),
+      builderContact: cleanText(payload.builderContact, previous.builderContact || '', 200),
+      requestNotes: cleanText(payload.requestNotes, previous.requestNotes || '', 1000),
       updatedAt,
       updatedBy: userId || null
     };
