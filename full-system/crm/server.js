@@ -2488,6 +2488,18 @@ async function handleApi(req, res, url) {
             : 'BUILDER_PROJECTS_CREATE';
       if (!ensurePermissionOrRespond(req, res, url, builderPermission)) return;
 
+      const bankProposalMatch = pathname.match(/^\/api\/v2\/builder-projects\/([^/]+)\/bank-proposal\/?$/i);
+      if (bankProposalMatch) {
+        if (req.method !== 'PATCH') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
+        const project = svc.get(decodeURIComponent(bankProposalMatch[1]));
+        if (!project.ok) { sendJson(res, project, 404); return; }
+        const scope = tenantCheck(project.data, actor);
+        if (!scope.ok) { sendJson(res, { ok: false, error: scope.error }, scope.statusCode || 403); return; }
+        const out = svc.updateBankProposalWorkflow(project.data.ProjectID, bodyForV2 || {}, actor.userId);
+        sendJson(res, out, out.ok ? 200 : 400);
+        return;
+      }
+
       if (/^\/api\/v2\/builder-projects\/brochure-status(?:\.csv)?\/?$/i.test(pathname)) {
         if (req.method !== 'GET') { sendJson(res, { ok: false, error: 'Method not supported' }, 405); return; }
         const { brochureStatusReport, reportCsv } = require('./src/services/builderBrochureStatusReport');
